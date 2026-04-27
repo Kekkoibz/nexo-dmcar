@@ -2472,29 +2472,46 @@ function genWordDoc(o,cb){
                   });
 
                   // === LOGO INSERTION ===
+                  console.log('[NEXO Logo] logoData received:',logoData?'YES':'NO',logoData?'(ext='+logoData.ext+', '+logoData.bytes.byteLength+' bytes)':'');
                   if(logoData){
-                    // Add image bytes to media folder
-                    var imgName='brand_logo.'+logoData.ext;
-                    zip.file('word/media/'+imgName,logoData.bytes);
-                    // Add relationship
-                    var rId=nextRelId(relsXml);
-                    var newRel='<Relationship Id="'+rId+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/'+imgName+'"/>';
-                    relsXml=relsXml.replace('</Relationships>',newRel+'</Relationships>');
-                    // Ensure content type
-                    ctXml=ensureContentType(ctXml,logoData.ext);
-                    // Build drawing — sizes in EMU (914400 = 1 inch). Logo around 1.4" wide x ~1" high.
-                    var drawing=buildLogoDrawingXml(rId,1300000,950000);
-                    // Replace the entire <w:r>{{rpr}}<w:t>{{LOGO}}</w:t></w:r> with the drawing run
-                    // Search for the run wrapping {{LOGO}} (regex tolerant of any rPr in between)
-                    var logoRunRe=/<w:r>(<w:rPr>[^<]*(?:<[^>]+>[^<]*)*<\/w:rPr>)?<w:t[^>]*>\{\{LOGO\}\}<\/w:t><\/w:r>/;
-                    if(logoRunRe.test(docXml)){
-                      docXml=docXml.replace(logoRunRe,drawing);
-                    } else {
-                      // Fallback: just blank the placeholder
+                    // Auto-detect actual format from bytes signature (more reliable than extension)
+                    var bytes=new Uint8Array(logoData.bytes);
+                    var realExt=logoData.ext;
+                    if(bytes[0]===0x89&&bytes[1]===0x50){realExt='png';}
+                    else if(bytes[0]===0xFF&&bytes[1]===0xD8){realExt='jpeg';}
+                    else{
+                      console.error('[NEXO Logo] ❌ Logo bytes do NOT look like PNG or JPEG. First bytes:',bytes[0].toString(16),bytes[1].toString(16),bytes[2].toString(16),bytes[3].toString(16));
+                      console.error('[NEXO Logo] The file at GitHub may be corrupted or not actually an image.');
                       docXml=docXml.split('{{LOGO}}').join('');
+                    }
+                    if(bytes[0]===0x89||bytes[0]===0xFF){
+                      // Add image bytes to media folder
+                      var imgName='brand_logo.'+realExt;
+                      console.log('[NEXO Logo] Embedding image as:',imgName);
+                      zip.file('word/media/'+imgName,logoData.bytes);
+                      // Add relationship
+                      var rId=nextRelId(relsXml);
+                      var newRel='<Relationship Id="'+rId+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/'+imgName+'"/>';
+                      relsXml=relsXml.replace('</Relationships>',newRel+'</Relationships>');
+                      // Ensure content type
+                      ctXml=ensureContentType(ctXml,realExt);
+                      // Build drawing — sizes in EMU (914400 = 1 inch). Logo around 1.4" wide x ~1" high.
+                      var drawing=buildLogoDrawingXml(rId,1300000,950000);
+                      // Replace the run wrapping {{LOGO}}. The placeholder may sit alone in a <w:r>.
+                      var logoRunRe=/<w:r>(<w:rPr>[^<]*(?:<[^>]+>[^<]*)*<\/w:rPr>)?<w:t[^>]*>\{\{LOGO\}\}<\/w:t><\/w:r>/;
+                      if(logoRunRe.test(docXml)){
+                        docXml=docXml.replace(logoRunRe,drawing);
+                        console.log('[NEXO Logo] ✅ {{LOGO}} placeholder replaced with image drawing');
+                      } else {
+                        console.error('[NEXO Logo] ❌ Could not find {{LOGO}} run in document.xml. Searching for any {{LOGO}} occurrence...');
+                        var anyMatch=docXml.indexOf('{{LOGO}}');
+                        console.error('[NEXO Logo] {{LOGO}} found at position:',anyMatch,'(if -1 then no placeholder in template)');
+                        docXml=docXml.split('{{LOGO}}').join('');
+                      }
                     }
                   } else {
                     // No logo available -> blank placeholder
+                    console.warn('[NEXO Logo] ⚠️ No logo loaded, removing {{LOGO}} placeholder');
                     docXml=docXml.split('{{LOGO}}').join('');
                   }
 
