@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>NEXO — DMCAR GROUP</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07090f;--bg2:#0c1018;--bg3:#111827;--bg4:#1a2235;
+  --border:#1e2a3a;--border2:#2a3a52;
+  --blue:#2563eb;--b2:#3b82f6;--acc:#60a5fa;
+  --v:#7c3aed;--v2:#8b5cf6;
+  --green:#10b981;--orange:#f59e0b;--red:#ef4444;
+  --text:#e2e8f0;--t2:#94a3b8;--t3:#475569;--t4:#2d3f55;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+/* LAYOUT */
+#app{display:flex;height:100vh}
+#sb{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:transform .22s;z-index:50;flex-shrink:0}
+#sb.hide{transform:translateX(-220px);position:fixed;height:100vh}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#topbar{height:52px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0}
+#content{flex:1;overflow-y:auto;padding:18px}
+/* SIDEBAR */
+.sb-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sb-logo{width:32px;height:32px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;color:#fff;flex-shrink:0}
+.sb-nm{font-family:'Syne',sans-serif;font-weight:800;font-size:15px;background:linear-gradient(90deg,var(--acc),var(--v2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sb-nav{flex:1;overflow-y:auto;padding:8px}
+.sb-sec{font-size:9px;font-weight:700;color:var(--t4);letter-spacing:.12em;text-transform:uppercase;padding:8px 8px 4px}
+.ni{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--t3);font-size:13px;font-weight:500;transition:all .1s;margin-bottom:1px;user-select:none;border:1px solid transparent}
+.ni:hover{background:var(--bg3);color:var(--t2)}
+.ni.on{background:rgba(37,99,235,.15);color:var(--acc);border-color:rgba(37,99,235,.2)}
+.ni-ico{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+.ni-cnt{margin-left:auto;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;min-width:16px;text-align:center}
+.cr{background:var(--red);color:#fff}.cg{background:var(--green);color:#fff}.co{background:var(--orange);color:#fff}
+.sb-foot{padding:10px;border-top:1px solid var(--border)}
+.api-dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 5px var(--red);flex-shrink:0;transition:all .3s}
+.api-dot.on{background:var(--green);box-shadow:0 0 5px var(--green)}
+/* TOPBAR */
+.tb-menu{background:none;border:none;color:var(--t3);font-size:20px;cursor:pointer;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;line-height:1;flex-shrink:0}
+.tb-menu:hover{background:var(--bg3);color:var(--t2)}
+.tb-title{font-family:'Syne',sans-serif;font-weight:800;font-size:15px}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.avatar{width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+/* VIEWS */
+.view{display:none}.view.on{display:block}
+@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.fi{animation:fi .18s ease}
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px}
+.ct{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:11px}
+.st{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;margin-bottom:3px}
+.ss{font-size:12px;color:var(--t3);margin-bottom:14px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fc{display:flex;align-items:center}
+.fbet{display:flex;align-items:center;justify-content:space-between}
+.g6{gap:6px}.g8{gap:8px}.g10{gap:10px}.g12{gap:12px}
+.mb8{margin-bottom:8px}.mb10{margin-bottom:10px}.mb12{margin-bottom:12px}
+.mb14{margin-bottom:14px}.mb16{margin-bottom:16px}.mb20{margin-bottom:20px}
+.mt8{margin-top:8px}.mt10{margin-top:10px}.mt12{margin-top:12px}
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;position:relative;overflow:hidden}
+.stat:before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sb-:before{background:linear-gradient(90deg,var(--blue),var(--b2))}
+.sg-:before{background:linear-gradient(90deg,var(--green),#34d399)}
+.so-:before{background:linear-gradient(90deg,var(--orange),#fbbf24)}
+.sr-:before{background:linear-gradient(90deg,var(--red),#f87171)}
+.stat-n{font-family:'Syne',sans-serif;font-weight:800;font-size:26px;line-height:1}
+.stat-l{font-size:11px;color:var(--t3);margin-top:3px}
+/* TABLE */
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{position:relative}
+.col-resizer{position:absolute;right:0;top:0;bottom:0;width:5px;cursor:col-resize;background:transparent;z-index:1}
+.col-resizer:hover{background:var(--blue)}
+th{font-size:10px;font-weight:700;color:var(--t4);letter-spacing:.08em;text-transform:uppercase;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--bg2)}
+td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover>td{background:rgba(255,255,255,.012)}
+.tbl-empty{text-align:center;padding:36px;color:var(--t3)}
+/* TAGS */
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;border:1px solid;white-space:nowrap}
+.t-hot{background:rgba(245,158,11,.12);color:#fbbf24;border-color:rgba(245,158,11,.3)}
+.t-urg{background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.3)}
+.t-pend{background:rgba(234,179,8,.12);color:#fde047;border-color:rgba(234,179,8,.3)}
+.t-reg{background:rgba(16,185,129,.12);color:#6ee7b7;border-color:rgba(16,185,129,.3)}
+.t-cold{background:rgba(100,116,139,.12);color:var(--t2);border-color:rgba(100,116,139,.3)}
+.t-stk{background:rgba(16,185,129,.12);color:#6ee7b7;border-color:rgba(16,185,129,.3)}
+.t-1s{background:rgba(234,179,8,.12);color:#fde047;border-color:rgba(234,179,8,.3)}
+.t-2s{background:rgba(245,158,11,.12);color:#fbbf24;border-color:rgba(245,158,11,.3)}
+.t-ped{background:rgba(239,68,68,.12);color:#f87171;border-color:rgba(239,68,68,.3)}
+.pdot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
+.pu{background:var(--red)}.pa{background:var(--orange)}.pm{background:#eab308}.pb{background:var(--t3)}
+.pill{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(59,130,246,.1);color:var(--b2);border:1px solid rgba(59,130,246,.15);display:inline-block}
+/* BUTTONS */
+.btn{padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .1s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;user-select:none}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.bp{background:linear-gradient(135deg,var(--blue),var(--v2));color:#fff}
+.bp:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.bs{background:var(--bg3);color:var(--t2);border:1px solid var(--border)}
+.bs:hover{border-color:var(--border2);color:var(--text)}
+.bg{background:transparent;color:var(--t3);border:1px solid var(--border)}
+.bg:hover{background:var(--bg3);color:var(--t2)}
+.bd{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.25)}
+.bok{background:rgba(16,185,129,.1);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
+/* INPUTS */
+input,select,textarea{background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:8px 11px;outline:none;transition:border .1s;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--b2)}
+input::placeholder,textarea::placeholder{color:var(--t4)}
+label{font-size:10px;font-weight:700;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;display:block;margin-bottom:4px}
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--b2);cursor:pointer}
+input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
+/* MODAL */
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center;padding:12px}
+.ovl.on{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:22px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto}
+.modal.xl{max-width:720px}
+.mt{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;margin-bottom:16px}
+/* TABS */
+.tabs{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;margin-bottom:14px}
+.tab{flex:1;padding:8px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .12s;color:var(--t3);background:transparent}
+.tab.on{background:var(--bg2);color:var(--text)}
+.tp{display:none}.tp.on{display:block}
+/* DROPZONE */
+.dz{border:2px dashed var(--border2);border-radius:12px;padding:24px;text-align:center;transition:border .15s;cursor:pointer}
+.dz.drag{border-color:var(--b2);background:rgba(37,99,235,.06)}
+.fb{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;cursor:pointer;font-size:12px;color:var(--t2);font-weight:600;transition:all .1s}
+.fb:hover{border-color:var(--b2);color:var(--acc)}
+/* SEL BAR */
+.sel-bar{background:linear-gradient(135deg,rgba(37,99,235,.1),rgba(124,58,237,.1));border:1px solid rgba(37,99,235,.2);border-radius:10px;padding:11px 14px;margin-bottom:12px}
+/* FILTER BAR */
+.fbar{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px}
+/* CHAT */
+.cwrap{display:flex;flex-direction:column;height:calc(100vh - 52px)}
+.cmsgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.cmsg{display:flex;max-width:80%}
+.cmsg.u{align-self:flex-end}.cmsg.a{align-self:flex-start}
+.cbub{padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.7;white-space:pre-wrap}
+.cmsg.u .cbub{background:linear-gradient(135deg,var(--blue),var(--v2));color:#fff;border-radius:14px 14px 4px 14px}
+.cmsg.a .cbub{background:var(--bg3);border:1px solid var(--border);border-radius:14px 14px 14px 4px}
+.cbar{padding:10px 14px;border-top:1px solid var(--border);display:flex;gap:8px}
+.cbar input{flex:1}
+.csend{width:36px;height:36px;background:linear-gradient(135deg,var(--blue),var(--v2));border:none;border-radius:8px;color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chips{display:flex;gap:6px;padding:0 14px 8px;flex-wrap:wrap}
+.chip{background:var(--bg3);border:1px solid var(--border);border-radius:14px;color:var(--t3);padding:4px 11px;font-size:11px;cursor:pointer;font-family:inherit}
+.chip:hover{color:var(--t2);border-color:var(--border2)}
+@keyframes blink{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+.typing span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--b2);animation:blink 1.2s infinite;margin:0 1px}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+/* OFERTA */
+.opre{background:#fff;border-radius:8px;padding:16px;color:#000;font-family:Arial,sans-serif;font-size:12px}
+.ohdr{border-bottom:2px solid #0000F5;padding-bottom:6px;margin-bottom:8px;font-size:10px}
+.ottl{text-align:center;color:#0000F5;font-weight:900;font-size:15px;margin:8px 0;letter-spacing:1px}
+.ofld{line-height:2.1;text-align:center}
+.oeqt{color:#0000F5;font-weight:900;font-size:12px;text-align:center;margin-top:8px}
+.oeq{font-size:11px;text-align:center;color:#333;margin-top:2px}
+.oftr{border-top:1px solid #eee;margin-top:10px;padding-top:5px;font-size:9px;color:#888;text-align:center}
+/* CONTACTS */
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cc{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px}
+.cav{width:36px;height:36px;background:linear-gradient(135deg,#1e3a5f,#2d4a7a);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
+/* STOCK detail */
+.det-row td{background:var(--bg4)!important;padding:0!important}
+.det-inner{padding:10px 16px 14px}
+/* MOBILE */
+@media(max-width:768px){
+  #sb{position:fixed;height:100vh;transform:translateX(-220px)}
+  #sb.mob{transform:none}
+  .stats{grid-template-columns:1fr 1fr}
+  .g2,.g3,.cg{grid-template-columns:1fr}
+  #content{padding:12px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- SIDEBAR -->
+<nav id="sb">
+  <div class="sb-head">
+    <div class="sb-logo">NX</div>
+    <div><div class="sb-nm">NEXO</div><div style="font-size:9px;color:var(--t4);letter-spacing:.06em">DMCAR GROUP</div></div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-sec">Principal</div>
+    <div class="ni on" id="n-dashboard" onclick="go('dashboard')"><span class="ni-ico">&#9685;</span>Dashboard</div>
+    <div class="ni" id="n-asistente" onclick="go('asistente')"><span class="ni-ico">&#9702;</span>Asistente NEXO</div>
+    <div class="sb-sec">Negocio</div>
+    <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico">&#9646;</span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
+    <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico">&#9633;</span>Generador Ofertas</div>
+    <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico">&#9711;</span>Contactos B2B</div>
+    <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico">&#9650;</span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
+    <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico">&#9634;</span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
+    <div class="sb-sec">Sistema</div>
+    <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico">&#9679;</span>Configuracion</div>
+  </div>
+  <div class="sb-foot">
+    <div class="ni" onclick="go('config')" style="margin-bottom:0">
+      <div class="api-dot" id="api-dot"></div>
+      <div style="font-size:11px;color:var(--t3)" id="api-lbl">Sin API key</div>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <button class="tb-menu" onclick="toggleSb()">&#9776;</button>
+    <div class="tb-title" id="tb-t">Dashboard</div>
+    <div class="tb-right">
+      <div style="font-size:11px;color:var(--t3)" id="tb-d"></div>
+      <div class="avatar">FD</div>
+    </div>
+  </div>
+  <div id="content">
+
+    <!-- DASHBOARD -->
+    <div class="view on fi" id="view-dashboard">
+      <div class="stats">
+        <div class="stat sb-"><div class="stat-n" id="ds-stock">0</div><div class="stat-l">Stock Vivo</div></div>
+        <div class="stat sg-"><div class="stat-n" id="ds-cont">0</div><div class="stat-l">Contactos</div></div>
+        <div class="stat so-"><div class="stat-n" id="ds-leads">0</div><div class="stat-l">Leads</div></div>
+        <div class="stat sr-"><div class="stat-n" id="ds-tasks">0</div><div class="stat-l">Tareas pendientes</div></div>
+      </div>
+      <div class="g2 mb12">
+        <div class="card"><div class="ct">Tareas urgentes</div><div id="d-urg"><div style="color:var(--t3);font-size:12px">Sin tareas urgentes</div></div></div>
+        <div class="card"><div class="ct">Contactos hot</div><div id="d-hot"><div style="color:var(--t3);font-size:12px">Sin contactos hot</div></div></div>
+      </div>
+      <div class="card">
+        <div class="fbet mb10"><div class="ct" style="margin:0">Ultimas entradas Stock</div><button class="btn bs" onclick="go('stock')" style="font-size:11px;padding:5px 10px">Ver todo &rarr;</button></div>
+        <div id="d-stock"><div style="color:var(--t3);font-size:12px">Stock Vivo vacio</div></div>
+      </div>
+    </div>
+
+    <!-- ASISTENTE -->
+    <div class="view" id="view-asistente">
+      <div class="cwrap">
+        <div class="cmsgs" id="cmsgs">
+          <div class="cmsg a fi"><div class="cbub">Hola Francesco! Soy NEXO, tu asistente personal de DMCAR GROUP.
+
+Puedo gestionar tareas, contactos, leads, redactar emails y analizar el mercado europeo.
+
+En que te puedo ayudar hoy?</div></div>
+        </div>
+        <div class="chips">
+          <div class="chip" onclick="chip('Que tengo pendiente hoy?')">Pendientes</div>
+          <div class="chip" onclick="chip('Tareas urgentes')">Urgentes</div>
+          <div class="chip" onclick="chip('Analisis mercado europeo coches')">Mercado EU</div>
+          <div class="chip" onclick="chip('Redacta email de seguimiento a cliente')">Email cliente</div>
+        </div>
+        <div class="cbar">
+          <input type="text" id="chat-in" placeholder="Pregunta a NEXO..." onkeydown="if(event.key==='Enter')sendMsg()">
+          <button class="csend" onclick="sendMsg()">&#10148;</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STOCK VIVO -->
+    <div class="view" id="view-stock">
+      <div class="fbet mb14">
+        <div><div class="st">Stock Vivo</div><div class="ss">Todas las ofertas recibidas &mdash; base de datos de precios</div></div>
+        <div class="fc g8">
+          <button class="btn bs" onclick="exportStock()" style="font-size:11px">&#11123; CSV</button>
+          <button class="btn bs" onclick="openM('m-import')" style="font-size:11px">&#128206; Importar</button>
+          <button class="btn bp" onclick="openM('m-sadd')">+ Nueva</button>
+        </div>
+      </div>
+      <!-- FILTROS -->
+      <div class="fbar mb12">
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 0.7fr 0.7fr auto;gap:10px;align-items:end">
+          <div><label>Proveedor</label><input type="text" id="f-sup" placeholder="Todos" oninput="fStk()"></div>
+          <div><label>Marca</label><select id="f-brand" onchange="fStk()"><option value="">Todas</option></select></div>
+          <div><label>Modelo</label><input type="text" id="f-mod" placeholder="Todos" oninput="fStk()"></div>
+          <div><label>Ano desde</label><input type="number" id="f-y1" placeholder="2020" oninput="fStk()"></div>
+          <div><label>Ano hasta</label><input type="number" id="f-y2" placeholder="2026" oninput="fStk()"></div>
+          <div style="padding-bottom:1px"><button class="btn bg" onclick="rstF()" style="font-size:11px" title="Reset filtros">&#10006;</button></div>
+        </div>
+      </div>
+      <!-- SEL BAR -->
+      <div class="sel-bar" id="sel-bar" style="display:none">
+        <div class="fbet">
+          <div class="fc g8">
+            <span id="sel-cnt" style="font-size:13px;font-weight:600;color:var(--acc)">0 sel.</span>
+            <span style="font-size:11px;color:var(--t3)">Para generar oferta</span>
+          </div>
+          <div class="fc g8">
+            <button class="btn bg" onclick="clrSel()" style="font-size:11px">Deseleccionar</button>
+            <button class="btn bd" onclick="delSel()" style="font-size:11px">&#128465; Eliminar</button>
+            <button class="btn bp" onclick="openGenStk()">&#9889; Generar Oferta</button>
+          </div>
+        </div>
+      </div>
+      <!-- TABLE -->
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="tbl">
+          <table id="stk-tbl">
+            <thead><tr>
+              <th style="width:36px"><input type="checkbox" id="sel-all" onchange="selAll(this)"></th>
+              <th>ID</th><th>Fecha</th><th>Proveedor</th><th>Marca</th><th>Modelo</th><th>Version</th>
+              <th>1a Reg</th><th>Uds</th><th>Kms</th><th>Colores</th><th>Danos</th>
+              <th>Equipamiento</th><th>P.Compra</th>
+              <th>Pick Up</th><th>Status</th><th>Notas</th><th style="width:100px"></th>
+            </tr></thead>
+            <tbody id="stk-body"></tbody>
+          </table>
+          <div id="stk-empty" class="tbl-empty">
+            <div style="font-size:32px;margin-bottom:10px">&#128666;</div>
+            <div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:5px">Stock Vivo vacio</div>
+            <div style="font-size:12px">Importa un archivo o crea entradas manualmente</div>
+          </div>
+        </div>
+        <div id="stk-info" style="padding:7px 14px;font-size:11px;color:var(--t3);border-top:1px solid var(--border)"></div>
+      </div>
+    </div>
+
+    <!-- GENERADOR OFERTAS -->
+    <div class="view" id="view-ofertas">
+      <div class="fbet mb14">
+        <div><div class="st">Generador de Ofertas</div><div class="ss">Template Master DMCAR &mdash; Reglas automaticas</div></div>
+        <button class="btn bp" onclick="rstOferta()">+ Nueva</button>
+      </div>
+      <div class="g2">
+        <div>
+          <div class="card mb12">
+            <div class="ct">Datos del proveedor</div>
+            <div class="mb10">
+              <label>Archivo (Excel, Word, PDF, JPEG, EML)</label>
+              <div class="fc g8 mb8">
+                <label for="o-file" class="fb">&#128206; Subir archivo</label>
+                <input type="file" id="o-file" accept=".xlsx,.xls,.docx,.doc,.pdf,.jpg,.jpeg,.png,.eml,.msg" style="display:none" onchange="oLoad(this)">
+                <span id="o-fn" style="font-size:11px;color:var(--acc)"></span>
+              </div>
+            </div>
+            <div class="mb10"><label>O pega el texto</label><textarea id="o-raw" rows="7" placeholder="Pega aqui los datos del proveedor..."></textarea></div>
+            <div class="g2 mb10">
+              <div><label>Margen / Comision</label><input type="text" id="o-margin" placeholder="+500 EUR o 10%"></div>
+              <div><label>Idioma</label><select id="o-lang"><option value="EN">English</option><option value="ES">Espanol</option><option value="IT">Italiano</option><option value="FR">Francais</option><option value="DE">Deutsch</option></select></div>
+            </div>
+            <div id="o-quest" style="display:none" class="mb10"></div>
+            <button class="btn bp" style="width:100%" id="o-btn" onclick="genOferta()">&#9889; Generar oferta</button>
+          </div>
+          <div class="card">
+            <div class="ct">Reglas Master</div>
+            <div style="font-size:11px;color:var(--t3);line-height:2">
+              &#128309; Titulo azul #0000F5 bold &bull; &#127991; Logo auto<br>
+              &#128207; 1 pagina &bull; &#10060; Sin calculo precio al cliente<br>
+              &#128202; Media kms/danos en lotes &bull; &#9881; Sin trans=M/T
+            </div>
+          </div>
+        </div>
+        <div>
+          <div id="o-empty" class="card" style="min-height:250px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--t4)">
+            <div style="font-size:32px;margin-bottom:10px">&#128203;</div>
+            <div style="font-size:13px;font-weight:600;color:var(--t3);margin-bottom:5px">Preview</div>
+            <div style="font-size:11px">Pega datos, indica margen e idioma, pulsa Generar</div>
+          </div>
+          <div id="o-result" style="display:none">
+            <div class="card mb10">
+              <div class="fbet mb10">
+                <span style="font-size:12px;font-weight:700;color:var(--green)">&#10003; OFERTA GENERADA</span>
+                <span id="o-meta" style="font-size:11px;color:var(--t3)"></span>
+              </div>
+              <div class="opre">
+                <div class="ohdr"><strong>Francesco Dell Agli</strong>&nbsp;+39 3429624234&nbsp;+34 630754659&nbsp;info@dmcargroup.com&nbsp;dmcargroup.com</div>
+                <div style="font-size:9px;color:#666;text-align:right" id="op-date"></div>
+                <div style="text-align:center;margin:8px 0;min-height:36px" id="op-logo"></div>
+                <div class="ottl" id="op-ttl"></div>
+                <div class="ofld" id="op-flds"></div>
+                <div id="op-eq"></div>
+                <div class="oftr">DMCAR GROUP SRO&nbsp;|&nbsp;Stepanska 1742/27, Praha 1&nbsp;|&nbsp;VAT: CZ21830851</div>
+              </div>
+            </div>
+            <div class="fc g8">
+              <button class="btn bg" style="flex:1" onclick="rstOferta()">&#8592; Editar</button>
+              <button class="btn bok" style="flex:1" onclick="saveOferta()">&#10003; Guardar y descargar</button>
+            </div>
+          </div>
+          <div id="o-hist" style="display:none;margin-top:12px">
+            <div class="card"><div class="ct">Historial</div>
+              <div class="tbl"><table><thead><tr><th>Titulo</th><th>Precio</th><th>Idioma</th></tr></thead><tbody id="o-hist-body"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTACTOS -->
+    <div class="view" id="view-contactos">
+      <div class="fbet mb14">
+        <div><div class="st">Contactos B2B</div><div class="ss">Clientes, proveedores y socios</div></div>
+        <div class="fc g8">
+          <select id="f-cont-co" onchange="renderCont()" style="width:auto;font-size:12px;padding:6px 10px">
+            <option value="">Todas las empresas</option>
+            <option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option>
+          </select>
+          <button class="btn bp" onclick="openM('m-contact')">+ Contacto</button>
+        </div>
+      </div>
+      <div class="cg" id="cont-grid"></div>
+    </div>
+
+    <!-- LEADS -->
+    <div class="view" id="view-leads">
+      <div class="fbet mb14">
+        <div><div class="st">Leads</div><div class="ss">Web DMCAR, Instagram, Facebook, LinkedIn</div></div>
+        <button class="btn bp" onclick="openM('m-lead')">+ Lead</button>
+      </div>
+      <div class="card" style="padding:0">
+        <div class="tbl">
+          <table><thead><tr><th>Nombre</th><th>Fuente</th><th>Empresa</th><th>Interes</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+          <tbody id="leads-body"></tbody></table>
+          <div id="leads-empty" class="tbl-empty" style="display:none">Sin leads</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAREAS -->
+    <div class="view" id="view-tareas">
+      <div class="fbet mb14">
+        <div><div class="st">Tareas</div><div class="ss">Por empresa y prioridad</div></div>
+        <button class="btn bp" onclick="tglAddTask()">+ Tarea</button>
+      </div>
+      <div id="add-task-form" style="display:none" class="card mb12">
+        <div class="ct">Nueva tarea</div>
+        <div class="g2 mb10"><div><label>Descripcion</label><input type="text" id="nt-ttl" placeholder="Descripcion..."></div><div><label>Empresa</label><select id="nt-co"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div></div>
+        <div class="g3 mb10"><div><label>Contacto</label><input type="text" id="nt-con" placeholder="Opcional"></div><div><label>Vencimiento</label><input type="date" id="nt-date"></div><div><label>Prioridad</label><select id="nt-prio"><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media" selected>Media</option><option value="baja">Baja</option></select></div></div>
+        <div class="fc g8"><button class="btn bp" onclick="addTask()">Guardar</button><button class="btn bg" onclick="tglAddTask()">Cancelar</button></div>
+      </div>
+      <div id="tasks-list"></div>
+    </div>
+
+    <!-- CONFIG -->
+    <div class="view" id="view-config">
+      <div class="st mb12">Configuracion</div>
+      <div class="g2 mb12">
+        <div class="card">
+          <div class="ct">API Key Anthropic</div>
+          <div class="mb10"><label>Tu API Key</label><input type="password" id="api-key-in" placeholder="sk-ant-api03-..."></div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Guardada solo en este navegador.</div>
+          <div class="fc g8"><button class="btn bp" onclick="saveKey()">Guardar</button><button class="btn bd" onclick="delKey()">Eliminar</button></div>
+          <div id="key-msg" style="margin-top:8px;font-size:11px"></div>
+        </div>
+        <div class="card">
+          <div class="ct">Datos</div>
+          <div class="g3 mb10">
+            <div style="text-align:center;padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif" id="cfg-s">0</div><div style="font-size:11px;color:var(--t3)">Stock</div></div>
+            <div style="text-align:center;padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif" id="cfg-t">0</div><div style="font-size:11px;color:var(--t3)">Tareas</div></div>
+            <div style="text-align:center;padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif" id="cfg-o">0</div><div style="font-size:11px;color:var(--t3)">Ofertas</div></div>
+          </div>
+          <button class="btn bd" onclick="clrAll()">Borrar todos los datos</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+
+<!-- ============================================================
+     MODALES
+============================================================ -->
+
+<!-- IMPORT -->
+<div class="ovl" id="m-import">
+  <div class="modal xl">
+    <div class="fbet mb14"><div class="mt">Importar al Stock Vivo</div><button class="btn bg" onclick="closeM('m-import')" style="padding:5px 10px">X</button></div>
+    <div class="tabs">
+      <button class="tab on" id="itab-file" onclick="iTab('file')">&#128206; Archivo</button>
+      <button class="tab" id="itab-text" onclick="iTab('text')">&#128203; Texto</button>
+      <button class="tab" id="itab-img" onclick="iTab('img')">&#128247; Imagen</button>
+      <button class="tab" id="itab-email" onclick="iTab('email')">&#128231; Email</button>
+    </div>
+    <div class="tp on" id="ipanel-file">
+      <div class="dz" id="i-drop" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="iDrop(event)">
+        <div style="font-size:28px;margin-bottom:8px">&#128196;</div>
+        <div style="font-size:13px;font-weight:600;color:var(--t2);margin-bottom:5px">Arrastra el archivo aqui</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:12px">Excel, Word, PDF, JPEG, PNG, EML</div>
+        <label for="i-file" class="fb">&#128206; Seleccionar archivo</label>
+        <input type="file" id="i-file" accept=".xlsx,.xls,.docx,.doc,.pdf,.jpg,.jpeg,.png,.eml,.msg" style="display:none" onchange="iFileChg(this)">
+        <div id="i-fn" style="margin-top:8px;font-size:12px;color:var(--acc);font-weight:600"></div>
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-top:8px;text-align:center">Excel: lectura directa &bull; PDF/Word: Claude API &bull; Imagen: Claude Vision</div>
+    </div>
+    <div class="tp" id="ipanel-text">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Pega email, WhatsApp, o cualquier texto con datos de vehiculos. NEXO extrae todo automaticamente.</div>
+      <textarea id="i-text" rows="9" placeholder="Pega aqui el texto de la oferta...&#10;&#10;NEXO extraera: marca, modelo, version, kms, precio, colores, danos, equipamiento, proveedor..."></textarea>
+    </div>
+    <div class="tp" id="ipanel-img">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Foto, captura de pantalla o imagen con datos de vehiculos. Claude Vision extrae todo.</div>
+      <div class="dz" id="i-img-drop" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="iImgDrop(event)">
+        <label for="i-img-file" class="fb">&#128247; Seleccionar imagen</label>
+        <input type="file" id="i-img-file" accept=".jpg,.jpeg,.png" style="display:none" onchange="iImgChg(this)">
+        <div id="i-img-prev" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="tp" id="ipanel-email">
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128231; Mail iOS (iPhone)</div><div style="font-size:11px;color:var(--t3)">Abre email &rarr; Mantén pulsado &rarr; Seleccionar todo &rarr; Copia &rarr; Pega en Texto</div></div>
+        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128247; Captura de pantalla</div><div style="font-size:11px;color:var(--t3)">Haz captura del email &rarr; Subela en la pestana Imagen</div></div>
+        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128190; Adjunto EML/MSG</div><div style="font-size:11px;color:var(--t3)">Guarda el email como .eml &rarr; Subelo en la pestana Archivo</div></div>
+      </div>
+    </div>
+    <div style="margin-top:12px"><label>Proveedor (opcional &mdash; se detecta automaticamente)</label><input type="text" id="i-sup" placeholder="Deja vacio si esta en el archivo o texto"></div>
+    <div id="i-status" style="font-size:12px;color:var(--acc);min-height:18px;margin:10px 0"></div>
+    <button class="btn bp" style="width:100%" id="i-btn" onclick="iProcess()">&#9889; Extraer y anadir al Stock</button>
+  </div>
+</div>
+
+<!-- STOCK ADD -->
+<div class="ovl" id="m-sadd">
+  <div class="modal xl">
+    <div class="fbet mb14"><div class="mt">Nueva entrada manual</div><button class="btn bg" onclick="closeM('m-sadd')" style="padding:5px 10px">X</button></div>
+    <div class="g3 mb10"><div><label>Marca</label><input type="text" id="sa-brand" placeholder="PEUGEOT"></div><div><label>Modelo</label><input type="text" id="sa-model" placeholder="208"></div><div><label>Version</label><input type="text" id="sa-ver" placeholder="Allure HYBRID 110"></div></div>
+    <div class="g3 mb10">
+      <div><label>Transmision</label><select id="sa-trans"><option value="M/T">M/T Manual</option><option value="AUT">AUT Auto</option><option value="S-TRONIC">S-TRONIC (Audi)</option><option value="Steptronic">Steptronic (BMW)</option><option value="DCT">DCT (Mercedes)</option><option value="eDCS6">eDCS6 (Peugeot)</option><option value="X-TRONIC">X-TRONIC (Nissan)</option></select></div>
+      <div><label>1a Matriculacion</label><input type="text" id="sa-reg" placeholder="MM/YYYY"></div>
+      <div><label>Kms</label><input type="text" id="sa-kms" placeholder="25.000"></div>
+    </div>
+    <div class="g3 mb10"><div><label>Colores</label><input type="text" id="sa-colors" placeholder="Black, White"></div><div><label>Danos EUR</label><input type="text" id="sa-dmg" placeholder="500"></div><div><label>Unidades</label><input type="text" id="sa-units" placeholder="1 o Varias"></div></div>
+    <div class="mb10"><label>Equipamiento</label><input type="text" id="sa-equip" placeholder="Pack Allure - LED - Rear Camera - Apple CarPlay - ..."></div>
+    <div class="g3 mb10"><div><label>Precio Compra EUR</label><input type="text" id="sa-buy" placeholder="12.730"></div><div><label>Proveedor</label><input type="text" id="sa-sup" placeholder="Pedro Gonzalez"></div><div><label>Pick Up Place</label><input type="text" id="sa-pickup" placeholder="Valencia, ES"></div></div>
+    <div class="g2 mb14"><div><label>Status</label><select id="sa-status"><option>Stock</option><option>1 semana</option><option>2 semanas</option><option>A pedido</option></select></div><div><label>Notas</label><textarea id="sa-notes" rows="2" placeholder="Min 10 uds, Max 30 uds..."></textarea></div></div>
+    <button class="btn bp" style="width:100%" onclick="saveManual()">Guardar en Stock Vivo</button>
+  </div>
+</div>
+
+<!-- STOCK EDIT -->
+<div class="ovl" id="m-sedit">
+  <div class="modal xl">
+    <div class="fbet mb14"><div class="mt">Editar entrada</div><button class="btn bg" onclick="closeM('m-sedit')" style="padding:5px 10px">X</button></div>
+    <input type="hidden" id="se-id">
+    <div class="g3 mb10"><div><label>Marca</label><input type="text" id="se-brand"></div><div><label>Modelo</label><input type="text" id="se-model"></div><div><label>Version</label><input type="text" id="se-ver"></div></div>
+    <div class="g3 mb10"><div><label>1a Reg</label><input type="text" id="se-reg"></div><div><label>Kms</label><input type="text" id="se-kms"></div><div><label>Colores</label><input type="text" id="se-colors"></div></div>
+    <div class="g3 mb10"><div><label>Danos EUR</label><input type="text" id="se-dmg"></div><div><label>Unidades</label><input type="text" id="se-units"></div><div><label>Proveedor</label><input type="text" id="se-sup"></div></div>
+    <div class="mb10"><label>Equipamiento</label><textarea id="se-equip" rows="3"></textarea></div>
+    <div class="g3 mb10"><div><label>Precio Compra EUR</label><input type="text" id="se-buy"></div><div><label>Precio Venta EUR</label><input type="text" id="se-sell"></div><div><label>Pick Up</label><input type="text" id="se-pickup"></div></div>
+    <div class="g2 mb10"><div><label>Status</label><select id="se-status"><option>Stock</option><option>1 semana</option><option>2 semanas</option><option>A pedido</option></select></div><div><label>Notas</label><textarea id="se-notes" rows="2"></textarea></div></div>
+    <button class="btn bp" style="width:100%" onclick="saveEdit()">Guardar cambios</button>
+  </div>
+</div>
+
+<!-- NOTAS POPUP -->
+<div class="ovl" id="m-note">
+  <div class="modal" style="max-width:420px">
+    <div class="fbet mb12"><div class="mt" style="margin:0">&#128221; Notas del vehiculo</div><button class="btn bg" onclick="closeM('m-note')" style="padding:5px 10px">X</button></div>
+    <div id="m-note-vehicle" style="font-size:12px;color:var(--t2);margin-bottom:10px;font-weight:600"></div>
+    <input type="hidden" id="note-id">
+    <textarea id="note-txt" rows="6" placeholder="Ej: Min 10 uds, Max 30 uds&#10;Entrega 05/2026&#10;Solo disponible en lote&#10;Precio negociable..."></textarea>
+    <div class="fc g8 mt12">
+      <button class="btn bg" style="flex:1" onclick="closeM('m-note')">Cancelar</button>
+      <button class="btn bp" style="flex:1" onclick="saveNote()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- GENERAR DESDE STOCK -->
+<div class="ovl" id="m-gstk">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">Generar Oferta Word</div><button class="btn bg" onclick="closeM('m-gstk')" style="padding:5px 10px">X</button></div>
+    <div id="gs-sum" class="mb14" style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:8px;padding:12px;line-height:1.9"></div>
+    <div class="g2 mb12"><div><label>Margen</label><input type="text" id="gs-margin" placeholder="+500 EUR o 10%"></div><div><label>Idioma</label><select id="gs-lang"><option value="EN">English</option><option value="ES">Espanol</option><option value="IT">Italiano</option><option value="FR">Francais</option><option value="DE">Deutsch</option></select></div></div>
+    <div class="mb14">
+      <label>Formato</label>
+      <div class="fc g12 mt8">
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="gs-fmt" value="sep" checked style="width:auto"> Un Word por modelo</label>
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="gs-fmt" value="sum" style="width:auto"> Resumen 1 pagina</label>
+      </div>
+    </div>
+    <button class="btn bp" style="width:100%" onclick="genFrmStk()">&#9889; Enviar al Asistente</button>
+  </div>
+</div>
+
+<!-- CONTACTO -->
+<div class="ovl" id="m-contact">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">Nuevo contacto</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
+    <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
+    <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div></div>
+    <div class="mb10"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
+    <div class="mb14"><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div>
+    <button class="btn bp" style="width:100%" onclick="saveCont()">Guardar</button>
+  </div>
+</div>
+
+<!-- LEAD -->
+<div class="ovl" id="m-lead">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">Nuevo lead</div><button class="btn bg" onclick="closeM('m-lead')" style="padding:5px 10px">X</button></div>
+    <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="ld-name" placeholder="Nombre"></div><div><label>Fuente</label><select id="ld-src"><option>Web DMCAR</option><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>WhatsApp</option><option>Email</option><option>Referido</option></select></div></div>
+    <div class="g2 mb10"><div><label>Empresa</label><input type="text" id="ld-co" placeholder="Opcional"></div><div><label>Contacto</label><input type="text" id="ld-con" placeholder="+34 600..."></div></div>
+    <div class="mb10"><label>Interes</label><textarea id="ld-int" rows="3" placeholder="Interesado en..."></textarea></div>
+    <div class="g2 mb14"><div><label>Mi empresa</label><select id="ld-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Estado</label><select id="ld-status"><option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="cualificado">Cualificado</option><option value="perdido">Perdido</option></select></div></div>
+    <button class="btn bp" style="width:100%" onclick="saveLead()">Guardar</button>
+  </div>
+</div>
+
+<div class="ovl" id="m-equip">
+  <div class="modal" style="max-width:480px">
+    <div class="fbet mb12"><div class="mt" style="margin:0">Equipamiento</div><button class="btn bg" id="btn-eq-close" style="padding:5px 10px">X</button></div>
+    <div id="eq-vehicle" style="font-size:12px;color:var(--t2);margin-bottom:10px;font-weight:600"></div>
+    <input type="hidden" id="eq-id">
+    <textarea id="eq-txt" rows="7" placeholder="Pack Allure - LED - Rear Camera - Apple CarPlay - ..."></textarea>
+    <div class="fc g8 mt12">
+      <button class="btn bg" id="btn-eq-cancel" style="flex:1">Cancelar</button>
+      <button class="btn bp" id="btn-eq-save" style="flex:1">Guardar</button>
+    </div>
+  </div>
+</div>
+<script>
+// Global error handler - shows errors visually on mobile
+window.onerror = function(msg, src, line, col, err) {
+  var div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;padding:12px;font-size:12px;z-index:9999;font-family:monospace';
+  div.textContent = 'ERROR line ' + line + ': ' + msg;
+  document.body.appendChild(div);
+  return false;
+};
+'use strict';
+// ================================================================
+// NEXO v5 - DMCAR GROUP
+// Clean build - event delegation, no inline handlers, no backticks
+// ================================================================
+
+// -- STORAGE --------------------------------------------------
+function LS(k,d){try{var v=localStorage.getItem('nx5_'+k);return v!==null?JSON.parse(v):d;}catch(e){return d;}}
+function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}}
+function getKey(){return localStorage.getItem('nx5_key')||'';}
+
+// -- STATE ----------------------------------------------------
+var stock=LS('stock',[]);
+var stkCnt=LS('stkCnt',1);
+var contacts=LS('contacts',[
+  {id:1,name:'Klaus Muller',company:'BavariaAuto GmbH',country:'Alemania',role:'Comprador',myCompany:'DMCAR GROUP',phone:'+49 89 123456',notes:'Interesado en lote BMW Serie 5.',tag:'hot',lastContact:'2026-04-18'},
+  {id:2,name:'Jean Dupont',company:'AutoFrance SAS',country:'Francia',role:'Proveedor',myCompany:'DMCAR GROUP',phone:'+33 1 987654',notes:'Ofrece Peugeot 308 diesel.',tag:'pend',lastContact:'2026-04-15'},
+  {id:3,name:'Luca Ferretti',company:'ItalCar Srl',country:'Italia',role:'Comprador',myCompany:'INNOQUEST SOLUTIONS',phone:'+39 02 334455',notes:'Pendiente factura lote anterior.',tag:'urg',lastContact:'2026-04-01'},
+  {id:4,name:'Andrei Popescu',company:'AutoRo SRL',country:'Rumania',role:'Comprador',myCompany:'MERCEDES SOLUTION',phone:'+40 21 887766',notes:'Interesado en Mercedes E-Class.',tag:'hot',lastContact:'2026-04-12'}
+]);
+var tasks=LS('tasks',[
+  {id:1,title:'Enviar oferta BMW Serie 5 a Klaus Muller',company:'DMCAR GROUP',contact:'Klaus Muller',dueDate:'2026-04-28',priority:'alta',done:false},
+  {id:2,title:'Cobrar factura ItalCar Srl',company:'INNOQUEST SOLUTIONS',contact:'Luca Ferretti',dueDate:'2026-04-25',priority:'urgente',done:false},
+  {id:3,title:'Contactar Andrei Popescu Mercedes GLE',company:'MERCEDES SOLUTION',contact:'Andrei Popescu',dueDate:'2026-04-29',priority:'alta',done:false}
+]);
+var leads=LS('leads',[]);
+var offerHist=LS('offerHist',[]);
+var chatHist=[];
+var stkSel=new Set();
+var stkFlt=[];
+var curOffer=null;
+var sbOpen=true;
+var chatBusy=false;
+var imgB64=null;
+var imgMT=null;
+
+// -- LABELS --------------------------------------------------
+var LL={
+  EN:{price:'Net Price',reg:'1st Reg',kms:'Kms',avgKms:'Average Kms',dmg:'Damages',avgDmg:'Avg. Damages',colors:'Available Colors',del:'Delivery',equip:'Equipment',units:'Available Units'},
+  ES:{price:'Precio Neto',reg:'1a Reg',kms:'Kms',avgKms:'Media Kms',dmg:'Danos',avgDmg:'Media Danos',colors:'Colores disponibles',del:'Entrega',equip:'Equipamiento',units:'Unidades'},
+  IT:{price:'Prezzo Netto',reg:'1a Immat.',kms:'KM',avgKms:'Media KM',dmg:'Danni',avgDmg:'Media Danni',colors:'Colori',del:'Consegna',equip:'Equipaggiamento',units:'Unita'},
+  FR:{price:'Prix Net',reg:'1ere Immat',kms:'Kms',avgKms:'Km Moyen',dmg:'Dommages',avgDmg:'Dom. Moy.',colors:'Couleurs',del:'Livraison',equip:'Equipement',units:'Unites'},
+  DE:{price:'Nettopreis',reg:'1. Zulassung',kms:'Km',avgKms:'Durchschn. Km',dmg:'Schaden',avgDmg:'Durchschn.',colors:'Farben',del:'Lieferung',equip:'Ausstattung',units:'Einheiten'}
+};
+
+var LOGOS={JEEP:'https://www.carlogos.org/car-logos/jeep-logo-2009.png',BMW:'https://www.carlogos.org/car-logos/bmw-logo-2020-grey.png',MERCEDES:'https://www.carlogos.org/car-logos/mercedes-benz-logo-2011.png',AUDI:'https://www.carlogos.org/car-logos/audi-logo-2016.png',VOLKSWAGEN:'https://www.carlogos.org/car-logos/volkswagen-logo-2019.png',VW:'https://www.carlogos.org/car-logos/volkswagen-logo-2019.png',PEUGEOT:'https://www.carlogos.org/car-logos/peugeot-logo-2021.png',RENAULT:'https://www.carlogos.org/car-logos/renault-logo-2021.png',OPEL:'https://www.carlogos.org/car-logos/opel-logo-2021.png',FIAT:'https://www.carlogos.org/car-logos/fiat-logo-2006.png',TOYOTA:'https://www.carlogos.org/car-logos/toyota-logo-2019.png',FORD:'https://www.carlogos.org/car-logos/ford-logo-2017.png',SEAT:'https://www.carlogos.org/car-logos/seat-logo-2012.png',SKODA:'https://www.carlogos.org/car-logos/skoda-logo-2016.png',VOLVO:'https://www.carlogos.org/car-logos/volvo-logo-2014.png',NISSAN:'https://www.carlogos.org/car-logos/nissan-logo-2020.png',ALFA:'https://www.carlogos.org/car-logos/alfa-romeo-logo-2015.png',CITROEN:'https://www.carlogos.org/car-logos/citroen-logo-2022.png',DACIA:'https://www.carlogos.org/car-logos/dacia-logo-2021.png',TESLA:'https://www.carlogos.org/car-logos/tesla-logo-2007.png',HYUNDAI:'https://www.carlogos.org/car-logos/hyundai-logo-2011.png',KIA:'https://www.carlogos.org/car-logos/kia-logo-2021.png',MINI:'https://www.carlogos.org/car-logos/mini-logo-2001.png',CUPRA:'https://www.carlogos.org/car-logos/cupra-logo-2019.png',PORSCHE:'https://www.carlogos.org/car-logos/porsche-logo-2014.png'};
+
+function getLogo(t){var u=(t||'').toUpperCase();var keys=Object.keys(LOGOS).sort(function(a,b){return b.length-a.length;});for(var i=0;i<keys.length;i++){if(u.indexOf(keys[i])===0||u.indexOf(' '+keys[i]+' ')>=0)return LOGOS[keys[i]];}return null;}
+
+// Country codes for pickup
+var CC_MAP={'ES':['Valencia','Madrid','Barcelona','Sevilla','Bilbao','Loeches','Guadalix','Luceni','Pinto','Cheste','Valladolid','Zaragoza','Murcia','Cordoba','Gijon'],'FR':['Paris','Lyon','Marseille','Bordeaux','Nantes','Lille','Toulouse','Bussy','Chartres','Miramas','Vatry','Valenton','Rennes','Strasbourg'],'DE':['Berlin','Munich','Hamburg','Frankfurt','Cologne','Stuttgart','Mosolf','Dusseldorf','Leipzig'],'PL':['Warsaw','Varsavia','Krakow','Lodz','Wroclaw','Poznan','Gdansk'],'IT':['Roma','Milano','Napoli','Torino','Genova','Bologna','Firenze','Bari'],'NL':['Amsterdam','Rotterdam','Utrecht','Eindhoven','Tilburg'],'BE':['Bruxelles','Brussel','Antwerp','Ghent'],'PT':['Lisboa','Porto','Braga','Coimbra'],'RO':['Bucharest','Bucuresti','Cluj','Timisoara'],'CZ':['Praha','Brno','Ostrava','Plzen'],'BG':['Sofia','Plovdiv','Varna'],'HU':['Budapest','Debrecen']};
+
+function fmtPickup(loc){
+  if(!loc||loc==='--') return loc||'--';
+  var up=loc.toUpperCase();
+  var ccs=Object.keys(CC_MAP);
+  for(var ci=0;ci<ccs.length;ci++){
+    var cc=ccs[ci];
+    if(loc.indexOf('('+cc+')')>=0) return loc;
+    var cities=CC_MAP[cc];
+    for(var ki=0;ki<cities.length;ki++){
+      if(up.indexOf(cities[ki].toUpperCase())>=0) return loc+' ('+cc+')';
+    }
+  }
+  return loc;
+}
+
+// -- NAV ------------------------------------------------------
+var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',leads:'Leads',tareas:'Tareas',config:'Configuracion'};
+
+function go(v){
+  document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
+  document.querySelectorAll('.ni').forEach(function(el){el.classList.remove('on');});
+  var vEl=document.getElementById('view-'+v);
+  if(vEl){vEl.classList.add('on');vEl.classList.add('fi');setTimeout(function(){vEl.classList.remove('fi');},300);}
+  var nEl=document.getElementById('n-'+v);
+  if(nEl) nEl.classList.add('on');
+  document.getElementById('tb-t').textContent=TITLES[v]||v;
+  if(v==='dashboard') renderDash();
+  if(v==='stock') renderStk();
+  if(v==='contactos') renderCont();
+  if(v==='tareas') renderTareas();
+  if(v==='leads') renderLeads();
+  if(v==='config') renderConfig();
+  if(window.innerWidth<=768) document.getElementById('sb').classList.remove('mob');
+}
+
+function toggleSb(){
+  var sb=document.getElementById('sb');
+  if(window.innerWidth<=768){sb.classList.toggle('mob');}
+  else{sbOpen=!sbOpen;sb.classList.toggle('hide',!sbOpen);}
+}
+
+// -- UTILS ----------------------------------------------------
+function n(id){return document.getElementById(id);}
+function today(){return new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function fmtD(s){if(!s)return '--';try{return new Date(s+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'});}catch(e){return s;}}
+function isOD(s){return s&&new Date(s+'T23:59:00')<new Date();}
+function fnum(s){return parseFloat((s||'0').toString().replace(/[^0-9.]/g,''))||0;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+function parseResp(resp){
+  var bt=String.fromCharCode(96);
+  var clean=resp.split(bt+bt+bt+'json').join('').split(bt+bt+bt).join('').trim();
+  var s=clean.indexOf('{');var e=clean.lastIndexOf('}');
+  if(s<0||e<0) throw new Error('No JSON');
+  var json=clean.substring(s,e+1);
+  json=json.replace(/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/g,' ').replace(/,\s*}/g,'}').replace(/,\s*]/g,']');
+  try{return JSON.parse(json);}catch(e1){
+    // Fallback: extract vehicles array manually
+    var supM=json.match(/"supplier"\s*:\s*"([^"]*)"/);
+    var result={supplier:supM?supM[1]:'',vehicles:[]};
+    var depth=0;var cur='';var inStr=false;var inVehicles=false;
+    var vIdx=json.indexOf('"vehicles"');
+    if(vIdx>=0){
+      var arrS=json.indexOf('[',vIdx);var arrE=json.lastIndexOf(']');
+      if(arrS>=0&&arrE>arrS){
+        var arr=json.substring(arrS+1,arrE);
+        depth=0;cur='';
+        for(var i=0;i<arr.length;i++){
+          var ch=arr[i];
+          if(ch==='{')depth++;
+          if(ch==='}')depth--;
+          cur+=ch;
+          if(depth===0&&cur.trim().length>2){
+            try{var obj=JSON.parse(cur.trim().replace(/,$/,''));if(obj.brand)result.vehicles.push(obj);}catch(e2){}
+            cur='';
+          }
+        }
+      }
+    }
+    if(result.vehicles.length>0) return result;
+    throw new Error('Parse failed: '+e1.message);
+  }
+}
+
+function callAPI(sys,msg,maxTok,cb){
+  var key=getKey();
+  if(!key){alert('Configura tu API key en Configuracion');go('config');return;}
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTok||1000,system:sys,messages:[{role:'user',content:msg}]})}).then(function(r){return r.json();}).then(function(d){if(d.error){cb(null,d.error.message);return;}cb(d.content.map(function(b){return b.text||'';}).join(''),null);}).catch(function(e){cb(null,e.message);});
+}
+
+function callAPIbody(body,cb){
+  var key=getKey();
+  if(!key){alert('Configura tu API key');go('config');return;}
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){if(d.error){cb(null,d.error.message);return;}cb(d.content.map(function(b){return b.text||'';}).join(''),null);}).catch(function(e){cb(null,e.message);});
+}
+
+function updateApiStatus(){
+  var has=!!getKey();
+  n('api-dot').className='api-dot'+(has?' on':'');
+  n('api-lbl').textContent=has?'NEXO activo':'Sin API key';
+}
+
+// -- DASHBOARD ------------------------------------------------
+function renderDash(){
+  var pd=tasks.filter(function(t){return!t.done;});
+  var od=pd.filter(function(t){return isOD(t.dueDate);});
+  n('ds-stock').textContent=stock.length;
+  n('ds-cont').textContent=contacts.length;
+  n('ds-leads').textContent=leads.length;
+  n('ds-tasks').textContent=pd.length;
+  n('cnt-leads').textContent=leads.filter(function(l){return l.status==='nuevo';}).length;
+  n('cnt-tareas').textContent=od.length||pd.length;
+  n('cnt-stock').textContent=stock.length;
+
+  var urg=pd.filter(function(t){return t.priority==='urgente'||t.priority==='alta';}).slice(0,4);
+  n('d-urg').innerHTML=urg.length?urg.map(function(t){return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)"><span class="pdot p'+t.priority[0]+'" style="flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.title)+'</div><div style="font-size:10px;color:var(--t3)">'+t.company+' &middot; '+fmtD(t.dueDate)+(isOD(t.dueDate)&&!t.done?'<span style="color:#f87171"> VENCIDA</span>':'')+'</div></div></div>';}).join(''):'<div style="color:var(--t3);font-size:12px">Sin tareas urgentes</div>';
+
+  var hot=contacts.filter(function(c){return c.tag==='hot'||c.tag==='urg';}).slice(0,4);
+  n('d-hot').innerHTML=hot.length?hot.map(function(c){return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="width:28px;height:28px;background:linear-gradient(135deg,#1e3a5f,#2d4a7a);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+esc(c.name[0])+'</div><div style="flex:1"><div style="font-size:12px;font-weight:500">'+esc(c.name)+'</div><div style="font-size:10px;color:var(--t3)">'+esc(c.company)+'</div></div><span class="tag t-'+(c.tag==='urg'?'urg':'hot')+'">'+c.tag+'</span></div>';}).join(''):'<div style="color:var(--t3);font-size:12px">Sin contactos hot</div>';
+
+  var rec=stock.slice(-5).reverse();
+  n('d-stock').innerHTML=rec.length?'<div style="overflow-x:auto"><table><thead><tr><th>Marca</th><th>Modelo</th><th>Proveedor</th><th>P.Compra</th><th>Status</th></tr></thead><tbody>'+rec.map(function(i){return'<tr><td><strong style="color:var(--b2)">'+esc(i.brand)+'</strong></td><td>'+esc(i.model)+'</td><td style="color:var(--t3)">'+esc(i.supplier)+'</td><td>'+esc(i.buy)+'</td><td><span class="tag t-stk">'+esc(i.status)+'</span></td></tr>';}).join('')+'</tbody></table></div>':'<div style="color:var(--t3);font-size:12px">Stock Vivo vacio</div>';
+}
+
+// -- STOCK VIVO -----------------------------------------------
+var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. Transmision: AT8=AUT,eDCS6=AUT,MAN=M/T,sin indicar=M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA"}]}]}';
+
+function renderStk(){updBF();fStk();}
+
+function updBF(){
+  var sel=n('f-brand');if(!sel)return;
+  var cur=sel.value;
+  var brands=[];
+  stock.forEach(function(i){if(brands.indexOf(i.brand)<0)brands.push(i.brand);});
+  brands.sort();
+  sel.innerHTML='<option value="">Todas</option>';
+  brands.forEach(function(b){var o=document.createElement('option');o.value=b;o.textContent=b;if(b===cur)o.selected=true;sel.appendChild(o);});
+}
+
+function fStk(){
+  var sup=(n('f-sup').value||'').toLowerCase();
+  var brand=n('f-brand').value;
+  var mod=(n('f-mod').value||'').toLowerCase();
+  var y1=parseInt(n('f-y1').value)||0;
+  var y2=parseInt(n('f-y2').value)||9999;
+  stkFlt=stock.filter(function(i){
+    if(sup&&!(i.supplier||'').toLowerCase().includes(sup)) return false;
+    if(brand&&i.brand!==brand) return false;
+    if(mod&&!(i.model||'').toLowerCase().includes(mod)) return false;
+    var yr=parseInt((i.reg||'').split('/')[1])||0;
+    if(y1&&yr<y1) return false;
+    if(y2<9999&&yr>y2) return false;
+    return true;
+  });
+  renderStkTbl();
+}
+
+function rstF(){
+  ['f-sup','f-mod','f-y1','f-y2'].forEach(function(id){n(id).value='';});
+  n('f-brand').value='';
+  fStk();
+}
+
+function makeResizable(tableId){
+  var tbl=document.getElementById(tableId);
+  if(!tbl)return;
+  var cols=tbl.querySelectorAll('th');
+  cols.forEach(function(th){
+    if(th.querySelector('.rzr'))return;
+    var rz=document.createElement('div');
+    rz.className='rzr';
+    rz.style.cssText='position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;background:transparent';
+    th.style.position='relative';
+    th.appendChild(rz);
+    var x0,w0;
+    rz.addEventListener('mousedown',function(e){
+      x0=e.clientX;w0=th.offsetWidth;
+      e.preventDefault();e.stopPropagation();
+      document.addEventListener('mousemove',onMove);
+      document.addEventListener('mouseup',onUp);
+    });
+    function onMove(e){
+      var w=Math.max(40,w0+e.clientX-x0);
+      th.style.minWidth=w+'px';th.style.width=w+'px';
+    }
+    function onUp(){
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+    }
+    rz.addEventListener('mouseenter',function(){this.style.background='var(--blue)';});
+    rz.addEventListener('mouseleave',function(){this.style.background='transparent';});
+  });
+}
+
+function renderStkTbl(){
+  var tbody=n('stk-body');
+  var empty=n('stk-empty');
+  var info=n('stk-info');
+  n('cnt-stock').textContent=stock.length;
+  if(info) info.textContent='Mostrando '+stkFlt.length+' de '+stock.length+' entradas';
+  if(!stkFlt.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+
+  var html='';
+  stkFlt.forEach(function(item){
+    var sel=stkSel.has(item.id);
+    var b=fnum(item.buy);var sv=fnum(item.sell);
+    var margin=(b&&sv)?(sv-b).toFixed(0)+' EUR':'';
+    var stCls=item.status==='Stock'?'t-stk':item.status==='1 semana'?'t-1s':item.status==='2 semanas'?'t-2s':'t-ped';
+    var hasD=item.vehicles&&item.vehicles.length>0;
+    var sid=String(item.id).replace(/[^a-z0-9]/gi,'_');
+    var noteDisp=item.notes&&item.notes!=='--'?item.notes.substring(0,18)+(item.notes.length>18?'...':''):'';
+    var unitsDisp=(item.units==='Varias'||item.units==='varias'||item.units==='0')?'<span style="color:var(--orange);font-weight:700">Varias</span>':(item.units||'1');
+    var pickupDisp=esc(fmtPickup(item.pickup));
+
+    html+='<tr id="tr-'+sid+'"'+(sel?' style="background:rgba(37,99,235,.07)"':'')+'>';
+    html+='<td style="text-align:center"><input type="checkbox" class="rchk" data-id="'+item.id+'"'+(sel?' checked':'')+'></td>';
+    html+='<td style="font-size:10px;color:var(--t4);white-space:nowrap">'+esc(item.internalId)+'</td>';
+    html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.date)+'</td>';
+    html+='<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(item.supplier)+'</td>';
+    html+='<td><strong style="color:var(--b2)">'+esc(item.brand)+'</strong></td>';
+    html+='<td style="white-space:nowrap">'+esc(item.model)+'</td>';
+    html+='<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+esc(item.version)+'">'+esc(item.version)+'</td>';
+    html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.reg)+'</td>';
+    html+='<td style="text-align:center;font-weight:700;color:var(--acc)">'+unitsDisp+'</td>';
+    html+='<td style="text-align:right;white-space:nowrap">'+esc(item.kms)+(item.avgKms?'<span style="font-size:9px;color:var(--t3)"> avg</span>':'')+'</td>';
+    html+='<td style="font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(item.colors)+'</td>';
+    html+='<td style="text-align:right;white-space:nowrap">'+esc(item.damage)+(item.avgDamages?'<span style="font-size:9px;color:var(--t3)"> avg</span>':'')+'</td>';
+    var ep=(item.equip||'').substring(0,14)+(item.equip&&item.equip.length>14?'...':'');
+    html+='<td><button class="btn bg eq-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 7px;max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(item.equip||'')+'">'+
+    (item.equip&&item.equip!=='--'?ep:'--')+'</button></td>';
+    html+='<td style="text-align:right;color:var(--t3);white-space:nowrap">'+esc(item.buy)+'</td>';
+    html+='<td style="text-align:right;font-weight:600;white-space:nowrap">'+esc(item.sell)+'</td>';
+    html+='<td style="text-align:right;color:var(--green);white-space:nowrap">'+margin+'</td>';
+    html+='<td style="font-size:11px;white-space:nowrap">'+pickupDisp+'</td>';
+    html+='<td><span class="tag '+stCls+'">'+esc(item.status)+'</span></td>';
+    html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+      (noteDisp?'&#128221; '+esc(noteDisp):'&#128221; Nota')+'</button></td>';
+    html+='<td><div class="fc g4">';
+    if(hasD) html+='<button class="btn bg det-btn" data-id="'+item.id+'" data-sid="'+sid+'" style="padding:2px 8px;font-size:10px">&#9660; '+item.vehicles.length+'</button>';
+    else html+='<span style="font-size:10px;color:var(--t4);padding:2px 8px">&#8212;</span>';
+    html+='<button class="btn bs edit-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">&#9998;</button>';
+    html+='<button class="btn bd del-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">x</button>';
+    html+='</div></td>';
+    html+='</tr>';
+
+    // Detail row
+    if(hasD){
+      html+='<tr class="det-row" id="det-'+sid+'" style="display:none">';
+      html+='<td colspan="20">';
+      html+='<div class="det-inner">';
+      html+='<div style="font-size:10px;font-weight:700;color:var(--acc);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">&#9660; Vehiculos del lote ('+item.vehicles.length+')</div>';
+      html+='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+      html+='<table style="width:100%;min-width:600px;border-collapse:collapse">';
+      html+='<thead><tr style="background:var(--bg3)">';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">VIN</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Color</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Kms</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Danos EUR</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">1a Reg</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Ubicacion</th>';
+      html+='</tr></thead><tbody>';
+      item.vehicles.forEach(function(v,vi){
+        html+='<tr style="background:'+(vi%2===0?'var(--bg4)':'rgba(255,255,255,.01)')+'">';
+        html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+(v.vin||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px">'+(v.color||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px;text-align:right">'+(v.kms||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px;font-weight:600;text-align:right;color:var(--orange);white-space:nowrap">'+(v.damage||'--')+'</td>';
+        html+='<td style="padding:6px 6px 6px 16px;font-size:12px;white-space:nowrap;border-left:3px solid var(--blue)">  '+(v.reg||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;color:var(--t3)">'+(v.location||'--')+'</td>';
+        html+='</tr>';
+      });
+      html+='</tbody></table></div></div></td></tr>';
+    }
+  });
+
+  tbody.innerHTML=html;
+
+  // Event delegation via querySelectorAll - safe, no inline handlers
+  tbody.querySelectorAll('.rchk').forEach(function(chk){
+    chk.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      if(this.checked) stkSel.add(id); else stkSel.delete(id);
+      var tr=n('tr-'+String(id).replace(/[^a-z0-9]/gi,'_'));
+      if(tr) tr.style.background=this.checked?'rgba(37,99,235,.07)':'';
+      updSelBar();
+    });
+  });
+
+  tbody.querySelectorAll('.eq-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      var item=stock.find(function(i){return i.id==id;});
+      if(!item)return;
+      n('eq-id').value=id;
+      n('eq-txt').value=item.equip&&item.equip!=='--'?item.equip:'';
+      n('eq-vehicle').textContent=item.brand+' '+item.model+' '+item.version;
+      openM('m-equip');
+      setTimeout(function(){n('eq-txt').focus();},80);
+    });
+  });
+  tbody.querySelectorAll('.det-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var sid=this.getAttribute('data-sid');
+      var det=n('det-'+sid);
+      if(!det) return;
+      var shown=det.style.display!=='none';
+      det.style.display=shown?'none':'table-row';
+      this.innerHTML=(shown?'&#9660;':'&#9650;')+' '+this.textContent.trim().split(' ')[1];
+    });
+  });
+
+  tbody.querySelectorAll('.note-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      var item=stock.find(function(i){return i.id==id;});
+      if(!item) return;
+      n('note-id').value=id;
+      n('note-txt').value=item.notes==='--'?'':item.notes;
+      n('m-note-vehicle').textContent=item.brand+' '+item.model+' '+item.version;
+      openM('m-note');
+      setTimeout(function(){n('note-txt').focus();},100);
+    });
+  });
+
+  tbody.querySelectorAll('.edit-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      editItem(this.getAttribute('data-id'));
+    });
+  });
+
+  tbody.querySelectorAll('.del-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      delItem(this.getAttribute('data-id'));
+    });
+  });
+
+  updSelBar();
+  makeResizable('stk-tbl');
+}
+
+function updSelBar(){
+  var bar=n('sel-bar');var cnt=n('sel-cnt');
+  var num=stkSel.size;
+  if(bar) bar.style.display=num>0?'block':'none';
+  if(cnt) cnt.textContent=num+' vehiculo'+(num!==1?'s':'')+' sel.';
+}
+
+function selAll(cb){
+  if(cb.checked) stkFlt.forEach(function(i){stkSel.add(i.id);});
+  else stkFlt.forEach(function(i){stkSel.delete(i.id);});
+  updSelBar();renderStkTbl();
+}
+
+function clrSel(){
+  stkSel.clear();
+  var sa=n('sel-all');if(sa)sa.checked=false;
+  updSelBar();renderStkTbl();
+}
+
+function delSel(){
+  var num=stkSel.size;if(!num) return;
+  if(!confirm('Eliminar '+num+' entrada'+(num!==1?'s':'')+' seleccionada'+(num!==1?'s':'')+' del Stock?')) return;
+  stock=stock.filter(function(i){return!stkSel.has(i.id);});
+  stkSel.clear();
+  SS('stock',stock);updBF();fStk();renderDash();
+}
+
+function saveEquip(){
+  var id=n('eq-id').value;
+  var val=n('eq-txt').value.trim()||'--';
+  var idx=stock.findIndex(function(i){return i.id==id;});
+  if(idx>=0){stock[idx].equip=val;SS('stock',stock);}
+  closeM('m-equip');fStk();
+}
+function saveNote(){
+  var id=n('note-id').value;
+  var val=n('note-txt').value.trim()||'--';
+  var idx=stock.findIndex(function(i){return i.id==id;});
+  if(idx>=0){stock[idx].notes=val;SS('stock',stock);}
+  closeM('m-note');fStk();
+}
+
+function addStkItem(item){
+  item.id='s'+Date.now()+'_'+Math.floor(Math.random()*9999);
+  item.internalId='DMCAR-'+String(stkCnt).padStart(4,'0');
+  item.date=item.date||today();
+  item.supplier=item.supplier||'Desconocido';
+  item.sell=item.sell||'';
+  item.notes=item.notes||'--';
+  item.pickup=item.pickup||'--';
+  item.status=item.status||'Stock';
+  item.vehicles=item.vehicles||[];
+  stock.push(item);stkCnt++;
+  SS('stock',stock);SS('stkCnt',stkCnt);
+}
+
+function saveManual(){
+  var trans=n('sa-trans').value;var ver=n('sa-ver').value.trim();
+  if(ver&&ver.indexOf(trans)<0) ver=ver+' '+trans;
+  var item={brand:n('sa-brand').value.trim().toUpperCase(),model:n('sa-model').value.trim().toUpperCase(),version:ver,reg:n('sa-reg').value.trim(),kms:n('sa-kms').value.trim(),colors:n('sa-colors').value.trim(),damage:n('sa-dmg').value.trim()||'0',units:n('sa-units').value.trim()||'1',equip:n('sa-equip').value.trim(),buy:n('sa-buy').value.trim(),supplier:n('sa-sup').value.trim(),pickup:n('sa-pickup').value.trim(),status:n('sa-status').value,notes:n('sa-notes').value.trim()};
+  if(!item.brand){alert('La marca es obligatoria');return;}
+  addStkItem(item);closeM('m-sadd');updBF();fStk();renderDash();
+}
+
+function editItem(id){
+  var item=stock.find(function(i){return i.id==id;});if(!item) return;
+  n('se-id').value=id;
+  ['brand','model','ver','reg','kms','colors','dmg','units','sup','equip','buy','sell','pickup','notes'].forEach(function(k){
+    var el=n('se-'+k);if(el) el.value=item[k==='ver'?'version':k==='dmg'?'damage':k==='sup'?'supplier':k]||'';
+  });
+  n('se-status').value=item.status||'Stock';
+  openM('m-sedit');
+}
+
+function saveEdit(){
+  var id=n('se-id').value;
+  var idx=stock.findIndex(function(i){return i.id==id;});if(idx<0) return;
+  var m=stock[idx];
+  m.brand=n('se-brand').value.trim().toUpperCase();m.model=n('se-model').value.trim().toUpperCase();
+  m.version=n('se-ver').value.trim();m.reg=n('se-reg').value.trim();m.kms=n('se-kms').value.trim();
+  m.colors=n('se-colors').value.trim();m.damage=n('se-dmg').value.trim();m.units=n('se-units').value.trim();
+  m.supplier=n('se-sup').value.trim();m.equip=n('se-equip').value.trim();m.buy=n('se-buy').value.trim();
+  m.sell=n('se-sell').value.trim();m.pickup=n('se-pickup').value.trim();m.status=n('se-status').value;
+  m.notes=n('se-notes').value.trim();
+  SS('stock',stock);closeM('m-sedit');updBF();fStk();
+}
+
+function delItem(id){
+  if(!confirm('Eliminar esta entrada?')) return;
+  stock=stock.filter(function(i){return i.id!=id;});
+  stkSel.delete(id);SS('stock',stock);updBF();fStk();renderDash();
+}
+
+function exportStock(){
+  if(!stock.length){alert('Stock Vivo vacio');return;}
+  var h=['ID','FECHA','PROVEEDOR','MARCA','MODELO','VERSION','1 REG','UDS','KMS','COLORES','DANOS','EQUIPAMIENTO','P.COMPRA','P.VENTA','MARGEN','PICK UP','STATUS','NOTAS'];
+  var rows=stock.map(function(r){var b=fnum(r.buy);var sv=fnum(r.sell);return[r.internalId,r.date,r.supplier,r.brand,r.model,r.version,r.reg,r.units||'1',r.kms,r.colors,r.damage,r.equip,r.buy,r.sell,(b&&sv)?(sv-b).toFixed(0):'',fmtPickup(r.pickup),r.status,r.notes];});
+  var csv=[h].concat(rows).map(function(row){return row.map(function(c){return'"'+(c||'').toString().replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));a.download='NEXO_StockVivo_'+new Date().toISOString().split('T')[0]+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+
+// -- IMPORT ---------------------------------------------------
+function iTab(t){
+  ['file','text','img','email'].forEach(function(tab){
+    var p=n('ipanel-'+tab);var b=n('itab-'+tab);
+    if(p) p.className='tp'+(tab===t?' on':'');
+    if(b) b.className='tab'+(tab===t?' on':'');
+  });
+}
+
+function iDrop(e){
+  e.preventDefault();n('i-drop').classList.remove('drag');
+  var file=e.dataTransfer.files[0];if(file){n('i-fn').textContent=file.name;iLoadFile(file);}
+}
+
+function iImgDrop(e){
+  e.preventDefault();n('i-img-drop').classList.remove('drag');
+  var file=e.dataTransfer.files[0];if(file) iImgLoad(file);
+}
+
+function iFileChg(input){var file=input.files[0];if(!file) return;n('i-fn').textContent=file.name;iLoadFile(file);}
+function iImgChg(input){var file=input.files[0];if(file) iImgLoad(file);}
+
+function iImgLoad(file){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var src=e.target.result;
+    imgB64=src.split(',')[1];
+    imgMT=file.name.toLowerCase().endsWith('.png')?'image/png':'image/jpeg';
+    n('i-img-prev').innerHTML='<img src="'+src+'" style="max-width:100%;max-height:180px;border-radius:8px;margin-top:8px">';
+  };
+  reader.readAsDataURL(file);
+}
+
+function iLoadFile(file){
+  var ext=file.name.split('.').pop().toLowerCase();
+
+  // EML/MSG: extract body text
+  if(ext==='eml'||ext==='msg'){
+    var r=new FileReader();
+    r.onload=function(e){
+      var raw=e.target.result;
+      var bi=raw.indexOf('\r\n\r\n');if(bi<0) bi=raw.indexOf('\n\n');
+      var txt=bi>=0?raw.substring(bi+2):raw;
+      txt=txt.replace(/=\r\n/g,'').replace(/=\n/g,'');
+      if(txt.indexOf('<html')>=0||txt.indexOf('<body')>=0){
+        txt=txt.replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+      }
+      txt=txt.replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim().substring(0,8000);
+      n('i-text').value=txt;iTab('text');
+      n('i-status').textContent='Email leido. Pulsa Extraer para procesar.';
+    };
+    r.readAsText(file,'utf-8');
+    return;
+  }
+
+  // JPEG/PNG: switch to img tab
+  if(ext==='jpg'||ext==='jpeg'||ext==='png'){iImgLoad(file);iTab('img');return;}
+
+  // Excel: use SheetJS
+  if(ext==='xlsx'||ext==='xls'){
+    iEnsureXLSX(function(){
+      var r=new FileReader();
+      r.onload=function(e){
+        try{
+          var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+          var txt='';
+          wb.SheetNames.forEach(function(sn){txt+='Sheet:'+sn+'\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\n\n';});
+          n('i-text').value=txt;iTab('text');
+          n('i-status').textContent='Excel leido. Pulsa Extraer para procesar.';
+        }catch(err){n('i-status').textContent='Error Excel: '+err.message;}
+      };
+      r.readAsArrayBuffer(file);
+    });
+    return;
+  }
+
+  // PDF/Word: Claude API
+  var r=new FileReader();
+  r.onload=function(e){
+    var b64=e.target.result.split(',')[1];
+    var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    n('i-btn').disabled=true;n('i-status').textContent='Leyendo '+ext.toUpperCase()+'...';
+    callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
+      n('i-btn').disabled=false;
+      if(err){n('i-status').textContent='Error: '+err;return;}
+      iHandleResp(resp,n('i-sup').value.trim());
+    });
+  };
+  r.readAsDataURL(file);
+}
+
+function iEnsureXLSX(cb){
+  if(window.XLSX){cb();return;}
+  if(window._xlsxLoading){var ck=setInterval(function(){if(window.XLSX){clearInterval(ck);cb();}},100);setTimeout(function(){clearInterval(ck);},10000);return;}
+  window._xlsxLoading=true;
+  n('i-status').textContent='Cargando motor Excel...';
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload=function(){window._xlsxLoading=false;n('i-status').textContent='';cb();};
+  s.onerror=function(){window._xlsxLoading=false;n('i-status').innerHTML='<span style="color:var(--orange)">Sin conexion. Copia Excel (Ctrl+A, Ctrl+C) y pega en Texto.</span>';iTab('text');};
+  document.head.appendChild(s);
+}
+
+function iProcess(){
+  var sup=n('i-sup').value.trim();
+  var panels=['file','text','img','email'];
+  var active=panels.find(function(t){var p=n('ipanel-'+t);return p&&p.classList.contains('on');})||'text';
+
+  if(active==='img'){
+    if(!imgB64){alert('Selecciona una imagen primero');return;}
+    n('i-btn').disabled=true;n('i-status').textContent='Analizando imagen...';
+    callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:imgMT||'image/jpeg',data:imgB64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
+      n('i-btn').disabled=false;
+      if(err){n('i-status').textContent='Error: '+err;return;}
+      iHandleResp(resp,sup);
+    });
+    return;
+  }
+
+  if(active==='file'){
+    var fi=n('i-file');
+    if(fi.files&&fi.files.length){iLoadFile(fi.files[0]);return;}
+    alert('Selecciona un archivo primero');return;
+  }
+
+  var text=n('i-text').value.trim();
+  if(!text){alert('Pega el texto primero');return;}
+  n('i-btn').disabled=true;n('i-status').textContent='Extrayendo datos...';
+  callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,system:SI_SYS,messages:[{role:'user',content:text}]},function(resp,err){
+    n('i-btn').disabled=false;
+    if(err){n('i-status').textContent='Error: '+err;return;}
+    iHandleResp(resp,sup);
+  });
+}
+
+function iHandleResp(resp,manualSup){
+  try{
+    var parsed=parseResp(resp);
+    var detSup=parsed.supplier||manualSup||'Desconocido';
+    var vehicles=parsed.vehicles||[];
+    var added=0;
+    vehicles.forEach(function(v){
+      v.supplier=manualSup||v.supplier||detSup;
+      addStkItem(v);added++;
+    });
+    var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
+    n('i-status').textContent=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
+    setTimeout(function(){
+      closeM('m-import');
+      n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+      n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+      updBF();fStk();renderDash();
+    },1500);
+  }catch(ex){
+    n('i-status').textContent='Error parseando. Intenta de nuevo.';
+    n('i-btn').disabled=false;
+  }
+}
+
+// -- GENERATE FROM STOCK --------------------------------------
+function openGenStk(){
+  var sel=stock.filter(function(i){return stkSel.has(i.id);});
+  if(!sel.length){alert('Selecciona al menos un vehiculo');return;}
+  var groups={};
+  sel.forEach(function(i){var k=i.brand+'|'+i.model+'|'+i.version;if(!groups[k])groups[k]=[];groups[k].push(i);});
+  n('gs-sum').innerHTML=Object.keys(groups).map(function(k){
+    var g=groups[k];
+    return '<div style="margin-bottom:3px"><strong style="color:var(--acc)">'+esc(g[0].brand+' '+g[0].model)+'</strong> &mdash; '+esc(g[0].version)+' &mdash; <span style="color:var(--green)">'+g.length+' uds</span> &mdash; '+esc(g[0].buy)+'</div>';
+  }).join('');
+  openM('m-gstk');
+}
+
+function genFrmStk(){
+  var sel=stock.filter(function(i){return stkSel.has(i.id);});
+  var margin=n('gs-margin').value.trim()||'+500 EUR';
+  var lang=n('gs-lang').value;
+  var fmt=document.querySelector('input[name="gs-fmt"]:checked').value;
+  var groups={};
+  sel.forEach(function(i){var k=i.brand+'|'+i.model+'|'+i.version;if(!groups[k])groups[k]=[];groups[k].push(i);});
+  var offerData=Object.keys(groups).map(function(k){
+    var g=groups[k];var f=g[0];
+    var avgK=g.length>1;var avgD=g.length>1;
+    var kmsA=Math.round(g.reduce(function(s,i){return s+fnum(i.kms);},0)/g.length);
+    var dmgA=Math.round(g.reduce(function(s,i){return s+fnum(i.damage);},0)/g.length);
+    var allC=[];g.forEach(function(i){(i.colors||'').split(',').forEach(function(c){var ct=c.trim();if(ct&&allC.indexOf(ct)<0)allC.push(ct);});});
+    var buyN=fnum(f.buy);var mN=parseFloat((margin||'0').replace(/[^0-9.]/g,''))||500;
+    var sellP=buyN?(buyN+mN).toLocaleString('es-ES')+' EUR':f.sell||f.buy||'';
+    return {title:f.brand+' '+f.model+' '+f.version,date:today(),lang:lang,price:sellP,registration:f.reg||'',kms:avgK?String(kmsA):f.kms,avgKms:avgK,damages:avgD?String(dmgA)+' EUR':(f.damage+' EUR'),avgDamages:avgD,colors:allC.join(', '),units:String(g.length),delivery:f.status||'Stock',equipment:f.equip||''};
+  });
+  closeM('m-gstk');
+  var msg='Genera las ofertas Word para estos vehiculos del Stock Vivo.\nFormato: '+(fmt==='sum'?'Resumen 1 pagina':'Un Word separado por modelo')+'\nMargen: '+margin+'\n\n'+JSON.stringify(offerData,null,2);
+  n('chat-in').value=msg;
+  go('asistente');
+  setTimeout(sendMsg,100);
+}
+
+// -- GENERADOR OFERTAS ----------------------------------------
+function oLoad(input){
+  var file=input.files[0];if(!file) return;
+  n('o-fn').textContent=file.name;
+  var ext=file.name.split('.').pop().toLowerCase();
+
+  if(ext==='xlsx'||ext==='xls'){
+    n('o-raw').value='Cargando Excel...';
+    iEnsureXLSX(function(){
+      var r=new FileReader();
+      r.onload=function(e){
+        try{var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array'});var txt='';wb.SheetNames.forEach(function(sn){txt+=window.XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\n';});n('o-raw').value=txt;}
+        catch(err){n('o-raw').value='Error: '+err.message;}
+      };r.readAsArrayBuffer(file);
+    });return;
+  }
+
+  if(ext==='eml'||ext==='msg'){
+    var r=new FileReader();
+    r.onload=function(e){
+      var raw=e.target.result;var bi=raw.indexOf('\r\n\r\n');if(bi<0) bi=raw.indexOf('\n\n');
+      var txt=bi>=0?raw.substring(bi+2):raw;
+      txt=txt.replace(/=\r\n/g,'').replace(/=\n/g,'');
+      if(txt.indexOf('<html')>=0) txt=txt.replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ');
+      n('o-raw').value=txt.substring(0,8000);
+    };r.readAsText(file,'utf-8');return;
+  }
+
+  var r=new FileReader();
+  if(ext==='jpg'||ext==='jpeg'||ext==='png'){
+    r.onload=function(e){
+      var b64=e.target.result.split(',')[1];var mt=ext==='png'?'image/png':'image/jpeg';
+      n('o-raw').value='Analizando imagen...';
+      callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae todos los datos de vehiculos de esta imagen. Devuelve el texto completo.'}]}]},function(resp,err){n('o-raw').value=err?'Error: '+err:resp;});
+    };r.readAsDataURL(file);
+  } else {
+    r.onload=function(e){
+      var b64=e.target.result.split(',')[1];var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      n('o-raw').value='Leyendo documento...';
+      callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae todos los datos de vehiculos. Devuelve el texto completo.'}]}]},function(resp,err){n('o-raw').value=err?'Error: '+err:resp;});
+    };r.readAsDataURL(file);
+  }
+}
+
+function genOferta(){
+  var raw=n('o-raw').value.trim();var margin=n('o-margin').value.trim();var lang=n('o-lang').value;
+  if(!raw){alert('Pega los datos o sube un archivo');return;}
+  if(!margin){alert('Indica el margen');return;}
+  if(!getKey()){alert('Configura tu API key');go('config');return;}
+  var L=LL[lang]||LL.EN;
+  n('o-btn').textContent='Procesando...';n('o-btn').disabled=true;
+  var sys='Eres NEXO generador de ofertas DMCAR GROUP. Extrae datos y genera oferta.\nREGLAS: Titulo=MARCA MODELO VERSION TRANS. MATRICULACION: Nuevo=Al pagamento, KM0=Km 0, Usado=MM/YYYY. Sin trans=M/T. AUT/S-TRONIC/Steptronic/DCT/eDCS6/X-TRONIC. MARGEN='+margin+'. IDIOMA='+lang+'. NUNCA mostrar calculo precio.\nETIQUETAS: precio='+L.price+', reg='+L.reg+', kms='+L.kms+', danos='+L.dmg+', colores='+L.colors+', entrega='+L.del+', equip='+L.equip+', uds='+L.units+'\nJSON SOLO: {"status":"ready","offer":{"title":"TITULO","date":"DD/MM/YYYY","price":"X.XXX EUR","registration":"val","kms":"val","avgKms":false,"damages":"X EUR","avgDamages":false,"colors":"C1, C2","units":"X","delivery":"val","equipment":"I1 - I2"}}\nO: {"status":"needs_info","questions":["pregunta"]}';
+  callAPI(sys,'Oferta:\n'+raw,1200,function(resp,err){
+    n('o-btn').textContent='Generar oferta';n('o-btn').disabled=false;
+    if(err){alert('Error: '+err);return;}
+    try{
+      var p=parseResp(resp);
+      if(p.status==='needs_info'){
+        var qel=n('o-quest');qel.style.display='block';
+        qel.innerHTML='<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px;font-size:12px"><div style="font-weight:700;color:var(--orange);margin-bottom:5px">NEXO necesita mas informacion:</div>'+p.questions.map(function(q){return'<div style="color:#fbbf24;margin-bottom:2px">- '+esc(q)+'</div>';}).join('')+'</div>';
+      }else{
+        curOffer=Object.assign({},p.offer,{lang:lang,margin:margin});
+        renderOfertaPre(curOffer);
+      }
+    }catch(ex){alert('Error parseando. Intenta de nuevo.');}
+  });
+}
+
+function renderOfertaPre(o){
+  var lang=o.lang||'EN';var L=LL[lang]||LL.EN;
+  n('o-empty').style.display='none';n('o-result').style.display='block';
+  n('o-meta').textContent=lang+' - '+o.margin;
+  n('op-date').textContent=o.date||'';
+  n('op-ttl').textContent=(o.title||'').toUpperCase();
+  var logoUrl=getLogo(o.title);
+  n('op-logo').innerHTML=logoUrl?'<img src="'+logoUrl+'" style="height:48px;max-width:110px;object-fit:contain" onerror="this.style.display=\'none\'">':'<span style="font-size:12px;font-weight:900;color:#0000F5;letter-spacing:2px">DMCAR GROUP</span>';
+  var kL=o.avgKms?L.avgKms:L.kms;var dL=o.avgDamages?L.avgDmg:L.dmg;
+  var fields=[];
+  if(o.registration) fields.push([L.reg,o.registration]);
+  if(o.price) fields.push([L.price,o.price]);
+  if(o.kms) fields.push([kL,o.kms]);
+  if(o.damages) fields.push([dL,o.damages]);
+  if(o.colors) fields.push([L.colors,o.colors]);
+  if(o.units) fields.push([L.units,o.units]);
+  if(o.delivery) fields.push([L.del,o.delivery]);
+  n('op-flds').innerHTML=fields.map(function(f){return'<div><strong>'+f[0]+':</strong> '+esc(f[1])+'</div>';}).join('');
+  n('op-eq').innerHTML=o.equipment?'<div class="oeqt">'+L.equip+'</div><div class="oeq">'+esc(o.equipment)+'</div>':'';
+}
+
+function saveOferta(){
+  if(!curOffer) return;
+  var o=Object.assign({},curOffer,{id:Date.now(),savedAt:new Date().toISOString()});
+  offerHist.push(o);SS('offerHist',offerHist);
+  renderOfertaHist();n('o-hist').style.display='block';renderDash();
+  genWordDoc(o);
+}
+
+function rstOferta(){
+  curOffer=null;
+  n('o-result').style.display='none';n('o-empty').style.display='flex';
+  n('o-quest').style.display='none';n('o-raw').value='';n('o-margin').value='';n('o-fn').textContent='';
+}
+
+function renderOfertaHist(){
+  var tbody=n('o-hist-body');
+  tbody.innerHTML=offerHist.slice(-6).reverse().map(function(o){return'<tr><td style="font-weight:500;color:var(--b2)">'+esc(o.title)+'</td><td>'+esc(o.price)+'</td><td>'+o.lang+'</td></tr>';}).join('');
+  if(offerHist.length) n('o-hist').style.display='block';
+}
+
+function genWordDoc(o){
+  var lang=o.lang||'EN';var L=LL[lang]||LL.EN;
+  var logoUrl=getLogo(o.title)||'';
+  var kL=o.avgKms?L.avgKms:L.kms;var dL=o.avgDamages?L.avgDmg:L.dmg;
+  var flds=[];
+  if(o.registration) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.reg+':</strong> '+o.registration+'</p>');
+  if(o.price) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.price+':</strong> '+o.price+'</p>');
+  if(o.kms) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+kL+':</strong> '+o.kms+'</p>');
+  if(o.damages) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+dL+':</strong> '+o.damages+'</p>');
+  if(o.colors) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.colors+':</strong> '+o.colors+'</p>');
+  if(o.units) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.units+':</strong> '+o.units+'</p>');
+  if(o.delivery) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.del+':</strong> '+o.delivery+'</p>');
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:0;padding:20px 28px;max-width:680px;margin:auto}.hdr{border-bottom:2px solid #0000F5;padding-bottom:6px;margin-bottom:10px;font-size:11px}.ftr{border-top:2px solid #0000F5;margin-top:16px;padding-top:6px;font-size:10px;color:#555;text-align:center}</style></head><body><div style="text-align:right;font-size:10px;color:#666;margin-bottom:4px">'+(o.date||'')+'</div><div class="hdr"><strong>Francesco Dell Agli</strong> &nbsp;+39 3429624234 &nbsp;+34 630754659 &nbsp;info@dmcargroup.com &nbsp;dmcargroup.com</div><div style="text-align:center;margin:12px 0 6px">'+(logoUrl?'<img src="'+logoUrl+'" style="height:60px;max-width:120px;object-fit:contain">':'<span style="font-size:15px;font-weight:900;color:#0000F5;letter-spacing:2px">DMCAR GROUP</span>')+'</div><h1 style="text-align:center;color:#0000F5;font-size:17px;font-weight:900;margin:0 0 12px;letter-spacing:1px">'+(o.title||'').toUpperCase()+'</h1>'+flds.join('')+(o.equipment?'<p style="color:#0000F5;font-weight:900;font-size:13px;text-align:center;margin-top:12px">'+L.equip+'</p><p style="font-size:12px;color:#333;text-align:center;margin-top:2px">'+o.equipment+'</p>':'')+'<p style="font-size:9px;color:#999;text-align:center;margin-top:12px;font-style:italic">The image shown is for illustrative purposes only.</p><div class="ftr">DMCAR GROUP SRO &nbsp;|&nbsp; Stepanska 1742/27, Praha 1 &nbsp;|&nbsp; VAT: CZ21830851 &nbsp;|&nbsp; dmcargroup.com</div></body></html>';
+  var safe=(o.title||'oferta').replace(/[^a-zA-Z0-9 ]/g,'').trim().replace(/ +/g,'_');
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'application/msword'}));a.download=safe+'_'+lang+'.doc';document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+
+// -- CONTACTOS ------------------------------------------------
+function renderCont(){
+  var filter=n('f-cont-co').value;
+  var list=filter?contacts.filter(function(c){return c.myCompany===filter;}):contacts;
+  n('cont-grid').innerHTML=list.map(function(c){
+    return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc(c.name[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company)+'</div></div></div><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+c.tag+'</span></div>'+
+    '<div class="fc g6 mb10" style="flex-wrap:wrap"><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.country)+'</span><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span><span class="pill">'+esc(c.myCompany)+'</span></div>'+
+    '<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>'+
+    '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone)+'</span><span>'+fmtD(c.lastContact)+'</span></div></div>';
+  }).join('');
+  n('ds-cont').textContent=contacts.length;
+}
+
+function saveCont(){
+  var c={id:Date.now(),name:n('cn-name').value.trim(),company:n('cn-co').value.trim(),country:n('cn-country').value.trim(),role:n('cn-role').value,myCompany:n('cn-myco').value,phone:n('cn-phone').value.trim(),notes:n('cn-notes').value.trim(),tag:n('cn-tag').value,lastContact:new Date().toISOString().split('T')[0]};
+  if(!c.name){alert('Nombre obligatorio');return;}
+  contacts.push(c);SS('contacts',contacts);closeM('m-contact');renderCont();renderDash();
+}
+
+// -- LEADS ----------------------------------------------------
+function renderLeads(){
+  var tbody=n('leads-body');var empty=n('leads-empty');
+  n('cnt-leads').textContent=leads.filter(function(l){return l.status==='nuevo';}).length;
+  n('ds-leads').textContent=leads.length;
+  if(!leads.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  tbody.innerHTML=leads.map(function(l){
+    var sc=l.status==='nuevo'?'t-hot':l.status==='contactado'?'t-pend':l.status==='cualificado'?'t-reg':'t-cold';
+    return'<tr><td><strong>'+esc(l.name)+'</strong>'+(l.contact?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.contact)+'</span>':'')+'</td><td><span style="font-size:10px;background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(l.source)+'</span></td><td style="font-size:11px">'+esc(l.myCompany)+'</td><td style="font-size:11px;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.interest)+'</td><td><span class="tag '+sc+'">'+l.status+'</span></td><td style="font-size:10px;color:var(--t3)">'+fmtD(l.date)+'</td><td><button class="btn bd" style="padding:2px 7px;font-size:10px" onclick="delLead('+l.id+')">x</button></td></tr>';
+  }).join('');
+}
+
+function saveLead(){
+  var l={id:Date.now(),name:n('ld-name').value.trim(),source:n('ld-src').value,company:n('ld-co').value.trim(),contact:n('ld-con').value.trim(),interest:n('ld-int').value.trim(),myCompany:n('ld-myco').value,status:n('ld-status').value,date:new Date().toISOString().split('T')[0]};
+  if(!l.name){alert('Nombre obligatorio');return;}
+  leads.push(l);SS('leads',leads);closeM('m-lead');renderLeads();renderDash();
+}
+
+function delLead(id){if(!confirm('Eliminar lead?'))return;leads=leads.filter(function(l){return l.id!==id;});SS('leads',leads);renderLeads();}
+
+// -- TAREAS ---------------------------------------------------
+function renderTareas(){
+  var prios=['urgente','alta','media','baja'];
+  var pd=tasks.filter(function(t){return!t.done;});
+  n('cnt-tareas').textContent=tasks.filter(function(t){return!t.done&&isOD(t.dueDate);}).length||pd.length;
+  n('ds-tasks').textContent=pd.length;
+  var html='';
+  prios.forEach(function(p){
+    var g=tasks.filter(function(t){return t.priority===p;});if(!g.length) return;
+    html+='<div style="margin-bottom:18px"><div style="font-size:9px;font-weight:700;color:var(--t4);letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px">'+p+'</div>';
+    g.forEach(function(t){
+      html+='<div style="background:var(--bg2);border:1px solid '+(isOD(t.dueDate)&&!t.done?'rgba(239,68,68,.25)':'var(--border)')+';border-radius:9px;padding:10px 13px;margin-bottom:6px;display:flex;align-items:center;gap:10px;opacity:'+(t.done?.4:1)+'">';
+      html+='<input type="checkbox" '+(t.done?'checked':'')+' onchange="tglTask('+t.id+')">';
+      html+='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;text-decoration:'+(t.done?'line-through':'none')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.title)+'</div>';
+      html+='<div style="font-size:10px;color:var(--t3);margin-top:2px;display:flex;gap:8px"><span>'+esc(t.company)+'</span>'+(t.contact&&t.contact!='--'?'<span>'+esc(t.contact)+'</span>':'')+'<span style="color:'+(isOD(t.dueDate)&&!t.done?'#f87171':'var(--t3)')+'">'+fmtD(t.dueDate)+(isOD(t.dueDate)&&!t.done?' VENCIDA':'')+'</span></div></div>';
+      html+='<button class="btn bd" style="padding:2px 7px;font-size:10px;flex-shrink:0" onclick="delTask('+t.id+')">x</button></div>';
+    });
+    html+='</div>';
+  });
+  n('tasks-list').innerHTML=html||'<div style="color:var(--t3);font-size:12px">Sin tareas</div>';
+}
+
+function tglTask(id){tasks=tasks.map(function(t){return t.id===id?Object.assign({},t,{done:!t.done}):t;});SS('tasks',tasks);renderTareas();renderDash();}
+function delTask(id){tasks=tasks.filter(function(t){return t.id!==id;});SS('tasks',tasks);renderTareas();}
+function tglAddTask(){var f=n('add-task-form');f.style.display=f.style.display==='none'?'block':'none';}
+function addTask(){
+  var t={id:Date.now(),title:n('nt-ttl').value.trim(),company:n('nt-co').value,contact:n('nt-con').value.trim()||'--',dueDate:n('nt-date').value,priority:n('nt-prio').value,done:false};
+  if(!t.title){alert('Descripcion obligatoria');return;}
+  tasks.push(t);SS('tasks',tasks);tglAddTask();n('nt-ttl').value='';renderTareas();renderDash();
+}
+
+// -- CHAT -----------------------------------------------------
+function buildCtx(){
+  var pd=tasks.filter(function(t){return!t.done;});
+  var od=pd.filter(function(t){return isOD(t.dueDate);});
+  return 'Eres NEXO, asistente personal de Francesco Dell Agli, CEO de DMCAR GROUP.\n'+
+    'EMPRESAS: DMCAR GROUP (Praga, coches B2B Europa), INNOQUEST SOLUTIONS (Madrid), IMPEX CONSULTING (Sofia), MERCEDES SOLUTION (Bucarest).\n'+
+    'CONTACTO: +39 3429624234, +34 630754659, info@dmcargroup.com\n'+
+    'STOCK ('+stock.length+' entradas): '+stock.slice(-5).map(function(i){return i.brand+' '+i.model+' '+i.buy;}).join(' | ')+'\n'+
+    'TAREAS ('+pd.length+' pendientes, '+od.length+' vencidas): '+pd.slice(0,5).map(function(t){return t.priority.toUpperCase()+': "'+t.title+'" ['+t.company+'] '+t.dueDate+(isOD(t.dueDate)?' VENCIDA':'');}).join(' | ')+'\n'+
+    'CONTACTOS ('+contacts.length+'): '+contacts.slice(0,5).map(function(c){return c.name+' ('+c.company+', '+c.tag+')';}).join(' | ')+'\n'+
+    'LEADS: '+leads.filter(function(l){return l.status==='nuevo';}).length+' nuevos\n'+
+    'MERCADOS EU: Holanda, Italia, Alemania, Espana, Portugal, Francia, Polonia, Belgica\n'+
+    'Responde SIEMPRE en espanol. Se conciso y util.';
+}
+
+function sendMsg(){
+  var input=n('chat-in');var msg=input.value.trim();
+  if(!msg||chatBusy) return;
+  if(!getKey()){alert('Configura tu API key');go('config');return;}
+  input.value='';addMsg('u',msg);chatBusy=true;
+  var typing=document.createElement('div');
+  typing.className='cmsg a';typing.id='typing';
+  typing.innerHTML='<div class="cbub"><div class="typing"><span></span><span></span><span></span></div></div>';
+  n('cmsgs').appendChild(typing);scrollChat();
+  var hist=chatHist.slice(-12).map(function(m){return{role:m.role,content:m.content};});
+  hist.push({role:'user',content:msg});
+  var key=getKey();
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1200,system:buildCtx(),messages:hist})}).then(function(r){return r.json();}).then(function(d){
+    var t=n('typing');if(t) t.remove();
+    var reply=d.error?'Error: '+d.error.message:d.content.map(function(b){return b.text||'';}).join('');
+    addMsg('a',reply);chatHist.push({role:'user',content:msg});chatHist.push({role:'assistant',content:reply});chatBusy=false;
+  }).catch(function(e){var t=n('typing');if(t) t.remove();addMsg('a','Error: '+e.message);chatBusy=false;});
+}
+
+function addMsg(role,text){
+  var div=document.createElement('div');div.className='cmsg '+role+' fi';
+  div.innerHTML='<div class="cbub">'+text.replace(/\n/g,'<br>')+'</div>';
+  n('cmsgs').appendChild(div);scrollChat();
+}
+function scrollChat(){var e=n('cmsgs');if(e) e.scrollTop=e.scrollHeight;}
+function chip(t){n('chat-in').value=t;sendMsg();}
+
+// -- CONFIG ---------------------------------------------------
+function renderConfig(){
+  n('cfg-s').textContent=stock.length;
+  n('cfg-t').textContent=tasks.length;
+  n('cfg-o').textContent=offerHist.length;
+  var k=getKey();if(k) n('api-key-in').value=k;
+}
+
+function saveKey(){
+  var k=n('api-key-in').value.trim();
+  if(!k){alert('Introduce tu API key');return;}
+  localStorage.setItem('nx5_key',k);updateApiStatus();
+  n('key-msg').innerHTML='<span style="color:var(--green)">Clave guardada</span>';
+  setTimeout(function(){n('key-msg').innerHTML='';},2500);
+}
+function delKey(){if(!confirm('Eliminar API key?'))return;localStorage.removeItem('nx5_key');n('api-key-in').value='';updateApiStatus();}
+function clrAll(){
+  if(!confirm('Borrar TODOS los datos de NEXO?')) return;
+  ['stock','stkCnt','contacts','tasks','leads','offerHist'].forEach(function(k){localStorage.removeItem('nx5_'+k);});
+  stock=[];contacts=[];tasks=[];leads=[];offerHist=[];stkCnt=1;
+  renderConfig();renderDash();alert('Datos eliminados.');
+}
+
+// -- MODALS ---------------------------------------------------
+function openM(id){
+  n(id).classList.add('on');
+  if(id==='m-import'){
+    n('i-text').value='';n('i-sup').value='';n('i-fn').textContent='';
+    n('i-status').textContent='';n('i-file').value='';n('i-img-prev').innerHTML='';
+    imgB64=null;imgMT=null;n('i-btn').disabled=false;iTab('file');
+  }
+}
+function closeM(id){n(id).classList.remove('on');}
+document.querySelectorAll('.ovl').forEach(function(el){
+  el.addEventListener('click',function(e){if(e.target===el) el.classList.remove('on');});
+});
+
+// -- INIT -----------------------------------------------------
+(function init(){
+  n('tb-d').textContent=new Date().toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  updateApiStatus();
+  renderDash();
+  renderOfertaHist();
+  if(window.innerWidth<=768){document.getElementById('sb').classList.add('hide');sbOpen=false;}
+  // Preload SheetJS silently
+  setTimeout(function(){
+    if(!window.XLSX){
+      var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.async=true;document.head.appendChild(s);
+    }
+  },3000);
+  // Equipment modal
+  document.getElementById('btn-eq-close').addEventListener('click',function(){closeM('m-equip');});
+  document.getElementById('btn-eq-cancel').addEventListener('click',function(){closeM('m-equip');});
+  document.getElementById('btn-eq-save').addEventListener('click',saveEquip);
+})();
+
+</script>
+</body>
+</html>
