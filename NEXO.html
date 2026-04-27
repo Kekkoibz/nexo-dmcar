@@ -2224,7 +2224,7 @@ function buildOfferLines(o){
     'Date': {label:'', value:o.date||today()},
     'TITULO': {label:'', value:(o.title||'').toUpperCase()},
     'PRECIO': o.price?{label:L.price, value:o.price}:null,
-    'VIN': o.vin?{label:'VIN', value:o.vin}:null,
+    'VIN': o.vin?{label:'Ex. VIN', value:o.vin}:null,
     'MATRICULACION': o.registration?{label:L.reg, value:o.registration}:null,
     'KMS': o.kms?{label:kL, value:o.kms}:null,
     'DAÑOS': o.damages?{label:dL, value:o.damages}:null,
