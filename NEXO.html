@@ -1377,17 +1377,33 @@ function iLoadFile(file){
   // JPEG/PNG: switch to img tab
   if(ext==='jpg'||ext==='jpeg'||ext==='png'){iImgLoad(file);iTab('img');return;}
 
-  // Excel: use SheetJS
+  // Excel: try native structured parser first; fall back to Claude for unstructured sheets
   if(ext==='xlsx'||ext==='xls'){
     iEnsureXLSX(function(){
       var r=new FileReader();
       r.onload=function(e){
         try{
-          var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-          var txt='';
-          wb.SheetNames.forEach(function(sn){txt+='Sheet:'+sn+'\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\n\n';});
-          n('i-text').value=txt;iTab('text');
-          n('i-status').textContent='Excel leido. Pulsa Extraer para procesar.';
+          var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+          // Try native parsing on the first sheet
+          var sn=wb.SheetNames[0];
+          var rows=window.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false});
+          var native=tryNativeExcelParse(rows);
+          if(native&&native.vehicles&&native.vehicles.length){
+            n('i-status').innerHTML='<span style="color:var(--acc)">Excel estructurado: '+native.vehicles.length+' grupo'+(native.vehicles.length!==1?'s':'')+' detectados ('+native.totalUnits+' unidades). Pulsa Extraer.</span>';
+            // Stash the parsed result so iProcess can use it directly
+            window._nativeParse=native;
+            // Show a human-readable preview in the textarea so user can review
+            var preview=native.vehicles.map(function(v){return '['+v.brand+' '+v.model+'] '+v.version+' x'+v.units+(v.kms?' | avg '+v.kms+' km':'')+(v.colors?' | '+v.colors.split(',').slice(0,3).join(','):'');}).join('\n');
+            n('i-text').value='# Parser nativo: '+native.vehicles.length+' grupos, '+native.totalUnits+' unidades\n# Pulsa Extraer para anadir al Stock\n\n'+preview;
+            iTab('text');
+          } else {
+            // Fallback: dump CSV and let Claude figure it out
+            var txt='';
+            wb.SheetNames.forEach(function(sx){txt+='Sheet:'+sx+'\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[sx])+'\n\n';});
+            n('i-text').value=txt;iTab('text');
+            n('i-status').textContent='Excel leido (formato libre). Pulsa Extraer para procesar con Claude.';
+            window._nativeParse=null;
+          }
         }catch(err){n('i-status').textContent='Error Excel: '+err.message;}
       };
       r.readAsArrayBuffer(file);
@@ -1427,6 +1443,14 @@ function iProcess(){
   var panels=['file','text','img','email'];
   var active=panels.find(function(t){var p=n('ipanel-'+t);return p&&p.classList.contains('on');})||'text';
 
+  // If native Excel parse is available, use it directly (no Claude call)
+  if(window._nativeParse&&window._nativeParse.vehicles&&window._nativeParse.vehicles.length){
+    var fakeResp=JSON.stringify({supplier:sup||window._nativeParse.supplier||'Excel',vehicles:window._nativeParse.vehicles});
+    window._nativeParse=null;
+    iHandleResp(fakeResp,sup);
+    return;
+  }
+
   if(active==='img'){
     if(!imgB64){alert('Selecciona una imagen primero');return;}
     n('i-btn').disabled=true;n('i-status').textContent='Analizando imagen...';
@@ -1452,6 +1476,217 @@ function iProcess(){
     if(err){n('i-status').textContent='Error: '+err;return;}
     iHandleResp(resp,sup);
   });
+}
+
+// Native Excel parser. Returns {vehicles:[...], totalUnits, supplier} or null if format isn't recognized.
+function tryNativeExcelParse(rows){
+  if(!rows||!rows.length) return null;
+  // Find header row (first row with at least 4 non-empty cells matching known keywords)
+  var keys=['matricula','plate','bastidor','vin','modelo','model','version','fecha','date','reg','kms','km','color','colour','precio','price','dano','damage'];
+  var headerIdx=-1;
+  for(var i=0;i<Math.min(rows.length,10);i++){
+    var row=rows[i]||[];
+    var hits=0;
+    row.forEach(function(c){
+      var v=String(c||'').toLowerCase().trim();
+      if(keys.some(function(k){return v.indexOf(k)>=0;})) hits++;
+    });
+    if(hits>=4){headerIdx=i;break;}
+  }
+  if(headerIdx<0) return null;
+  var headers=rows[headerIdx].map(function(c){return String(c||'').toLowerCase().trim();});
+  function findCol(){
+    for(var ai=0;ai<arguments.length;ai++){
+      var kw=arguments[ai];
+      for(var hi=0;hi<headers.length;hi++) if(headers[hi].indexOf(kw)>=0) return hi;
+    }
+    return -1;
+  }
+  var c={
+    plate: findCol('matricula','plate'),
+    vin: findCol('bastidor','vin','chassis'),
+    model: findCol('modelo sli','modelo','model','version','vehiculo'),
+    reg: findCol('fecha matricula','fecha matr','first reg','1a reg','primera matr','registration','date'),
+    kms: findCol('km'),
+    color: findCol('color ext','color','colour'),
+    buy: findCol('precio export','export sin','precio compra','buy','net price'),
+    damage: findCol('daño','dano','damage'),
+    sell: findCol('precio final','final sin','sell','venta')
+  };
+  // Need at least model column to do anything useful
+  if(c.model<0) return null;
+
+  function num(v){
+    if(v==null) return 0;
+    if(typeof v==='number') return v;
+    var s=String(v).replace(/[^0-9,.\-]/g,'');
+    if(!s) return 0;
+    var lastComma=s.lastIndexOf(',');
+    var lastDot=s.lastIndexOf('.');
+    if(lastComma>=0&&lastDot>=0){
+      if(lastComma>lastDot){
+        // European: 1.234,56 -> remove dots, replace comma
+        s=s.replace(/\./g,'').replace(',','.');
+      } else {
+        // American: 1,234.56 -> remove commas
+        s=s.replace(/,/g,'');
+      }
+    } else if(lastComma>=0){
+      var afterComma=s.length-lastComma-1;
+      if(afterComma<=2) s=s.replace(',','.');
+      else s=s.replace(/,/g,'');
+    }
+    var p=parseFloat(s);return isNaN(p)?0:p;
+  }
+  function fmtDate(v){
+    if(!v) return '';
+    if(v instanceof Date){
+      if(isNaN(v.getTime())) return '';
+      return ('0'+(v.getMonth()+1)).slice(-2)+'/'+v.getFullYear();
+    }
+    var s=String(v).trim();
+    if(!s) return '';
+    // Try ISO-style: YYYY-MM-DD or YYYY/MM/DD
+    var iso=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if(iso) return ('0'+iso[2]).slice(-2)+'/'+iso[1];
+    // Try X/Y/Z formats
+    var p=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if(p){
+      var a=parseInt(p[1],10), b=parseInt(p[2],10);
+      var year=parseInt(p[3],10);
+      if(year<100) year+=(year<70?2000:1900); // 2-digit year
+      // Disambiguate: if a>12, it's DD/MM. If b>12, it's MM/DD.
+      // If both <=12, fall back to assuming the format uses Date object route already
+      var month;
+      if(a>12&&b<=12) month=b;
+      else if(b>12&&a<=12) month=a;
+      else if(a<=12&&b<=12) month=a; // ambiguous, default to first being month (US)
+      else month=a;
+      return ('0'+month).slice(-2)+'/'+year;
+    }
+    return s;
+  }
+  function shortColor(s){
+    if(!s) return '';
+    s=String(s).trim();
+    // strip "Metalizado/Metallic/Pearl" tails and OEM codes like "0E0E - "
+    s=s.replace(/^[A-Z0-9]{2,4}\s*-\s*/,'');
+    s=s.split(/\s+(?:Metalizado|Metallic|Pearl|Met\.|Méta?l|\(Métal\)|\(Opaque\))/i)[0];
+    s=s.replace(/\s+/g,' ').trim();
+    // Title-case in english if possible: try mapping a few common Spanish/French color words
+    var map={'Blanco':'White','Negro':'Black','Gris':'Grey','Azul':'Blue','Rojo':'Red','Verde':'Green','Amarillo':'Yellow','Marron':'Brown','Plata':'Silver','Naranja':'Orange'};
+    var first=s.split(' ')[0];
+    if(map[first]) s=map[first]+' '+s.split(' ').slice(1).join(' ');
+    return s.trim();
+  }
+  function splitModel(raw){
+    if(!raw) return {brand:'',model:'',version:''};
+    var s=String(raw).trim().replace(/\s+/g,' ');
+    var parts=s.split(' ');
+    // Known brand keywords; we look for the first one in the string.
+    var brands=['AUDI','BMW','MERCEDES','MERCEDES-BENZ','VOLKSWAGEN','VW','SEAT','SKODA','PEUGEOT','RENAULT','OPEL','FIAT','TOYOTA','FORD','CITROEN','DACIA','TESLA','HYUNDAI','KIA','MINI','CUPRA','PORSCHE','VOLVO','NISSAN','ALFA','JEEP','HONDA','MAZDA','LEXUS','SUBARU','MITSUBISHI','SUZUKI','LAND ROVER','RANGE ROVER','JAGUAR','MASERATI','FERRARI','LAMBORGHINI','BENTLEY','ROLLS-ROYCE','LANCIA','SMART','DS'];
+    var upper=s.toUpperCase();
+    var brand='';var brandStartIdx=-1;
+    for(var bi=0;bi<brands.length;bi++){
+      var bk=brands[bi];
+      var ix=upper.indexOf(bk);
+      if(ix>=0&&(ix===0||upper.charAt(ix-1)===' ')){
+        var endCh=upper.charAt(ix+bk.length);
+        if(endCh===''||endCh===' '){
+          brand=bk;brandStartIdx=ix;break;
+        }
+      }
+    }
+    var afterBrand;
+    if(brand){
+      afterBrand=s.substring(brandStartIdx+brand.length).trim();
+    } else {
+      afterBrand=s;
+    }
+    var ap=afterBrand.split(' ');
+    if(!ap.length) return {brand:brand,model:'',version:''};
+    var model=ap[0];
+    var modelExtensions=['SPORTBACK','SEDAN','AVANT','SUV','PI','ALLROAD','COUPE','CABRIO','CABRIOLET','TOURER','GT','GTI'];
+    var ap2=ap.slice(1);
+    while(ap2.length&&modelExtensions.indexOf(ap2[0].toUpperCase())>=0){
+      model+=' '+ap2[0];
+      ap2.shift();
+    }
+    var version=ap2.join(' ');
+    var brandUp=brand.toUpperCase();
+    var modelUp=model.toUpperCase();
+    // Brand-specific abbreviations (DMCAR conventions)
+    if(brandUp==='AUDI'){
+      // Drop internal codes that aren't part of the public model name
+      modelUp=modelUp.replace(/\bPI\b/g,'').replace(/\s+/g,' ').trim();
+      // Sportback -> SB
+      modelUp=modelUp.replace(/\bSPORTBACK\b/g,'SB');
+    }
+    return {brand:brandUp,model:modelUp,version:version};
+  }
+
+  // Iterate data rows, group by brand|model|version
+  var groups={};
+  var defaultBrand='';  // if any row has a brand, use it as default for rows without
+  for(var ri=headerIdx+1;ri<rows.length;ri++){
+    var row=rows[ri]||[];
+    if(!row.length) continue;
+    var rawModel=c.model>=0?row[c.model]:'';
+    if(!rawModel||(c.vin>=0&&!row[c.vin]&&c.plate>=0&&!row[c.plate])) continue;
+    var sm=splitModel(rawModel);
+    if(sm.brand) defaultBrand=sm.brand;
+    if(!sm.brand) sm.brand=defaultBrand;
+    // Re-apply brand-specific abbreviations now that brand is known (in case it came from defaultBrand)
+    if(sm.brand==='AUDI'){
+      sm.model=sm.model.replace(/\bPI\b/g,'').replace(/\s+/g,' ').trim();
+      sm.model=sm.model.replace(/\bSPORTBACK\b/g,'SB');
+    }
+    var key=sm.brand+'|'+sm.model+'|'+sm.version;
+    if(!groups[key]) groups[key]={brand:sm.brand,model:sm.model,version:sm.version,rows:[]};
+    groups[key].rows.push({
+      plate: c.plate>=0?String(row[c.plate]||'').trim():'',
+      vin: c.vin>=0?String(row[c.vin]||'').trim():'',
+      reg: fmtDate(c.reg>=0?row[c.reg]:null),
+      kms: num(c.kms>=0?row[c.kms]:0),
+      color: shortColor(c.color>=0?row[c.color]:''),
+      buy: num(c.buy>=0?row[c.buy]:0),
+      damage: num(c.damage>=0?row[c.damage]:0),
+      sell: num(c.sell>=0?row[c.sell]:0)
+    });
+  }
+
+  // Build aggregated vehicle entries
+  var vehicles=Object.keys(groups).map(function(k){
+    var g=groups[k];var rs=g.rows;var sz=rs.length;
+    var sum=function(arr,f){return arr.reduce(function(a,b){return a+(f(b)||0);},0);};
+    var avgKms=sz?Math.round(sum(rs,function(r){return r.kms;})/sz):0;
+    var avgDmg=sz?Math.round(sum(rs,function(r){return r.damage;})/sz):0;
+    var avgBuy=sz?Math.round(sum(rs,function(r){return r.buy;})/sz):0;
+    var avgSell=sz?Math.round(sum(rs,function(r){return r.sell;})/sz):0;
+    var allColors=[];rs.forEach(function(r){if(r.color&&allColors.indexOf(r.color)<0)allColors.push(r.color);});
+    var firstReg=rs.find(function(r){return r.reg;});
+    var inner=rs.map(function(r){return {vin:r.vin||'--',color:r.color||'',kms:String(r.kms||''),damage:String(r.damage||''),reg:r.reg||'',plate:r.plate||''};});
+    return {
+      brand: g.brand,
+      model: g.model,
+      version: g.version,
+      reg: firstReg?firstReg.reg:'',
+      kms: String(avgKms),
+      avgKms: sz>1,
+      colors: allColors.join(', '),
+      damage: String(avgDmg),
+      avgDamages: sz>1,
+      units: String(sz),
+      equip: '',
+      buy: String(avgBuy),
+      sell: avgSell?String(avgSell):'',
+      pickup: '',
+      status: 'Stock',
+      notes: '--',
+      vehicles: inner
+    };
+  });
+  return {vehicles:vehicles,totalUnits:vehicles.reduce(function(s,v){return s+parseInt(v.units,10);},0),supplier:''};
 }
 
 function iHandleResp(resp,manualSup){
@@ -1600,17 +1835,27 @@ function poEqTab(t){
 
 function openPreOfferModal(ctx,onDone){
   var o=ctx.offer;
+  // DEBUG: log context to help diagnose VIN issues
+  console.log('[NEXO debug] openPreOfferModal called for:',o.title);
+  console.log('[NEXO debug] ctx.vins:',ctx.vins);
+  console.log('[NEXO debug] ctx.hasEquip:',ctx.hasEquip);
+  console.log('[NEXO debug] stockId:',ctx.stockId);
+  // Find the actual stock item to show what vehicles[] looks like
+  var stkItem=stock.find(function(s){return s.id===ctx.stockId;});
+  console.log('[NEXO debug] stock item vehicles[]:',stkItem?stkItem.vehicles:'NOT FOUND');
   // Summary header
   n('po-summary').innerHTML=
     '<div style="font-weight:700;color:var(--acc);margin-bottom:4px">'+esc(o.title)+'</div>'+
     '<div>'+esc(o.units)+' uds &middot; '+esc(o.price||'sin precio')+' &middot; '+esc(o.lang||'EN')+'</div>';
 
   // Reset VIN section
-  document.querySelectorAll('input[name="po-vin-mode"]').forEach(function(r){r.checked=(r.value==='no');});
-  n('po-vin-row').style.display='none';
+  // VIN section: pre-select "Incluir VIN" if VINs are available, otherwise default to "No"
+  var hasVins=ctx.vins&&ctx.vins.length>0;
+  document.querySelectorAll('input[name="po-vin-mode"]').forEach(function(r){r.checked=(hasVins?(r.value==='yes'):(r.value==='no'));});
+  n('po-vin-row').style.display=hasVins?'block':'none';
   var sel=n('po-vin-sel');
   sel.innerHTML='';
-  if(ctx.vins&&ctx.vins.length){
+  if(hasVins){
     ctx.vins.forEach(function(v,idx){
       var op=document.createElement('option');
       op.value=v;op.textContent=v;
@@ -1667,10 +1912,16 @@ function openPreOfferModal(ctx,onDone){
   n('po-ok').onclick=function(){
     // VIN
     var vinMode=document.querySelector('input[name="po-vin-mode"]:checked').value;
+    console.log('[NEXO debug] po-ok clicked. vinMode=',vinMode);
     if(vinMode==='yes'){
       var custom=n('po-vin-custom').value.trim();
       var fromSel=n('po-vin-sel').value||'';
       o.vin=custom||fromSel||'';
+      console.log('[NEXO debug] custom=',custom,'fromSel=',fromSel,'final o.vin=',o.vin);
+      if(!o.vin){
+        alert('Has marcado "Incluir VIN" pero no hay VIN seleccionado ni escrito. Escribe uno o selecciona "No incluir VIN".');
+        return;
+      }
     } else {
       o.vin='';
     }
@@ -1908,18 +2159,32 @@ function fetchTemplate(cb){
   }).catch(function(e){cb(e);});
 }
 
+// GitHub logos folder (preferred — no CORS issues). Filename = brand lowercase + .png
+var LOGOS_GITHUB_BASE='https://kekkoibz.github.io/nexo-dmcar/logos/';
+
 function fetchLogoBytes(brand,cb){
-  var url=getLogo(brand);
-  if(!url){cb(null,null);return;}
-  fetch(url).then(function(r){
-    if(!r.ok) throw new Error('Logo HTTP '+r.status);
-    return r.arrayBuffer();
-  }).then(function(buf){
-    var ext=url.toLowerCase().indexOf('.png')>=0?'png':'jpeg';
-    cb(null,{bytes:buf,ext:ext});
+  if(!brand){cb(null,null);return;}
+  var brandLc=String(brand).toLowerCase().replace(/\s+/g,'-');
+  var ghUrl=LOGOS_GITHUB_BASE+brandLc+'.png';
+  // Try GitHub first
+  fetch(ghUrl).then(function(r){
+    if(r.ok) return r.arrayBuffer().then(function(buf){
+      console.log('[NEXO] Logo loaded from GitHub:',ghUrl);
+      cb(null,{bytes:buf,ext:'png'});
+    });
+    // GitHub doesn't have it — try carlogos.org as fallback
+    var fallbackUrl=getLogo(brand);
+    if(!fallbackUrl){console.warn('[NEXO] No logo URL for brand:',brand);cb(null,null);return;}
+    return fetch(fallbackUrl).then(function(r2){
+      if(!r2.ok) throw new Error('Logo HTTP '+r2.status);
+      return r2.arrayBuffer();
+    }).then(function(buf){
+      var ext=fallbackUrl.toLowerCase().indexOf('.png')>=0?'png':'jpeg';
+      console.log('[NEXO] Logo loaded from carlogos.org fallback:',fallbackUrl);
+      cb(null,{bytes:buf,ext:ext});
+    });
   }).catch(function(e){
-    // Logo fetch failed (CORS or 404). Continue without logo.
-    console.warn('Logo fetch failed for '+brand+':',e.message);
+    console.warn('[NEXO] Logo fetch FAILED for "'+brand+'": '+e.message+'. Probably CORS — upload logo to '+ghUrl);
     cb(null,null);
   });
 }
@@ -1966,7 +2231,7 @@ function buildOfferLines(o){
     'COLORES': o.colors?{label:L.colors, value:o.colors}:null,
     'UNIDADES DISPONIBLES': o.units?{label:L.units, value:o.units}:null,
     'ENTREGA': o.delivery?{label:L.del, value:o.delivery}:null,
-    'EQUIPAMIENTO': o.equipment?{label:L.equip, value:o.equipment, block:true}:null
+    'EQUIPAMIENTO': {label:L.equip, value:o.equipment||'Standard', block:true}
   };
 }
 
@@ -2048,6 +2313,9 @@ function genWordDoc(o,cb){
                   // We replace the WHOLE run wrapping each placeholder with two runs:
                   // bold label + non-bold value. For Date/TITULO (label==='') just swap text.
                   var lines=buildOfferLines(o);
+                  console.log('[NEXO debug] Generating docx for offer:',o.title);
+                  console.log('[NEXO debug] o.vin=',o.vin,'o.equipment=',o.equipment,'o.registration=',o.registration);
+                  console.log('[NEXO debug] lines.VIN=',lines.VIN);
                   function findPlaceholderRun(xml,key){
                     // Locate <w:t...>{{KEY}}</w:t> first, then walk back to the nearest <w:r ... > or <w:r>
                     var keyEsc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
