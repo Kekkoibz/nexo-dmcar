@@ -165,7 +165,7 @@ input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
 .oeq{font-size:11px;text-align:center;color:#333;margin-top:2px}
 .oftr{border-top:1px solid #eee;margin-top:10px;padding-top:5px;font-size:9px;color:#888;text-align:center}
 /* CONTACTS */
-.cg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.contg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .cc{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px}
 .cav{width:36px;height:36px;background:linear-gradient(135deg,#1e3a5f,#2d4a7a);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
 /* STOCK detail */
@@ -176,7 +176,7 @@ input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
   #sb{position:fixed;height:100vh;transform:translateX(-220px)}
   #sb.mob{transform:none}
   .stats{grid-template-columns:1fr 1fr}
-  .g2,.g3,.cg{grid-template-columns:1fr}
+  .g2,.g3,.contg{grid-template-columns:1fr}
   #content{padding:12px}
 }
 </style>
@@ -405,7 +405,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bp" onclick="openM('m-contact')">+ Contacto</button>
         </div>
       </div>
-      <div class="cg" id="cont-grid"></div>
+      <div class="contg" id="cont-grid"></div>
     </div>
 
     <!-- LEADS -->
@@ -456,6 +456,13 @@ En que te puedo ayudar hoy?</div></div>
             <div style="text-align:center;padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif" id="cfg-t">0</div><div style="font-size:11px;color:var(--t3)">Tareas</div></div>
             <div style="text-align:center;padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:22px;font-weight:800;font-family:'Syne',sans-serif" id="cfg-o">0</div><div style="font-size:11px;color:var(--t3)">Ofertas</div></div>
           </div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Exporta un backup completo (Stock, Contactos, Leads, Tareas, Ofertas) o restaura desde un archivo JSON.</div>
+          <div class="fc g8" style="flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn bok" onclick="exportAll()">&#11123; Exportar backup JSON</button>
+            <label for="restore-file" class="fb" style="cursor:pointer">&#128229; Importar backup JSON</label>
+            <input type="file" id="restore-file" accept=".json,application/json" style="display:none" onchange="importAll(this)">
+          </div>
+          <div id="backup-msg" style="font-size:11px;margin-bottom:10px;min-height:14px"></div>
           <button class="btn bd" onclick="clrAll()">Borrar todos los datos</button>
         </div>
       </div>
@@ -569,14 +576,64 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">Generar Oferta Word</div><button class="btn bg" onclick="closeM('m-gstk')" style="padding:5px 10px">X</button></div>
     <div id="gs-sum" class="mb14" style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:8px;padding:12px;line-height:1.9"></div>
     <div class="g2 mb12"><div><label>Margen</label><input type="text" id="gs-margin" placeholder="+500 EUR o 10%"></div><div><label>Idioma</label><select id="gs-lang"><option value="EN">English</option><option value="ES">Espanol</option><option value="IT">Italiano</option><option value="FR">Francais</option><option value="DE">Deutsch</option></select></div></div>
-    <div class="mb14">
-      <label>Formato</label>
-      <div class="fc g12 mt8">
-        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="gs-fmt" value="sep" checked style="width:auto"> Un Word por modelo</label>
-        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="gs-fmt" value="sum" style="width:auto"> Resumen 1 pagina</label>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:14px;line-height:1.5">Se genera un archivo Word por cada modelo seleccionado. Si hay varias unidades del mismo modelo, se calculan medias de Kms y Daños automaticamente.</div>
+    <button class="btn bp" style="width:100%" onclick="genFrmStk()">&#9889; Generar Word</button>
+  </div>
+</div>
+
+<!-- PRE-OFFER (per-vehicle: ask VIN + missing equipment) -->
+<div class="ovl" id="m-preofr">
+  <div class="modal xl">
+    <div class="fbet mb14"><div class="mt">Datos para la oferta</div><button class="btn bg" id="po-cancel" style="padding:5px 10px">X</button></div>
+    <div id="po-summary" class="mb14" style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:8px;padding:12px;line-height:1.6"></div>
+
+    <!-- VIN section -->
+    <div class="card mb12">
+      <div class="ct">VIN de ejemplo</div>
+      <div class="fc g10 mb10" style="flex-wrap:wrap">
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="po-vin-mode" value="no" checked style="width:auto"> No incluir VIN</label>
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="po-vin-mode" value="yes" style="width:auto"> Incluir VIN</label>
+      </div>
+      <div id="po-vin-row" style="display:none">
+        <select id="po-vin-sel" style="margin-bottom:8px"></select>
+        <input type="text" id="po-vin-custom" placeholder="O escribe un VIN manualmente">
       </div>
     </div>
-    <button class="btn bp" style="width:100%" onclick="genFrmStk()">&#9889; Enviar al Asistente</button>
+
+    <!-- Equipment section (shown only when stock entry has no equipment) -->
+    <div class="card mb12" id="po-eq-card" style="display:none">
+      <div class="ct">Equipamiento</div>
+      <div style="font-size:11px;color:var(--orange);margin-bottom:10px">Esta entrada del Stock no tiene equipamiento. Puedes anadirlo ahora (se guardara en Stock para futuras ofertas).</div>
+      <div class="fc g10 mb10" style="flex-wrap:wrap">
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="po-eq-mode" value="skip" checked style="width:auto"> Generar sin equipamiento</label>
+        <label class="fc g6" style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--t2);cursor:pointer;font-weight:400"><input type="radio" name="po-eq-mode" value="add" style="width:auto"> Anadir equipamiento</label>
+      </div>
+      <div id="po-eq-row" style="display:none">
+        <div class="tabs">
+          <button class="tab on" id="po-eqtab-text" onclick="poEqTab('text')">&#128203; Texto</button>
+          <button class="tab" id="po-eqtab-file" onclick="poEqTab('file')">&#128206; Archivo</button>
+          <button class="tab" id="po-eqtab-img" onclick="poEqTab('img')">&#128247; Imagen</button>
+        </div>
+        <div class="tp on" id="po-eqp-text">
+          <textarea id="po-eq-text" rows="5" placeholder="Pega lista de equipamiento. Ej:&#10;Pack Allure - LED - Rear Camera - Apple CarPlay - ..."></textarea>
+        </div>
+        <div class="tp" id="po-eqp-file">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Sube PDF, Word o EML con el equipamiento. NEXO extraera la lista.</div>
+          <label for="po-eq-file" class="fb">&#128206; Seleccionar archivo</label>
+          <input type="file" id="po-eq-file" accept=".pdf,.docx,.doc,.eml,.msg" style="display:none">
+          <span id="po-eq-fn" style="margin-left:10px;font-size:11px;color:var(--acc)"></span>
+        </div>
+        <div class="tp" id="po-eqp-img">
+          <div style="font-size:11px;color:var(--t3);margin-bottom:8px">Foto o screenshot con la lista de equipamiento.</div>
+          <label for="po-eq-img" class="fb">&#128247; Seleccionar imagen</label>
+          <input type="file" id="po-eq-img" accept=".jpg,.jpeg,.png" style="display:none">
+          <div id="po-eq-imgprev" style="margin-top:10px"></div>
+        </div>
+        <div id="po-eq-status" style="font-size:11px;color:var(--acc);margin-top:8px;min-height:14px"></div>
+      </div>
+    </div>
+
+    <button class="btn bp" style="width:100%" id="po-ok">&#9889; Generar oferta</button>
   </div>
 </div>
 
@@ -726,6 +783,148 @@ function fmtD(s){if(!s)return '--';try{return new Date(s+'T12:00:00').toLocaleDa
 function isOD(s){return s&&new Date(s+'T23:59:00')<new Date();}
 function fnum(s){return parseFloat((s||'0').toString().replace(/[^0-9.]/g,''))||0;}
 function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+// EML/MIME parser: handles multipart, base64, quoted-printable, HTML stripping
+function parseEml(raw){
+  if(!raw) return '';
+  function decodeBase64(s){
+    try{
+      var clean=s.replace(/[^A-Za-z0-9+/=]/g,'');
+      var bin=atob(clean);
+      // Treat as UTF-8
+      var bytes=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      try{return new TextDecoder('utf-8').decode(bytes);}
+      catch(e){return bin;}
+    }catch(e){return s;}
+  }
+  function decodeQP(s){
+    // Soft line breaks
+    var out=s.replace(/=\r?\n/g,'');
+    // =XX byte sequences -> collect bytes then UTF-8 decode
+    out=out.replace(/(?:=[0-9A-Fa-f]{2})+/g,function(m){
+      var bytes=[];
+      for(var i=0;i<m.length;i+=3) bytes.push(parseInt(m.substr(i+1,2),16));
+      try{return new TextDecoder('utf-8').decode(new Uint8Array(bytes));}
+      catch(e){
+        var s='';for(var j=0;j<bytes.length;j++) s+=String.fromCharCode(bytes[j]);return s;
+      }
+    });
+    return out;
+  }
+  function stripHtml(s){
+    return s.replace(/<style[\s\S]*?<\/style>/gi,' ')
+            .replace(/<script[\s\S]*?<\/script>/gi,' ')
+            .replace(/<br\s*\/?>/gi,'\n')
+            .replace(/<\/p>/gi,'\n')
+            .replace(/<\/div>/gi,'\n')
+            .replace(/<\/li>/gi,'\n')
+            .replace(/<\/tr>/gi,'\n')
+            .replace(/<\/td>/gi,' \t')
+            .replace(/<[^>]+>/g,' ')
+            .replace(/&nbsp;/g,' ')
+            .replace(/&amp;/g,'&')
+            .replace(/&quot;/g,'"')
+            .replace(/&#39;/g,"'")
+            .replace(/&lt;/g,'<')
+            .replace(/&gt;/g,'>')
+            .replace(/&euro;/g,'EUR')
+            .replace(/&[a-z#0-9]+;/gi,' ');
+  }
+  function cleanup(s){
+    return s.replace(/\r\n/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+  }
+  function splitHeadersBody(block){
+    var bi=block.indexOf('\r\n\r\n');
+    if(bi<0) bi=block.indexOf('\n\n');
+    if(bi<0) return {headers:'',body:block};
+    var sep=block.charAt(bi)==='\r'?4:2;
+    return {headers:block.substring(0,bi),body:block.substring(bi+sep)};
+  }
+  function getHeader(headers,name){
+    var re=new RegExp('^'+name+':\\s*([^\\r\\n]*(?:\\r?\\n[ \\t][^\\r\\n]*)*)','im');
+    var m=headers.match(re);
+    return m?m[1].replace(/\r?\n[ \t]+/g,' ').trim():'';
+  }
+  function decodePart(headers,body){
+    var enc=(getHeader(headers,'Content-Transfer-Encoding')||'').toLowerCase();
+    if(enc==='base64') return decodeBase64(body);
+    if(enc==='quoted-printable') return decodeQP(body);
+    return body;
+  }
+  function processPart(block){
+    var hb=splitHeadersBody(block);
+    var ctRaw=getHeader(hb.headers,'Content-Type');
+    var ct=ctRaw.toLowerCase();
+    // Nested multipart
+    if(ct.indexOf('multipart/')===0){
+      var bm=ctRaw.match(/boundary="?([^";\s]+)"?/i);
+      if(bm){
+        var inner=splitMultipart(hb.body,bm[1]);
+        return {kind:'nested',text:pickBest(inner)};
+      }
+      return null;
+    }
+    var decoded=decodePart(hb.headers,hb.body);
+    if(ct.indexOf('text/html')===0) return {kind:'html',text:decoded};
+    if(ct.indexOf('text/plain')===0) return {kind:'plain',text:decoded};
+    if(ct==='') return {kind:'plain',text:decoded};
+    return null;
+  }
+  function splitMultipart(body,boundary){
+    var marker='--'+boundary;
+    var parts=[];
+    var i=body.indexOf(marker);
+    if(i<0) return parts;
+    while(i>=0){
+      var next=body.indexOf(marker,i+marker.length);
+      if(next<0) break;
+      var chunk=body.substring(i+marker.length,next);
+      // Skip leading CRLF after boundary
+      chunk=chunk.replace(/^\r?\n/,'');
+      // Stop if final boundary "--"
+      if(body.substr(i+marker.length,2)==='--') break;
+      parts.push(chunk);
+      i=next;
+      if(body.substr(i+marker.length,2)==='--') break;
+    }
+    return parts;
+  }
+  function pickBest(parts){
+    var plain=null,html=null,nested=null;
+    for(var i=0;i<parts.length;i++){
+      var res=processPart(parts[i]);
+      if(!res) continue;
+      if(res.kind==='plain'&&!plain) plain=res.text;
+      else if(res.kind==='html'&&!html) html=res.text;
+      else if(res.kind==='nested'&&!nested&&res.text) nested=res.text;
+    }
+    if(plain) return plain;
+    if(nested) return nested;
+    if(html) return stripHtml(html);
+    return '';
+  }
+  // Top level
+  var top=splitHeadersBody(raw);
+  var ctRaw=getHeader(top.headers,'Content-Type');
+  var ct=ctRaw.toLowerCase();
+  var result='';
+  if(ct.indexOf('multipart/')===0){
+    var bm=ctRaw.match(/boundary="?([^";\s]+)"?/i);
+    if(bm) result=pickBest(splitMultipart(top.body,bm[1]));
+  } else {
+    var dec=decodePart(top.headers,top.body);
+    if(ct.indexOf('text/html')===0) result=stripHtml(dec);
+    else result=dec;
+  }
+  // Last-resort fallback: only if NOTHING was extracted at all
+  if(!result){
+    var fallback=top.body||'';
+    if(fallback.indexOf('<html')>=0||fallback.indexOf('<body')>=0) fallback=stripHtml(fallback);
+    result=fallback;
+  }
+  return cleanup(result);
+}
 
 function parseResp(resp){
   var bt=String.fromCharCode(96);
@@ -936,7 +1135,7 @@ function renderStkTbl(){
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">VIN</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Color</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Kms</th>';
-      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Danos EUR</th>';
+      html+='<th style="padding:6px 14px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3)">Danos EUR</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">1a Reg</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Ubicacion</th>';
       html+='</tr></thead><tbody>';
@@ -945,8 +1144,8 @@ function renderStkTbl(){
         html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+(v.vin||'--')+'</td>';
         html+='<td style="padding:6px 10px;font-size:12px">'+(v.color||'--')+'</td>';
         html+='<td style="padding:6px 10px;font-size:12px;text-align:right">'+(v.kms||'--')+'</td>';
-        html+='<td style="padding:6px 10px;font-size:12px;font-weight:600;text-align:right;color:var(--orange);white-space:nowrap">'+(v.damage||'--')+'</td>';
-        html+='<td style="padding:6px 6px 6px 16px;font-size:12px;white-space:nowrap;border-left:3px solid var(--blue)">  '+(v.reg||'--')+'</td>';
+        html+='<td style="padding:6px 14px;font-size:12px;font-weight:600;text-align:center;color:var(--orange);white-space:nowrap">'+(v.damage||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px;white-space:nowrap">'+(v.reg||'--')+'</td>';
         html+='<td style="padding:6px 10px;font-size:11px;color:var(--t3)">'+(v.location||'--')+'</td>';
         html+='</tr>';
       });
@@ -1165,14 +1364,9 @@ function iLoadFile(file){
   if(ext==='eml'||ext==='msg'){
     var r=new FileReader();
     r.onload=function(e){
-      var raw=e.target.result;
-      var bi=raw.indexOf('\r\n\r\n');if(bi<0) bi=raw.indexOf('\n\n');
-      var txt=bi>=0?raw.substring(bi+2):raw;
-      txt=txt.replace(/=\r\n/g,'').replace(/=\n/g,'');
-      if(txt.indexOf('<html')>=0||txt.indexOf('<body')>=0){
-        txt=txt.replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
-      }
-      txt=txt.replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim().substring(0,8000);
+      var txt=parseEml(e.target.result);
+      if(!txt){n('i-status').innerHTML='<span style="color:var(--orange)">No se pudo leer el cuerpo del email. Copia el contenido y pegalo en Texto.</span>';iTab('text');return;}
+      txt=txt.substring(0,12000);
       n('i-text').value=txt;iTab('text');
       n('i-status').textContent='Email leido. Pulsa Extraer para procesar.';
     };
@@ -1207,7 +1401,7 @@ function iLoadFile(file){
     var b64=e.target.result.split(',')[1];
     var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     n('i-btn').disabled=true;n('i-status').textContent='Leyendo '+ext.toUpperCase()+'...';
-    callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
+    callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:8000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
       n('i-btn').disabled=false;
       if(err){n('i-status').textContent='Error: '+err;return;}
       iHandleResp(resp,n('i-sup').value.trim());
@@ -1236,7 +1430,7 @@ function iProcess(){
   if(active==='img'){
     if(!imgB64){alert('Selecciona una imagen primero');return;}
     n('i-btn').disabled=true;n('i-status').textContent='Analizando imagen...';
-    callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:imgMT||'image/jpeg',data:imgB64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
+    callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:8000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:imgMT||'image/jpeg',data:imgB64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
       n('i-btn').disabled=false;
       if(err){n('i-status').textContent='Error: '+err;return;}
       iHandleResp(resp,sup);
@@ -1253,7 +1447,7 @@ function iProcess(){
   var text=n('i-text').value.trim();
   if(!text){alert('Pega el texto primero');return;}
   n('i-btn').disabled=true;n('i-status').textContent='Extrayendo datos...';
-  callAPIbody({model:'claude-sonnet-4-5',max_tokens:8000,system:SI_SYS,messages:[{role:'user',content:text}]},function(resp,err){
+  callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:8000,system:SI_SYS,messages:[{role:'user',content:text}]},function(resp,err){
     n('i-btn').disabled=false;
     if(err){n('i-status').textContent='Error: '+err;return;}
     iHandleResp(resp,sup);
@@ -1299,26 +1493,258 @@ function openGenStk(){
 
 function genFrmStk(){
   var sel=stock.filter(function(i){return stkSel.has(i.id);});
+  if(!sel.length){alert('Selecciona al menos un vehiculo');return;}
   var margin=n('gs-margin').value.trim()||'+500 EUR';
   var lang=n('gs-lang').value;
-  var fmt=document.querySelector('input[name="gs-fmt"]:checked').value;
+
+  // Group by brand|model|version
   var groups={};
-  sel.forEach(function(i){var k=i.brand+'|'+i.model+'|'+i.version;if(!groups[k])groups[k]=[];groups[k].push(i);});
-  var offerData=Object.keys(groups).map(function(k){
-    var g=groups[k];var f=g[0];
-    var avgK=g.length>1;var avgD=g.length>1;
-    var kmsA=Math.round(g.reduce(function(s,i){return s+fnum(i.kms);},0)/g.length);
-    var dmgA=Math.round(g.reduce(function(s,i){return s+fnum(i.damage);},0)/g.length);
-    var allC=[];g.forEach(function(i){(i.colors||'').split(',').forEach(function(c){var ct=c.trim();if(ct&&allC.indexOf(ct)<0)allC.push(ct);});});
-    var buyN=fnum(f.buy);var mN=parseFloat((margin||'0').replace(/[^0-9.]/g,''))||500;
-    var sellP=buyN?(buyN+mN).toLocaleString('es-ES')+' EUR':f.sell||f.buy||'';
-    return {title:f.brand+' '+f.model+' '+f.version,date:today(),lang:lang,price:sellP,registration:f.reg||'',kms:avgK?String(kmsA):f.kms,avgKms:avgK,damages:avgD?String(dmgA)+' EUR':(f.damage+' EUR'),avgDamages:avgD,colors:allC.join(', '),units:String(g.length),delivery:f.status||'Stock',equipment:f.equip||''};
+  sel.forEach(function(i){
+    var k=i.brand+'|'+i.model+'|'+i.version;
+    if(!groups[k])groups[k]=[];
+    groups[k].push(i);
   });
+
+  // Build one offer per group, plus the source group context (for VINs and equipment writeback)
+  var pending=Object.keys(groups).map(function(k){
+    var g=groups[k];var f=g[0];
+    var fleetSize=0;
+    g.forEach(function(i){fleetSize+=(i.vehicles&&i.vehicles.length)?i.vehicles.length:1;});
+    var isFleet=fleetSize>1;
+    var avgK=isFleet||g.length>1||!!f.avgKms;
+    var avgD=isFleet||g.length>1||!!f.avgDamages;
+    var kmsA=g.length>1?Math.round(g.reduce(function(s,i){return s+fnum(i.kms);},0)/g.length):fnum(f.kms);
+    var dmgA=g.length>1?Math.round(g.reduce(function(s,i){return s+fnum(i.damage);},0)/g.length):fnum(f.damage);
+    var allC=[];
+    function addC(s){(s||'').split(',').forEach(function(c){var ct=c.trim();if(ct&&allC.indexOf(ct)<0)allC.push(ct);});}
+    g.forEach(function(i){addC(i.colors);if(i.vehicles)i.vehicles.forEach(function(v){addC(v.color);});});
+    var buyN=fnum(f.buy);
+    var mN=parseFloat((margin||'0').replace(/[^0-9.]/g,''))||500;
+    var marginIsPct=margin.indexOf('%')>=0;
+    var sellN=buyN?(marginIsPct?buyN*(1+mN/100):buyN+mN):0;
+    var sellP=sellN?Math.round(sellN).toLocaleString('es-ES')+' €':(f.sell||f.buy||'');
+    var totalUnits=g.reduce(function(s,i){
+      if(i.vehicles&&i.vehicles.length) return s+i.vehicles.length;
+      var u=String(i.units||'1').toLowerCase();
+      if(u==='varias'||u==='several') return s+1;
+      return s+(parseInt(u,10)||1);
+    },0);
+    // Collect VINs available in the group (from inner vehicles[])
+    var vins=[];
+    g.forEach(function(i){if(i.vehicles)i.vehicles.forEach(function(v){if(v.vin&&v.vin!=='--'&&vins.indexOf(v.vin)<0)vins.push(v.vin);});});
+    var rawEquip=(f.equip&&f.equip!=='--')?f.equip:'';
+    return {
+      stockId: f.id,
+      vins: vins,
+      hasEquip: !!rawEquip,
+      offer: {
+        brand: f.brand,
+        model: f.model,
+        version: f.version,
+        title: buildSmartTitle(f.brand,f.model,f.version),
+        date: today(),
+        lang: lang,
+        margin: margin,
+        price: sellP,
+        registration: f.reg||'',
+        kms: String(kmsA||f.kms||''),
+        avgKms: avgK,
+        damages: String(dmgA||fnum(f.damage)||0)+' €',
+        avgDamages: avgD,
+        colors: allC.join(', '),
+        units: String(totalUnits||g.length),
+        delivery: f.status||'Stock',
+        equipment: cleanEquipment(rawEquip),
+        vin: ''  // filled in pre-offer modal
+      }
+    };
+  });
+
   closeM('m-gstk');
-  var msg='Genera las ofertas Word para estos vehiculos del Stock Vivo.\nFormato: '+(fmt==='sum'?'Resumen 1 pagina':'Un Word separado por modelo')+'\nMargen: '+margin+'\n\n'+JSON.stringify(offerData,null,2);
-  n('chat-in').value=msg;
-  go('asistente');
-  setTimeout(sendMsg,100);
+  var generated=0;
+
+  function processNext(){
+    if(!pending.length){
+      if(generated>0) alert('Generadas '+generated+' oferta'+(generated!==1?'s':'')+'.');
+      SS('offerHist',offerHist);
+      renderOfertaHist();renderDash();
+      return;
+    }
+    var ctx=pending.shift();
+    openPreOfferModal(ctx,function(confirmed){
+      if(!confirmed){processNext();return;}
+      genWordDoc(ctx.offer,function(err){
+        if(err){
+          if(!confirm('Error en "'+ctx.offer.title+'": '+err.message+'\n\nContinuar con las siguientes?')){pending=[];return processNext();}
+        } else {
+          generated++;
+          offerHist.push(Object.assign({},ctx.offer,{id:Date.now()+Math.floor(Math.random()*9999),savedAt:new Date().toISOString()}));
+        }
+        setTimeout(processNext,500);
+      });
+    });
+  }
+  processNext();
+}
+
+// -- PRE-OFFER MODAL (VIN + missing equipment) ------------------------------
+var _poImgB64=null,_poImgMt=null,_poFile=null;
+
+function poEqTab(t){
+  ['text','file','img'].forEach(function(x){
+    var p=n('po-eqp-'+x);var b=n('po-eqtab-'+x);
+    if(p) p.className='tp'+(x===t?' on':'');
+    if(b) b.className='tab'+(x===t?' on':'');
+  });
+}
+
+function openPreOfferModal(ctx,onDone){
+  var o=ctx.offer;
+  // Summary header
+  n('po-summary').innerHTML=
+    '<div style="font-weight:700;color:var(--acc);margin-bottom:4px">'+esc(o.title)+'</div>'+
+    '<div>'+esc(o.units)+' uds &middot; '+esc(o.price||'sin precio')+' &middot; '+esc(o.lang||'EN')+'</div>';
+
+  // Reset VIN section
+  document.querySelectorAll('input[name="po-vin-mode"]').forEach(function(r){r.checked=(r.value==='no');});
+  n('po-vin-row').style.display='none';
+  var sel=n('po-vin-sel');
+  sel.innerHTML='';
+  if(ctx.vins&&ctx.vins.length){
+    ctx.vins.forEach(function(v,idx){
+      var op=document.createElement('option');
+      op.value=v;op.textContent=v;
+      if(idx===0) op.selected=true;
+      sel.appendChild(op);
+    });
+    sel.style.display='block';
+  } else {
+    sel.style.display='none';
+  }
+  n('po-vin-custom').value='';
+
+  // Reset equipment section (only show if missing)
+  var eqCard=n('po-eq-card');
+  if(ctx.hasEquip){
+    eqCard.style.display='none';
+  } else {
+    eqCard.style.display='block';
+    document.querySelectorAll('input[name="po-eq-mode"]').forEach(function(r){r.checked=(r.value==='skip');});
+    n('po-eq-row').style.display='none';
+    n('po-eq-text').value='';
+    n('po-eq-fn').textContent='';
+    n('po-eq-imgprev').innerHTML='';
+    n('po-eq-status').textContent='';
+    _poImgB64=null;_poImgMt=null;_poFile=null;
+    poEqTab('text');
+  }
+
+  // VIN radio toggle
+  document.querySelectorAll('input[name="po-vin-mode"]').forEach(function(r){
+    r.onchange=function(){n('po-vin-row').style.display=(this.value==='yes')?'block':'none';};
+  });
+  // Equipment radio toggle
+  document.querySelectorAll('input[name="po-eq-mode"]').forEach(function(r){
+    r.onchange=function(){n('po-eq-row').style.display=(this.value==='add')?'block':'none';};
+  });
+
+  // File input handlers
+  n('po-eq-file').onchange=function(){var f=this.files[0];if(f){_poFile=f;n('po-eq-fn').textContent=f.name;}};
+  n('po-eq-img').onchange=function(){
+    var f=this.files[0];if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var src=e.target.result;
+      _poImgB64=src.split(',')[1];
+      _poImgMt=f.name.toLowerCase().endsWith('.png')?'image/png':'image/jpeg';
+      n('po-eq-imgprev').innerHTML='<img src="'+src+'" style="max-width:100%;max-height:140px;border-radius:8px;margin-top:8px">';
+    };
+    rd.readAsDataURL(f);
+  };
+
+  // Buttons
+  n('po-cancel').onclick=function(){closeM('m-preofr');onDone(false);};
+  n('po-ok').onclick=function(){
+    // VIN
+    var vinMode=document.querySelector('input[name="po-vin-mode"]:checked').value;
+    if(vinMode==='yes'){
+      var custom=n('po-vin-custom').value.trim();
+      var fromSel=n('po-vin-sel').value||'';
+      o.vin=custom||fromSel||'';
+    } else {
+      o.vin='';
+    }
+
+    // Equipment
+    var eqMode='skip';
+    var eqModeEl=document.querySelector('input[name="po-eq-mode"]:checked');
+    if(eqModeEl) eqMode=eqModeEl.value;
+
+    if(ctx.hasEquip||eqMode==='skip'){
+      // No extraction needed
+      closeM('m-preofr');onDone(true);return;
+    }
+
+    // Extract equipment from chosen source
+    var activeTab=['text','file','img'].find(function(x){var p=n('po-eqp-'+x);return p&&p.classList.contains('on');})||'text';
+    n('po-ok').disabled=true;
+    n('po-eq-status').innerHTML='<span style="color:var(--acc)">Extrayendo equipamiento...</span>';
+
+    function applyEquip(rawText){
+      // Ask Claude to normalize: "Item1 - Item2 - Item3" single line
+      var sys='Extrae la lista de equipamiento/accesorios del coche del texto siguiente. Devuelve SOLO una linea con los items separados por " - " (espacio guion espacio). Sin numeracion, sin viñetas, sin marcas comerciales del concesionario. Si no hay equipamiento claro devuelve cadena vacia.';
+      callAPI(sys,rawText,800,function(resp,err){
+        n('po-ok').disabled=false;
+        if(err){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err)+'</span>';return;}
+        var equipLine=(resp||'').replace(/[\r\n]+/g,' ').replace(/\s{2,}/g,' ').trim();
+        // Strip any leading bullets/markdown the model may have left in
+        equipLine=equipLine.replace(/^[-•*\u2022]\s*/,'').trim();
+        var cleaned=cleanEquipment(equipLine);
+        if(!cleaned){n('po-eq-status').innerHTML='<span style="color:var(--orange)">No se detectaron items utiles. Genero sin equipamiento.</span>';o.equipment='';}
+        else{o.equipment=cleaned;}
+        // Persist back to the originating Stock row
+        var idx=stock.findIndex(function(it){return it.id===ctx.stockId;});
+        if(idx>=0){stock[idx].equip=cleaned||'--';SS('stock',stock);if(document.getElementById('view-stock').classList.contains('on')) fStk();}
+        closeM('m-preofr');onDone(true);
+      });
+    }
+
+    if(activeTab==='text'){
+      var txt=n('po-eq-text').value.trim();
+      if(!txt){n('po-eq-status').innerHTML='<span style="color:var(--red)">Pega el texto primero.</span>';n('po-ok').disabled=false;return;}
+      applyEquip(txt);
+    } else if(activeTab==='img'){
+      if(!_poImgB64){n('po-eq-status').innerHTML='<span style="color:var(--red)">Selecciona una imagen primero.</span>';n('po-ok').disabled=false;return;}
+      callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:800,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:_poImgMt||'image/jpeg',data:_poImgB64}},{type:'text',text:'Extrae la lista de equipamiento del coche que se ve en la imagen. Devuelve SOLO una linea con los items separados por " - ". Sin numeracion ni viñetas.'}]}]},function(resp,err){
+        n('po-ok').disabled=false;
+        if(err){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err)+'</span>';return;}
+        applyEquip(resp);  // pass through normalizer for safety
+      });
+    } else if(activeTab==='file'){
+      if(!_poFile){n('po-eq-status').innerHTML='<span style="color:var(--red)">Selecciona un archivo primero.</span>';n('po-ok').disabled=false;return;}
+      var ext=_poFile.name.split('.').pop().toLowerCase();
+      if(ext==='eml'||ext==='msg'){
+        var rd=new FileReader();
+        rd.onload=function(e){var txt=parseEml(e.target.result)||'';applyEquip(txt);};
+        rd.readAsText(_poFile,'utf-8');
+      } else {
+        // PDF / Word -> Claude document API
+        var rd2=new FileReader();
+        rd2.onload=function(e){
+          var b64=e.target.result.split(',')[1];
+          var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:800,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae la lista de equipamiento del coche del documento. Devuelve SOLO una linea con los items separados por " - ". Sin numeracion ni viñetas.'}]}]},function(resp,err){
+            n('po-ok').disabled=false;
+            if(err){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err)+'</span>';return;}
+            applyEquip(resp);
+          });
+        };
+        rd2.readAsDataURL(_poFile);
+      }
+    }
+  };
+
+  openM('m-preofr');
 }
 
 // -- GENERADOR OFERTAS ----------------------------------------
@@ -1341,11 +1767,8 @@ function oLoad(input){
   if(ext==='eml'||ext==='msg'){
     var r=new FileReader();
     r.onload=function(e){
-      var raw=e.target.result;var bi=raw.indexOf('\r\n\r\n');if(bi<0) bi=raw.indexOf('\n\n');
-      var txt=bi>=0?raw.substring(bi+2):raw;
-      txt=txt.replace(/=\r\n/g,'').replace(/=\n/g,'');
-      if(txt.indexOf('<html')>=0) txt=txt.replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ');
-      n('o-raw').value=txt.substring(0,8000);
+      var txt=parseEml(e.target.result);
+      n('o-raw').value=(txt||'').substring(0,12000)||'No se pudo leer el cuerpo del email.';
     };r.readAsText(file,'utf-8');return;
   }
 
@@ -1372,8 +1795,39 @@ function genOferta(){
   if(!getKey()){alert('Configura tu API key');go('config');return;}
   var L=LL[lang]||LL.EN;
   n('o-btn').textContent='Procesando...';n('o-btn').disabled=true;
-  var sys='Eres NEXO generador de ofertas DMCAR GROUP. Extrae datos y genera oferta.\nREGLAS: Titulo=MARCA MODELO VERSION TRANS. MATRICULACION: Nuevo=Al pagamento, KM0=Km 0, Usado=MM/YYYY. Sin trans=M/T. AUT/S-TRONIC/Steptronic/DCT/eDCS6/X-TRONIC. MARGEN='+margin+'. IDIOMA='+lang+'. NUNCA mostrar calculo precio.\nETIQUETAS: precio='+L.price+', reg='+L.reg+', kms='+L.kms+', danos='+L.dmg+', colores='+L.colors+', entrega='+L.del+', equip='+L.equip+', uds='+L.units+'\nJSON SOLO: {"status":"ready","offer":{"title":"TITULO","date":"DD/MM/YYYY","price":"X.XXX EUR","registration":"val","kms":"val","avgKms":false,"damages":"X EUR","avgDamages":false,"colors":"C1, C2","units":"X","delivery":"val","equipment":"I1 - I2"}}\nO: {"status":"needs_info","questions":["pregunta"]}';
-  callAPI(sys,'Oferta:\n'+raw,1200,function(resp,err){
+  var sys='Eres NEXO generador de ofertas DMCAR GROUP. Aplica las REGLAS DMCAR estrictamente y devuelve JSON puro.\n'+
+    '\nMARGEN='+margin+'. IDIOMA='+lang+'.\n'+
+    '\n=== REGLAS ===\n'+
+    'TITULO: MARCA MODELO VERSION TRANSMISION (mayusculas marca y modelo).\n'+
+    'TRANSMISION por marca:\n'+
+    ' - Audi: si la version trae S-TRONIC, usar S-TRONIC. NO anadir AUT.\n'+
+    ' - BMW: si trae Steptronic, usarlo. NO anadir AUT. Si solo "M Sport" y no se sabe -> needs_info.\n'+
+    ' - Mercedes: si trae DCT, usarlo. NO anadir AUT.\n'+
+    ' - Nissan: si trae X-TRONIC, usarlo. NO anadir AUT.\n'+
+    ' - Otras marcas: automatico generico -> AUT. Manual -> M/T. Si no se sabe -> needs_info.\n'+
+    'MATRICULACION (1a Reg):\n'+
+    ' - Nuevo (sin matricular) -> "Al pagamento" (sin fecha)\n'+
+    ' - KM 0 -> "Km 0"\n'+
+    ' - Usado -> "MM/YYYY"\n'+
+    'KMS:\n'+
+    ' - 1 coche -> kms reales del coche\n'+
+    ' - Varios usados con kms distintos -> media (avgKms=true)\n'+
+    ' - Nuevos -> "0"\n'+
+    'DANOS:\n'+
+    ' - Siempre con simbolo €\n'+
+    ' - Nuevos -> "0 €"\n'+
+    ' - Varios usados con danos distintos -> media (avgDamages=true)\n'+
+    'COLORES: lista todos los colores disponibles, separados por coma. Codigos OEM si los hay.\n'+
+    'UNIDADES: numero de unidades disponibles. "Several"/"Varias" si hay muchas no especificadas.\n'+
+    'ENTREGA: Stock | 1 Semana | 1 Mes | 1 Ano (segun datos).\n'+
+    'EQUIPAMIENTO: Una sola linea, items separados por " - ".\n'+
+    'PRECIO: el usuario indica el Net Price final. NO calcular ni modificar. Formato: "X.XXX €". Aplicar margen='+margin+' al precio compra si el usuario lo pide.\n'+
+    '\n=== ETIQUETAS POR IDIOMA ('+lang+') ===\n'+
+    'price='+L.price+', avgKms='+L.avgKms+', kms='+L.kms+', dmg='+L.dmg+', avgDmg='+L.avgDmg+', colors='+L.colors+', units='+L.units+', delivery='+L.del+', equip='+L.equip+', reg='+L.reg+'\n'+
+    '\n=== OUTPUT JSON PURO (sin markdown, sin texto extra) ===\n'+
+    '{"status":"ready","offer":{"brand":"AUDI","model":"A3 SPORTBACK","version":"35TFSI S-Line 150CV S-TRONIC","title":"AUDI A3 SPORTBACK 35TFSI S-Line 150CV S-TRONIC","date":"DD/MM/YYYY","price":"28.800 €","registration":"03/2025","kms":"24500","avgKms":false,"damages":"450 €","avgDamages":false,"colors":"Black Mito, Daytona Gray","units":"5","delivery":"Stock","equipment":"Adaptive Cruise Control - Matrix LED - ..."}}\n'+
+    'Si faltan datos clave (transmision, idioma, margen, tipo coche): {"status":"needs_info","questions":["pregunta 1","pregunta 2"]}';
+  callAPI(sys,'Datos del proveedor:\n'+raw,1500,function(resp,err){
     n('o-btn').textContent='Generar oferta';n('o-btn').disabled=false;
     if(err){alert('Error: '+err);return;}
     try{
@@ -1430,21 +1884,329 @@ function renderOfertaHist(){
   if(offerHist.length) n('o-hist').style.display='block';
 }
 
-function genWordDoc(o){
+// -- TEMPLATE OFFER GENERATOR (uses GitHub-hosted nexo-template.docx) --------
+var TEMPLATE_URL='https://kekkoibz.github.io/nexo-dmcar/nexo-template.docx';
+var _templateBuf=null;  // cached ArrayBuffer
+
+function ensureJSZip(cb){
+  if(window.JSZip){cb();return;}
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+  s.onload=function(){cb();};
+  s.onerror=function(){cb(new Error('No se pudo cargar JSZip (sin conexion?)'));};
+  document.head.appendChild(s);
+}
+
+function fetchTemplate(cb){
+  if(_templateBuf){cb(null,_templateBuf);return;}
+  fetch(TEMPLATE_URL,{cache:'force-cache'}).then(function(r){
+    if(!r.ok) throw new Error('Template HTTP '+r.status);
+    return r.arrayBuffer();
+  }).then(function(buf){
+    _templateBuf=buf;
+    cb(null,buf);
+  }).catch(function(e){cb(e);});
+}
+
+function fetchLogoBytes(brand,cb){
+  var url=getLogo(brand);
+  if(!url){cb(null,null);return;}
+  fetch(url).then(function(r){
+    if(!r.ok) throw new Error('Logo HTTP '+r.status);
+    return r.arrayBuffer();
+  }).then(function(buf){
+    var ext=url.toLowerCase().indexOf('.png')>=0?'png':'jpeg';
+    cb(null,{bytes:buf,ext:ext});
+  }).catch(function(e){
+    // Logo fetch failed (CORS or 404). Continue without logo.
+    console.warn('Logo fetch failed for '+brand+':',e.message);
+    cb(null,null);
+  });
+}
+
+// Build the field LINE for each placeholder (label + value with proper translation)
+// Build a clean offer title following DMCAR transmission rules
+// - If version contains a commercial transmission name (DSG, S-TRONIC, Steptronic, DCT, X-TRONIC, eDCS6),
+//   do NOT append "AUT" — strip any redundant " AUT" at the end.
+// - Otherwise leave the version as the user typed it.
+function buildSmartTitle(brand,model,version){
+  var v=(version||'').trim();
+  var commercial=/(DSG|S-TRONIC|STRONIC|Steptronic|\bDCT\b|X-TRONIC|XTRONIC|eDCS6)/i;
+  if(commercial.test(v)){
+    // strip trailing " AUT" / " AUTO" if present
+    v=v.replace(/\s+AUT(O)?\s*$/i,'').trim();
+  }
+  return ((brand||'')+' '+(model||'')+' '+v).replace(/\s+/g,' ').trim();
+}
+
+// Strip transmission terms from equipment list (already shown in title)
+// Items separated by " - " (with spaces around dash, NOT dashes inside words like DSG-7).
+// Case-insensitive matching against transmission keywords.
+function cleanEquipment(equip){
+  if(!equip) return '';
+  var transRe=/^(DSG(-?\d+)?|S-?TRONIC|STEPTRONIC|DCT|X-?TRONIC|EDCS6|AT\d+|AUT|AUTO|AUTOMATIC|M\/T|MANUAL)$/i;
+  var items=equip.split(/\s+-\s+/).map(function(s){return s.trim();}).filter(function(s){return s&&!transRe.test(s);});
+  return items.join(' - ');
+}
+
+function buildOfferLines(o){
   var lang=o.lang||'EN';var L=LL[lang]||LL.EN;
-  var logoUrl=getLogo(o.title)||'';
-  var kL=o.avgKms?L.avgKms:L.kms;var dL=o.avgDamages?L.avgDmg:L.dmg;
-  var flds=[];
-  if(o.registration) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.reg+':</strong> '+o.registration+'</p>');
-  if(o.price) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.price+':</strong> '+o.price+'</p>');
-  if(o.kms) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+kL+':</strong> '+o.kms+'</p>');
-  if(o.damages) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+dL+':</strong> '+o.damages+'</p>');
-  if(o.colors) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.colors+':</strong> '+o.colors+'</p>');
-  if(o.units) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.units+':</strong> '+o.units+'</p>');
-  if(o.delivery) flds.push('<p style="margin:2px 0;font-size:13px;text-align:center"><strong>'+L.del+':</strong> '+o.delivery+'</p>');
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;margin:0;padding:20px 28px;max-width:680px;margin:auto}.hdr{border-bottom:2px solid #0000F5;padding-bottom:6px;margin-bottom:10px;font-size:11px}.ftr{border-top:2px solid #0000F5;margin-top:16px;padding-top:6px;font-size:10px;color:#555;text-align:center}</style></head><body><div style="text-align:right;font-size:10px;color:#666;margin-bottom:4px">'+(o.date||'')+'</div><div class="hdr"><strong>Francesco Dell Agli</strong> &nbsp;+39 3429624234 &nbsp;+34 630754659 &nbsp;info@dmcargroup.com &nbsp;dmcargroup.com</div><div style="text-align:center;margin:12px 0 6px">'+(logoUrl?'<img src="'+logoUrl+'" style="height:60px;max-width:120px;object-fit:contain">':'<span style="font-size:15px;font-weight:900;color:#0000F5;letter-spacing:2px">DMCAR GROUP</span>')+'</div><h1 style="text-align:center;color:#0000F5;font-size:17px;font-weight:900;margin:0 0 12px;letter-spacing:1px">'+(o.title||'').toUpperCase()+'</h1>'+flds.join('')+(o.equipment?'<p style="color:#0000F5;font-weight:900;font-size:13px;text-align:center;margin-top:12px">'+L.equip+'</p><p style="font-size:12px;color:#333;text-align:center;margin-top:2px">'+o.equipment+'</p>':'')+'<p style="font-size:9px;color:#999;text-align:center;margin-top:12px;font-style:italic">The image shown is for illustrative purposes only.</p><div class="ftr">DMCAR GROUP SRO &nbsp;|&nbsp; Stepanska 1742/27, Praha 1 &nbsp;|&nbsp; VAT: CZ21830851 &nbsp;|&nbsp; dmcargroup.com</div></body></html>';
-  var safe=(o.title||'oferta').replace(/[^a-zA-Z0-9 ]/g,'').trim().replace(/ +/g,'_');
-  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'application/msword'}));a.download=safe+'_'+lang+'.doc';document.body.appendChild(a);a.click();document.body.removeChild(a);
+  var kL=o.avgKms?L.avgKms:L.kms;
+  var dL=o.avgDamages?L.avgDmg:L.dmg;
+  // Each entry: {label, value} -> rendered as bold label + normal value separated by ": "
+  // For Date and TITULO there is no label — pass label='' and the whole text as value (TITULO keeps its existing bold-blue rPr)
+  return {
+    'Date': {label:'', value:o.date||today()},
+    'TITULO': {label:'', value:(o.title||'').toUpperCase()},
+    'PRECIO': o.price?{label:L.price, value:o.price}:null,
+    'VIN': o.vin?{label:'VIN', value:o.vin}:null,
+    'MATRICULACION': o.registration?{label:L.reg, value:o.registration}:null,
+    'KMS': o.kms?{label:kL, value:o.kms}:null,
+    'DAÑOS': o.damages?{label:dL, value:o.damages}:null,
+    'COLORES': o.colors?{label:L.colors, value:o.colors}:null,
+    'UNIDADES DISPONIBLES': o.units?{label:L.units, value:o.units}:null,
+    'ENTREGA': o.delivery?{label:L.del, value:o.delivery}:null,
+    'EQUIPAMIENTO': o.equipment?{label:L.equip, value:o.equipment, block:true}:null
+  };
+}
+
+// XML-escape a value so replacements don't break document.xml
+function xmlEsc(s){
+  return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Detect which brand keyword is in the title (uppercase keys from LOGOS)
+function detectBrand(title){
+  var u=(title||'').toUpperCase();
+  var keys=Object.keys(LOGOS).sort(function(a,b){return b.length-a.length;});
+  for(var i=0;i<keys.length;i++){
+    if(u.indexOf(keys[i])>=0) return keys[i];
+  }
+  return null;
+}
+
+// Build a centered drawing block for an inline image (used to replace {{LOGO}})
+// cx/cy in EMU (914400 = 1 inch)
+function buildLogoDrawingXml(rId,cxEmu,cyEmu){
+  return '<w:r><w:rPr><w:noProof/></w:rPr>'+
+    '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'+
+    '<wp:extent cx="'+cxEmu+'" cy="'+cyEmu+'"/>'+
+    '<wp:effectExtent l="0" t="0" r="0" b="0"/>'+
+    '<wp:docPr id="100" name="Brand Logo"/>'+
+    '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>'+
+    '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'+
+    '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'+
+    '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'+
+    '<pic:nvPicPr><pic:cNvPr id="100" name="Brand Logo"/><pic:cNvPicPr/></pic:nvPicPr>'+
+    '<pic:blipFill><a:blip r:embed="'+rId+'"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'+
+    '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="'+cxEmu+'" cy="'+cyEmu+'"/></a:xfrm>'+
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>'+
+    '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+}
+
+// Find the next free numeric rId in document.xml.rels
+function nextRelId(relsXml){
+  var max=0;var m;var re=/Id="rId(\d+)"/g;
+  while((m=re.exec(relsXml))!==null){var v=parseInt(m[1],10);if(v>max)max=v;}
+  return 'rId'+(max+1);
+}
+
+// Ensure [Content_Types].xml has Default for the given image extension
+function ensureContentType(ctXml,ext){
+  var contentType=ext==='png'?'image/png':ext==='jpeg'||ext==='jpg'?'image/jpeg':'image/'+ext;
+  var probe='Extension="'+ext+'"';
+  if(ctXml.indexOf(probe)>=0) return ctXml;
+  var def='<Default Extension="'+ext+'" ContentType="'+contentType+'"/>';
+  // Insert before closing </Types>
+  return ctXml.replace('</Types>',def+'</Types>');
+}
+
+// Main generator
+function genWordDoc(o,cb){
+  var status=n('o-meta');var prev=status?status.textContent:'';
+  if(status) status.textContent='Generando Word...';
+  function done(err){if(typeof cb==='function') cb(err);}
+
+  ensureJSZip(function(zerr){
+    if(zerr){alert('Error cargando JSZip: '+zerr.message);if(status) status.textContent=prev;done(zerr);return;}
+
+    fetchTemplate(function(terr,buf){
+      if(terr){
+        alert('Error descargando plantilla: '+terr.message+'\n\nVerifica que '+TEMPLATE_URL+' existe.');
+        if(status) status.textContent=prev;done(terr);return;
+      }
+
+      var brand=o.brand||detectBrand(o.title);
+      fetchLogoBytes(brand,function(_le,logoData){
+        // Even if logoData is null, we still generate (without logo)
+        try{
+          window.JSZip.loadAsync(buf).then(function(zip){
+            return zip.file('word/document.xml').async('string').then(function(docXml){
+              return zip.file('word/_rels/document.xml.rels').async('string').then(function(relsXml){
+                return zip.file('[Content_Types].xml').async('string').then(function(ctXml){
+                  // === TEXT REPLACEMENTS ===
+                  // We replace the WHOLE run wrapping each placeholder with two runs:
+                  // bold label + non-bold value. For Date/TITULO (label==='') just swap text.
+                  var lines=buildOfferLines(o);
+                  function findPlaceholderRun(xml,key){
+                    // Locate <w:t...>{{KEY}}</w:t> first, then walk back to the nearest <w:r ... > or <w:r>
+                    var keyEsc=key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+                    var tRe=new RegExp('<w:t[^>]*>\\{\\{'+keyEsc+'\\}\\}<\\/w:t>');
+                    var tm=tRe.exec(xml);if(!tm) return null;
+                    var tStart=tm.index;
+                    // Find the closing </w:r> right after the <w:t>
+                    var rEnd=xml.indexOf('</w:r>',tStart);
+                    if(rEnd<0) return null;
+                    rEnd+=6;
+                    // Walk back from tStart to find the <w:r ... > opening
+                    var rOpen=xml.lastIndexOf('<w:r>',tStart);
+                    var rOpenAlt=xml.lastIndexOf('<w:r ',tStart);
+                    var rStart=Math.max(rOpen,rOpenAlt);
+                    if(rStart<0) return null;
+                    // Read full run text
+                    var runText=xml.substring(rStart,rEnd);
+                    // Extract optional rPr
+                    var rprMatch=runText.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
+                    var rprInner=rprMatch?rprMatch[1]:'';
+                    return {start:rStart,end:rEnd,rprInner:rprInner};
+                  }
+                  Object.keys(lines).forEach(function(key){
+                    var entry=lines[key];
+                    var info=findPlaceholderRun(docXml,key);
+                    if(!info){
+                      // placeholder not in template — skip silently
+                      return;
+                    }
+                    if(!entry){
+                      // Try to remove the WHOLE paragraph if this run is the only run inside it
+                      var pAlt=docXml.lastIndexOf('<w:p ',info.start);
+                      var pNoAttr=docXml.lastIndexOf('<w:p>',info.start);
+                      var pStart=Math.max(pAlt,pNoAttr);
+                      var pEnd=docXml.indexOf('</w:p>',info.end);
+                      if(pStart>=0&&pEnd>=0){
+                        pEnd+=6;
+                        var paraTxt=docXml.substring(pStart,pEnd);
+                        // Count <w:r> openings (allow either <w:r> or <w:r ...>)
+                        var runCount=(paraTxt.match(/<w:r[> ]/g)||[]).length;
+                        if(runCount===1){
+                          docXml=docXml.substring(0,pStart)+docXml.substring(pEnd);
+                          return;
+                        }
+                      }
+                      // Fallback: remove only the run
+                      docXml=docXml.substring(0,info.start)+docXml.substring(info.end);
+                      return;
+                    }
+                    if(!entry.label){
+                      // Just swap inner text, keep run as-is
+                      var newRun=docXml.substring(info.start,info.end).replace(/<w:t[^>]*>\{\{[^}]+\}\}<\/w:t>/,'<w:t xml:space="preserve">'+xmlEsc(entry.value)+'</w:t>');
+                      docXml=docXml.substring(0,info.start)+newRun+docXml.substring(info.end);
+                      return;
+                    }
+                    // BLOCK style (Equipment): replace the WHOLE paragraph with two paragraphs
+                    // 1) "Equipment:" in blue #0000F5, bold, size 16, centered
+                    // 2) items in normal weight, size 14, centered
+                    if(entry.block){
+                      // Find the <w:p ...> wrapping the run, walking back from info.start
+                      var pOpenAlt=docXml.lastIndexOf('<w:p ',info.start);
+                      var pOpenNoAttr=docXml.lastIndexOf('<w:p>',info.start);
+                      var pStart=Math.max(pOpenAlt,pOpenNoAttr);
+                      var pEnd=docXml.indexOf('</w:p>',info.end);
+                      if(pStart<0||pEnd<0){
+                        // fallback: do inline split
+                        var rprNoBold0=info.rprInner.replace(/<w:b\s*\/>/g,'').replace(/<w:bCs\s*\/>/g,'');
+                        var rprBold0=info.rprInner.indexOf('<w:b/>')<0?'<w:b/><w:bCs/>'+info.rprInner:info.rprInner;
+                        var lr='<w:r><w:rPr>'+rprBold0+'</w:rPr><w:t xml:space="preserve">'+xmlEsc(entry.label)+': </w:t></w:r>';
+                        var vr='<w:r>'+(rprNoBold0?'<w:rPr>'+rprNoBold0+'</w:rPr>':'')+'<w:t xml:space="preserve">'+xmlEsc(entry.value)+'</w:t></w:r>';
+                        docXml=docXml.substring(0,info.start)+lr+vr+docXml.substring(info.end);
+                        return;
+                      }
+                      pEnd+=6;
+                      // Extract the original <w:pPr>...</w:pPr> if present, to reuse paragraph-level formatting (centering)
+                      var paragraphText=docXml.substring(pStart,pEnd);
+                      var pprMatch=paragraphText.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+                      var pPr=pprMatch?pprMatch[0]:'<w:pPr><w:jc w:val="center"/></w:pPr>';
+                      // Label paragraph: blue #0000F5, bold, size 16 (=32 half-points)
+                      var labelP='<w:p>'+pPr+'<w:r><w:rPr><w:b/><w:bCs/><w:color w:val="0000F5"/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr><w:t xml:space="preserve">'+xmlEsc(entry.label)+':</w:t></w:r></w:p>';
+                      // Value paragraph: normal weight, size 14 (=28 half-points)
+                      var valueP='<w:p>'+pPr+'<w:r><w:rPr><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t xml:space="preserve">'+xmlEsc(entry.value)+'</w:t></w:r></w:p>';
+                      docXml=docXml.substring(0,pStart)+labelP+valueP+docXml.substring(pEnd);
+                      return;
+                    }
+                    // INLINE label + value: build two runs (same paragraph)
+                    var rprInner=info.rprInner;
+                    var rprNoBold=rprInner.replace(/<w:b\s*\/>/g,'').replace(/<w:bCs\s*\/>/g,'');
+                    var rprBold=rprInner;
+                    if(rprBold.indexOf('<w:b/>')<0&&rprBold.indexOf('<w:b ')<0) rprBold='<w:b/><w:bCs/>'+rprBold;
+                    var labelRun='<w:r><w:rPr>'+rprBold+'</w:rPr><w:t xml:space="preserve">'+xmlEsc(entry.label)+': </w:t></w:r>';
+                    var valueRun='<w:r>'+(rprNoBold?'<w:rPr>'+rprNoBold+'</w:rPr>':'')+'<w:t xml:space="preserve">'+xmlEsc(entry.value)+'</w:t></w:r>';
+                    docXml=docXml.substring(0,info.start)+labelRun+valueRun+docXml.substring(info.end);
+                  });
+
+                  // === LOGO INSERTION ===
+                  if(logoData){
+                    // Add image bytes to media folder
+                    var imgName='brand_logo.'+logoData.ext;
+                    zip.file('word/media/'+imgName,logoData.bytes);
+                    // Add relationship
+                    var rId=nextRelId(relsXml);
+                    var newRel='<Relationship Id="'+rId+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/'+imgName+'"/>';
+                    relsXml=relsXml.replace('</Relationships>',newRel+'</Relationships>');
+                    // Ensure content type
+                    ctXml=ensureContentType(ctXml,logoData.ext);
+                    // Build drawing — sizes in EMU (914400 = 1 inch). Logo around 1.4" wide x ~1" high.
+                    var drawing=buildLogoDrawingXml(rId,1300000,950000);
+                    // Replace the entire <w:r>{{rpr}}<w:t>{{LOGO}}</w:t></w:r> with the drawing run
+                    // Search for the run wrapping {{LOGO}} (regex tolerant of any rPr in between)
+                    var logoRunRe=/<w:r>(<w:rPr>[^<]*(?:<[^>]+>[^<]*)*<\/w:rPr>)?<w:t[^>]*>\{\{LOGO\}\}<\/w:t><\/w:r>/;
+                    if(logoRunRe.test(docXml)){
+                      docXml=docXml.replace(logoRunRe,drawing);
+                    } else {
+                      // Fallback: just blank the placeholder
+                      docXml=docXml.split('{{LOGO}}').join('');
+                    }
+                  } else {
+                    // No logo available -> blank placeholder
+                    docXml=docXml.split('{{LOGO}}').join('');
+                  }
+
+                  // === FOTOS placeholder (Entrega 2) -> blank for now ===
+                  docXml=docXml.split('{{FOTOS}}').join('');
+
+                  // === Save modifications back into the zip ===
+                  zip.file('word/document.xml',docXml);
+                  zip.file('word/_rels/document.xml.rels',relsXml);
+                  zip.file('[Content_Types].xml',ctXml);
+
+                  // === Generate output ===
+                  return zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+                });
+              });
+            });
+          }).then(function(blob){
+            var safe=(o.title||'oferta').replace(/[^\w\s\-\.]/g,'').replace(/\s+/g,' ').trim();
+            var fname=safe+'.docx';
+            var a=document.createElement('a');
+            a.href=URL.createObjectURL(blob);
+            a.download=fname;
+            document.body.appendChild(a);a.click();
+            setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},1000);
+            if(status) status.textContent=prev;
+            done(null);
+          }).catch(function(e){
+            alert('Error generando Word: '+e.message);
+            console.error(e);
+            if(status) status.textContent=prev;
+            done(e);
+          });
+        }catch(ex){
+          alert('Error: '+ex.message);
+          if(status) status.textContent=prev;
+          done(ex);
+        }
+      });
+    });
+  });
 }
 
 // -- CONTACTOS ------------------------------------------------
@@ -1576,6 +2338,88 @@ function saveKey(){
   setTimeout(function(){n('key-msg').innerHTML='';},2500);
 }
 function delKey(){if(!confirm('Eliminar API key?'))return;localStorage.removeItem('nx5_key');n('api-key-in').value='';updateApiStatus();}
+
+// -- BACKUP / RESTORE ----------------------------------------
+function backupMsg(text,color){
+  var el=n('backup-msg');if(!el)return;
+  el.innerHTML='<span style="color:'+(color||'var(--green)')+'">'+esc(text)+'</span>';
+  setTimeout(function(){if(el.innerHTML.indexOf(text)>=0)el.innerHTML='';},4000);
+}
+
+function exportAll(){
+  var payload={
+    app:'NEXO',
+    version:'5',
+    exportedAt:new Date().toISOString(),
+    stock:stock,
+    stkCnt:stkCnt,
+    contacts:contacts,
+    tasks:tasks,
+    leads:leads,
+    offerHist:offerHist
+  };
+  var json=JSON.stringify(payload,null,2);
+  var stamp=new Date().toISOString().replace(/[:T]/g,'-').split('.')[0];
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+  a.download='NEXO_backup_'+stamp+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  backupMsg('Backup descargado: '+a.download,'var(--green)');
+}
+
+function importAll(input){
+  var file=input.files&&input.files[0];if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    try{
+      var data=JSON.parse(e.target.result);
+      if(!data||typeof data!=='object'||data.app!=='NEXO'){
+        backupMsg('Archivo no valido: no es un backup de NEXO.','var(--red)');
+        input.value='';return;
+      }
+      // Count entities for confirmation
+      var sN=Array.isArray(data.stock)?data.stock.length:0;
+      var cN=Array.isArray(data.contacts)?data.contacts.length:0;
+      var tN=Array.isArray(data.tasks)?data.tasks.length:0;
+      var lN=Array.isArray(data.leads)?data.leads.length:0;
+      var oN=Array.isArray(data.offerHist)?data.offerHist.length:0;
+      var when=data.exportedAt?new Date(data.exportedAt).toLocaleString('es-ES'):'(fecha desconocida)';
+      var msg='Restaurar backup del '+when+'?\n\n'+
+        '- '+sN+' entradas Stock\n'+
+        '- '+cN+' contactos\n'+
+        '- '+tN+' tareas\n'+
+        '- '+lN+' leads\n'+
+        '- '+oN+' ofertas\n\n'+
+        'Esto REEMPLAZARA todos los datos actuales. La API key no se toca.';
+      if(!confirm(msg)){input.value='';return;}
+      // Apply
+      stock=Array.isArray(data.stock)?data.stock:[];
+      contacts=Array.isArray(data.contacts)?data.contacts:[];
+      tasks=Array.isArray(data.tasks)?data.tasks:[];
+      leads=Array.isArray(data.leads)?data.leads:[];
+      offerHist=Array.isArray(data.offerHist)?data.offerHist:[];
+      stkCnt=typeof data.stkCnt==='number'&&data.stkCnt>0?data.stkCnt:Math.max(1,stock.length+1);
+      // Persist
+      SS('stock',stock);SS('stkCnt',stkCnt);SS('contacts',contacts);
+      SS('tasks',tasks);SS('leads',leads);SS('offerHist',offerHist);
+      // Refresh UI
+      stkSel.clear();stkFlt=stock.slice();
+      renderConfig();renderDash();
+      if(document.getElementById('view-stock').classList.contains('on')){updBF();fStk();}
+      if(document.getElementById('view-contactos').classList.contains('on'))renderCont();
+      if(document.getElementById('view-leads').classList.contains('on'))renderLeads();
+      if(document.getElementById('view-tareas').classList.contains('on'))renderTareas();
+      renderOfertaHist();
+      backupMsg('Backup restaurado: '+sN+' stock, '+cN+' contactos, '+tN+' tareas, '+lN+' leads.','var(--green)');
+    }catch(err){
+      backupMsg('Error leyendo el archivo: '+err.message,'var(--red)');
+    }
+    input.value='';
+  };
+  r.onerror=function(){backupMsg('No se pudo leer el archivo.','var(--red)');input.value='';};
+  r.readAsText(file,'utf-8');
+}
+
 function clrAll(){
   if(!confirm('Borrar TODOS los datos de NEXO?')) return;
   ['stock','stkCnt','contacts','tasks','leads','offerHist'].forEach(function(k){localStorage.removeItem('nx5_'+k);});
@@ -1604,10 +2448,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
   renderDash();
   renderOfertaHist();
   if(window.innerWidth<=768){document.getElementById('sb').classList.add('hide');sbOpen=false;}
-  // Preload SheetJS silently
+  // Preload SheetJS + JSZip silently
   setTimeout(function(){
     if(!window.XLSX){
       var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.async=true;document.head.appendChild(s);
+    }
+    if(!window.JSZip){
+      var s2=document.createElement('script');s2.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';s2.async=true;document.head.appendChild(s2);
     }
   },3000);
   // Equipment modal
