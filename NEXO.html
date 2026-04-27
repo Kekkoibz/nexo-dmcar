@@ -2159,34 +2159,94 @@ function fetchTemplate(cb){
   }).catch(function(e){cb(e);});
 }
 
-// GitHub logos folder (preferred — no CORS issues). Filename = brand lowercase + .png
+// GitHub logos folder. Try multiple filename conventions to be tolerant with how the user uploads.
 var LOGOS_GITHUB_BASE='https://kekkoibz.github.io/nexo-dmcar/logos/';
 
+// Map abbreviated/special brand keys to more "natural" filenames the user might have used
+var LOGO_BRAND_MAP={
+  'VW':'Volkswagen',
+  'MERCEDES':'Mercedes-Benz',
+  'ALFA':'Alfa Romeo',
+  'LANDROVER':'Land Rover',
+  'RANGEROVER':'Range Rover',
+  'ASTONMARTIN':'Aston Martin'
+};
+
 function fetchLogoBytes(brand,cb){
-  if(!brand){cb(null,null);return;}
-  var brandLc=String(brand).toLowerCase().replace(/\s+/g,'-');
-  var ghUrl=LOGOS_GITHUB_BASE+brandLc+'.png';
-  // Try GitHub first
-  fetch(ghUrl).then(function(r){
-    if(r.ok) return r.arrayBuffer().then(function(buf){
-      console.log('[NEXO] Logo loaded from GitHub:',ghUrl);
-      cb(null,{bytes:buf,ext:'png'});
+  if(!brand){console.warn('[NEXO Logo] No brand provided');cb(null,null);return;}
+  var brandKey=String(brand).toUpperCase().replace(/[^A-Z]/g,'');
+  // Resolve display name (some brands have alternate naming on disk)
+  var brandDisplay=LOGO_BRAND_MAP[brandKey]||String(brand);
+  // Build candidate filenames in order of preference
+  var candidates=[];
+  function addCand(base){
+    candidates.push(base+'.png');
+    candidates.push(base+' .png');     // user added trailing space
+    candidates.push(base+'.PNG');
+    candidates.push(base+'.jpg');
+    candidates.push(base+'.jpeg');
+    candidates.push(base+'.JPG');
+    candidates.push(base+'.JPEG');
+  }
+  // 1) Exact display name (e.g., "Mercedes-Benz", "Audi")
+  addCand(brandDisplay);
+  // 2) Capitalized first letter only ("Audi", "Bmw"...)
+  var cap=brandDisplay.charAt(0).toUpperCase()+brandDisplay.slice(1).toLowerCase();
+  if(cap!==brandDisplay) addCand(cap);
+  // 3) ALL UPPERCASE ("AUDI")
+  addCand(brandDisplay.toUpperCase());
+  // 4) all lowercase ("audi")
+  addCand(brandDisplay.toLowerCase());
+  // 5) Without spaces variants
+  if(brandDisplay.indexOf(' ')>=0){
+    addCand(brandDisplay.replace(/\s+/g,''));
+    addCand(brandDisplay.replace(/\s+/g,'-'));
+    addCand(brandDisplay.replace(/\s+/g,'_'));
+  }
+
+  // Deduplicate while preserving order
+  var seen={};var unique=[];
+  for(var c=0;c<candidates.length;c++){if(!seen[candidates[c]]){seen[candidates[c]]=1;unique.push(candidates[c]);}}
+  candidates=unique;
+
+  console.log('[NEXO Logo] Trying brand:',brand,'-> candidates:',candidates.slice(0,5).join(', '),'(+',candidates.length-5,'more)');
+
+  var attempt=0;
+  function tryNext(){
+    if(attempt>=candidates.length){
+      console.error('[NEXO Logo] ❌ NONE of the '+candidates.length+' filename variants found on GitHub for "'+brand+'". Falling back to carlogos.org...');
+      // Final fallback: external CDN (probably blocked by CORS but try anyway)
+      var fallbackUrl=getLogo(brand);
+      if(!fallbackUrl){cb(null,null);return;}
+      fetch(fallbackUrl).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.arrayBuffer();
+      }).then(function(buf){
+        var ext=fallbackUrl.toLowerCase().indexOf('.png')>=0?'png':'jpeg';
+        console.log('[NEXO Logo] ✅ Loaded from carlogos.org');
+        cb(null,{bytes:buf,ext:ext});
+      }).catch(function(e){
+        console.error('[NEXO Logo] ❌ Carlogos fallback also failed:',e.message);
+        cb(null,null);
+      });
+      return;
+    }
+    var fname=candidates[attempt++];
+    var url=LOGOS_GITHUB_BASE+encodeURIComponent(fname);
+    fetch(url,{cache:'force-cache'}).then(function(r){
+      if(!r.ok){tryNext();return;}
+      return r.arrayBuffer().then(function(buf){
+        var ext=fname.toLowerCase().match(/\.(png|jpe?g)$/i);
+        ext=ext?(ext[1].toLowerCase()==='jpg'?'jpeg':ext[1].toLowerCase()):'png';
+        console.log('[NEXO Logo] ✅ Loaded from GitHub:',fname,'(',buf.byteLength,'bytes, ext='+ext+')');
+        cb(null,{bytes:buf,ext:ext});
+      });
+    }).catch(function(e){
+      // Network/CORS error -> try next variant
+      tryNext();
     });
-    // GitHub doesn't have it — try carlogos.org as fallback
-    var fallbackUrl=getLogo(brand);
-    if(!fallbackUrl){console.warn('[NEXO] No logo URL for brand:',brand);cb(null,null);return;}
-    return fetch(fallbackUrl).then(function(r2){
-      if(!r2.ok) throw new Error('Logo HTTP '+r2.status);
-      return r2.arrayBuffer();
-    }).then(function(buf){
-      var ext=fallbackUrl.toLowerCase().indexOf('.png')>=0?'png':'jpeg';
-      console.log('[NEXO] Logo loaded from carlogos.org fallback:',fallbackUrl);
-      cb(null,{bytes:buf,ext:ext});
-    });
-  }).catch(function(e){
-    console.warn('[NEXO] Logo fetch FAILED for "'+brand+'": '+e.message+'. Probably CORS — upload logo to '+ghUrl);
-    cb(null,null);
-  });
+  }
+  tryNext();
 }
 
 // Build the field LINE for each placeholder (label + value with proper translation)
