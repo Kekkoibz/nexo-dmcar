@@ -567,6 +567,7 @@ En que te puedo ayudar hoy?</div></div>
             <input type="file" id="restore-file" accept=".json,application/json" style="display:none" onchange="importAll(this)">
             <button class="btn bs" onclick="cleanStockTransmission()" style="font-size:12px">&#9881; Limpiar M/T en electricos/hibridos</button>
             <button class="btn bs" onclick="cleanStockGhosts()" style="font-size:12px">&#128465; Eliminar filas vacias / "No Stock"</button>
+            <button class="btn bs" onclick="cleanLeadNames()" style="font-size:12px">&#9881; Limpiar nombres Leads (DM duplicado)</button>
           </div>
           <div id="backup-msg" style="font-size:11px;margin-bottom:10px;min-height:14px"></div>
           <button class="btn bd" onclick="clrAll()">Borrar todos los datos</button>
@@ -1682,6 +1683,37 @@ function cleanStockGhosts(){
   SS('stock',stock);
   fStk();
   alert('Eliminadas '+removed+' filas con datos vacios o basura ("No Stock", "Total", etc.)');
+}
+
+// Strip duplicated "DM XX " prefix from manually-edited Lead names
+function cleanLeadNames(){
+  var fixed=0;
+  leads.forEach(function(l){
+    var raw=(l.name||'').trim();
+    var orig=raw;
+    // Remove ALL leading "DM XX " sequences (handles "DM IT DM IT ANTONELLO GIANNOTTI")
+    while(/^DM\s+[A-Z]{2,3}\s+/i.test(raw)){
+      raw=raw.replace(/^DM\s+[A-Z]{2,3}\s+/i,'');
+    }
+    // Remove " - Company" suffix (we keep company in its own field)
+    var dashIdx=raw.indexOf(' - ');
+    if(dashIdx>=0) raw=raw.substring(0,dashIdx);
+    raw=raw.trim();
+    if(raw&&raw!==orig){
+      // Convert "ANTONELLO GIANNOTTI" -> "Antonello Giannotti" (proper case)
+      raw=raw.split(/\s+/).map(function(w){
+        if(w.length<=1) return w.toUpperCase();
+        // Handle apostrophes like DELL'AGLI -> Dell'Agli
+        return w.split(/'/).map(function(p){return p.charAt(0).toUpperCase()+p.substring(1).toLowerCase();}).join('\'');
+      }).join(' ');
+      l.name=raw;
+      fixed++;
+    }
+  });
+  if(!fixed){alert('Los nombres ya estan limpios.');return;}
+  SS('leads',leads);
+  if(typeof renderLeads==='function') renderLeads();
+  alert('Limpiados '+fixed+' nombre'+(fixed!==1?'s':'')+' de Leads (eliminado prefijo "DM XX" duplicado).');
 }
 
 function saveManual(){
@@ -3138,7 +3170,10 @@ function renderLeadsTable(filtered){
     return '<tr'+(leadSel.has(l.id)?' style="background:rgba(37,99,235,.07)"':'')+'>'+
       '<td style="text-align:center"><input type="checkbox" class="lchk" data-id="'+l.id+'" onchange="leadsToggleOne(\''+l.id+'\',this)"'+checked+'></td>'+
       '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
-      '<td><strong>'+esc(leadDisplayName(l))+'</strong>'+(l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+'</td>'+
+      '<td><strong>'+esc(leadCleanName(l))+'</strong>'+
+        '<br><span style="font-size:9px;color:var(--t4)">&rarr; '+esc(leadDisplayName(l))+'</span>'+
+        (l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+
+      '</td>'+
       '<td style="font-size:12px">'+esc(l.company||'--')+'</td>'+
       '<td style="font-size:12px;color:var(--t2)">'+esc(l.country||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
@@ -3150,11 +3185,11 @@ function renderLeadsTable(filtered){
       '<td><span class="tag '+sc+'">'+esc(l.status)+'</span></td>'+
       '<td style="font-size:10px;color:var(--t3)">'+fmtD(l.createdAt||'')+'</td>'+
       '<td><div class="fc g4">'+
-        '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar">&#9998;</button>'+
-        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp Web">&#128172;</button>'+
-        '<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje">&#128203;</button>'+
-        '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google">&#128241;</button>'+
-        '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar">x</button>'+
+        '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar '+esc(leadCleanName(l))+'">&#9998;</button>'+
+        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp a '+esc(leadCleanName(l))+'">&#128172;</button>'+
+        '<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje para '+esc(leadCleanName(l))+'">&#128203;</button>'+
+        '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google: '+esc(leadCleanName(l))+'">&#128241;</button>'+
+        '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar '+esc(leadCleanName(l))+'">x</button>'+
       '</div></td>'+
     '</tr>';
   }).join('');
@@ -3419,11 +3454,34 @@ function delLead(id){
 }
 
 // Build the "DM IT ANTONELLO GIANNOTTI - Elite cars" name format the user wants
+// Idempotent: if the name already starts with "DM " (because user manually edited it before), use it as-is
 function leadDisplayName(l){
+  var rawName=(l.name||'').trim();
+  // Detect already-formatted names like "DM IT ANTONELLO GIANNOTTI" or "DM IT ANTONELLO GIANNOTTI - Elite cars"
+  if(/^DM\s+[A-Z]{2,3}\s+/i.test(rawName)){
+    // The name field already has the prefix — return as-is, don't double it
+    // If the company is missing from the name and we have l.company, append it
+    if(l.company&&rawName.indexOf(' - '+l.company)<0&&rawName.indexOf(' - ')<0){
+      return rawName+' - '+l.company;
+    }
+    return rawName;
+  }
+  // Standard formatting: build from country + name + company
   var country=l.country?l.country.toUpperCase()+' ':'';
-  var name=(l.name||'').toUpperCase();
+  var name=rawName.toUpperCase();
   var company=l.company?' - '+l.company:'';
   return ('DM '+country+name+company).replace(/\s+/g,' ').trim();
+}
+
+// Strip any DM prefix from a name to recover the clean name (used for greeting/initials)
+function leadCleanName(l){
+  var raw=(l.name||'').trim();
+  // Remove "DM XX " prefix if present
+  raw=raw.replace(/^DM\s+[A-Z]{2,3}\s+/i,'');
+  // Remove " - Company" suffix if present
+  var dashIdx=raw.indexOf(' - ');
+  if(dashIdx>=0) raw=raw.substring(0,dashIdx);
+  return raw.trim();
 }
 
 // Extract Lead from pasted form text using Claude
@@ -3465,9 +3523,9 @@ function leadExtractFromPaste(){
 // Open WhatsApp chat with the Lead's phone number
 // Build the surname/title for italian formal greeting (Sig. Giannotti)
 function leadSurname(l){
-  var parts=(l.name||'').split(/\s+/).filter(Boolean);
+  var clean=leadCleanName(l);
+  var parts=clean.split(/\s+/).filter(Boolean);
   if(parts.length<=1) return parts[0]||'';
-  // Take everything after the first word as surname (most cases: "Antonello Giannotti" -> "Giannotti")
   return parts.slice(1).join(' ');
 }
 
@@ -3812,9 +3870,9 @@ function quickGoogleSync(id){
       if(ok){
         l.googleResourceName=ok.resourceName;l.googleEtag=ok.etag;l.googleSyncedAt=new Date().toISOString();
         SS('leads',leads);
-        alert('\u2713 '+(l.name||'Lead')+' sincronizado con Google Contacts');
+        showToast('\u2713 '+leadCleanName(l)+' sincronizado con Google Contacts');
       } else {
-        alert('Error sincronizando: '+err);
+        alert('Error sincronizando '+leadCleanName(l)+':\n'+err);
       }
     });
   });
