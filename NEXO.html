@@ -428,7 +428,7 @@ En que te puedo ayudar hoy?</div></div>
 
       <!-- FILTERS -->
       <div class="card mb10" style="padding:12px">
-        <div class="g4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
           <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="lf-q" placeholder="Nombre, empresa, email..." oninput="renderLeads()"></div>
           <div><label style="font-size:10px;color:var(--t3)">Status</label>
             <select id="lf-status" onchange="renderLeads()">
@@ -438,6 +438,18 @@ En que te puedo ayudar hoy?</div></div>
               <option value="Negoziando">Negoziando</option>
               <option value="Cliente">Cliente</option>
               <option value="Perso">Perso</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Categoria</label>
+            <select id="lf-category" onchange="renderLeads()">
+              <option value="">Todas</option>
+              <option value="Usato">Usato</option>
+              <option value="KM 0">KM 0</option>
+              <option value="Nuevo">Nuevo</option>
+              <option value="Alta gama">Alta gama</option>
+              <option value="Industriales">Industriales</option>
+              <option value="Electricos">Electricos / Hibridos</option>
+              <option value="Mixto">Mixto</option>
             </select>
           </div>
           <div><label style="font-size:10px;color:var(--t3)">Origen</label>
@@ -457,14 +469,33 @@ En que te puedo ayudar hoy?</div></div>
         <div id="leads-info" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
       </div>
 
+      <!-- BULK ACTION BAR -->
+      <div id="leads-bulk-bar" class="card mb10" style="padding:10px 14px;display:none;background:var(--bg3);border-color:var(--acc)">
+        <div class="fbet">
+          <div class="fc g8">
+            <span id="leads-bulk-count" style="font-weight:600;font-size:13px;color:var(--acc)">0 seleccionados</span>
+            <span style="font-size:11px;color:var(--t3)">| Acciones en bloque:</span>
+          </div>
+          <div class="fc g8" style="flex-wrap:wrap">
+            <button class="btn bs" onclick="leadsBulkSync()" style="font-size:11px">&#128241; Sync Google</button>
+            <button class="btn bs" onclick="leadsBulkExportVcard()" style="font-size:11px">&#128196; Exportar vCards</button>
+            <button class="btn bs" onclick="leadsBulkChangeStatus()" style="font-size:11px">&#128221; Cambiar status</button>
+            <button class="btn bs" onclick="leadsBulkMoveToContacts()" style="font-size:11px">&#128100; Mover a Contactos B2B</button>
+            <button class="btn bd" onclick="leadsBulkDelete()" style="font-size:11px">&#128465; Eliminar</button>
+            <button class="btn bg" onclick="leadsClearSelection()" style="font-size:11px">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
       <!-- TABLE VIEW -->
       <div id="leads-table-view" class="card" style="padding:0">
         <div class="tbl">
           <table>
             <thead><tr>
+              <th style="width:36px"><input type="checkbox" id="leads-sel-all" onchange="leadsToggleAll(this)"></th>
               <th style="width:36px"></th>
               <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tel</th><th>Email</th>
-              <th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
+              <th>Categoria</th><th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
               <th style="width:130px">Acciones</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
@@ -813,7 +844,21 @@ En que te puedo ayudar hoy?</div></div>
           <option>Otro</option>
         </select>
       </div>
-      <div><label>Tipo de vehiculos</label>
+      <div><label>Categoria principal</label>
+        <select id="le-category">
+          <option value="">--</option>
+          <option>Usato</option>
+          <option>KM 0</option>
+          <option>Nuevo</option>
+          <option>Alta gama</option>
+          <option>Industriales</option>
+          <option>Electricos</option>
+          <option>Mixto</option>
+        </select>
+      </div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Tipo de vehiculos (detalle)</label>
         <select id="le-vtype">
           <option value="">--</option>
           <option>Usato</option>
@@ -822,8 +867,6 @@ En que te puedo ayudar hoy?</div></div>
           <option>Mixto</option>
         </select>
       </div>
-    </div>
-    <div class="g2 mb10">
       <div><label>Volumen mensual</label>
         <select id="le-volume">
           <option value="">--</option>
@@ -833,6 +876,8 @@ En que te puedo ayudar hoy?</div></div>
           <option>10+</option>
         </select>
       </div>
+    </div>
+    <div class="g2 mb10">
       <div><label>Experiencia import/export</label>
         <select id="le-import">
           <option value="">--</option>
@@ -840,6 +885,7 @@ En que te puedo ayudar hoy?</div></div>
           <option>No</option>
         </select>
       </div>
+      <div></div>
     </div>
     <div class="g2 mb10">
       <div><label>Origen</label>
@@ -1006,7 +1052,17 @@ function toggleSb(){
 // -- UTILS ----------------------------------------------------
 function n(id){return document.getElementById(id);}
 function today(){return new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'});}
-function fmtD(s){if(!s)return '--';try{return new Date(s+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'});}catch(e){return s;}}
+function fmtD(s){
+  if(!s) return '--';
+  try{
+    var d;
+    var str=String(s);
+    if(str.indexOf('T')>=0||str.indexOf('Z')>=0) d=new Date(str);
+    else d=new Date(str+'T12:00:00');
+    if(isNaN(d.getTime())) return '--';
+    return d.toLocaleDateString('es-ES',{day:'numeric',month:'short'});
+  }catch(e){return '--';}
+}
 function isOD(s){return s&&new Date(s+'T23:59:00')<new Date();}
 function fnum(s){return parseFloat((s||'0').toString().replace(/[^0-9.]/g,''))||0;}
 
@@ -2999,7 +3055,19 @@ function saveCont(){
 // Status options and color mapping
 var LEAD_STATUSES=['Nuevo','Contattato','Negoziando','Cliente','Perso'];
 var LEAD_STATUS_CLASS={'Nuevo':'t-hot','Contattato':'t-pend','Negoziando':'t-2s','Cliente':'t-stk','Perso':'t-ped'};
+var LEAD_CATEGORIES=['Usato','KM 0','Nuevo','Alta gama','Industriales','Electricos','Mixto'];
+// Category badge colors (background, text)
+var LEAD_CAT_COLOR={
+  'Usato':{bg:'#dbeafe',fg:'#1e40af'},
+  'KM 0':{bg:'#dcfce7',fg:'#166534'},
+  'Nuevo':{bg:'#fef9c3',fg:'#854d0e'},
+  'Alta gama':{bg:'#f3e8ff',fg:'#6b21a8'},
+  'Industriales':{bg:'#e2e8f0',fg:'#334155'},
+  'Electricos':{bg:'#cffafe',fg:'#155e75'},
+  'Mixto':{bg:'#fed7aa',fg:'#9a3412'}
+};
 var leadsViewCurrent='table';
+var leadSel=new Set();
 
 function renderLeads(){
   // Update sidebar/dashboard counters
@@ -3010,11 +3078,13 @@ function renderLeads(){
   var q=(n('lf-q')&&n('lf-q').value||'').toLowerCase();
   var stFilter=n('lf-status')&&n('lf-status').value||'';
   var srcFilter=n('lf-source')&&n('lf-source').value||'';
+  var catFilter=n('lf-category')&&n('lf-category').value||'';
   var ctFilter=(n('lf-country')&&n('lf-country').value||'').toLowerCase();
   var filtered=leads.filter(function(l){
     if(q&&!((l.name||'').toLowerCase().indexOf(q)>=0||(l.company||'').toLowerCase().indexOf(q)>=0||(l.email||'').toLowerCase().indexOf(q)>=0)) return false;
     if(stFilter&&l.status!==stFilter) return false;
     if(srcFilter&&l.source!==srcFilter) return false;
+    if(catFilter&&l.category!==catFilter) return false;
     if(ctFilter&&!((l.country||'').toLowerCase().indexOf(ctFilter)>=0)) return false;
     return true;
   });
@@ -3039,18 +3109,27 @@ function leadsViewMode(mode){
 
 function renderLeadsTable(filtered){
   var tbody=n('leads-body');var empty=n('leads-empty');
-  if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
+  if(!filtered.length){tbody.innerHTML='';empty.style.display='block';updateLeadsBulkBar();return;}
   empty.style.display='none';
   tbody.innerHTML=filtered.map(function(l){
     var sc=LEAD_STATUS_CLASS[l.status]||'t-hot';
     var initials=(l.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
-    return '<tr>'+
+    var checked=leadSel.has(l.id)?' checked':'';
+    // Category badge
+    var catHtml='--';
+    if(l.category){
+      var cc=LEAD_CAT_COLOR[l.category]||{bg:'var(--bg3)',fg:'var(--t2)'};
+      catHtml='<span style="background:'+cc.bg+';color:'+cc.fg+';padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">'+esc(l.category)+'</span>';
+    }
+    return '<tr'+(leadSel.has(l.id)?' style="background:rgba(37,99,235,.07)"':'')+'>'+
+      '<td style="text-align:center"><input type="checkbox" class="lchk" data-id="'+l.id+'" onchange="leadsToggleOne(\''+l.id+'\',this)"'+checked+'></td>'+
       '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
       '<td><strong>'+esc(l.name||'--')+'</strong>'+(l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+'</td>'+
       '<td style="font-size:12px">'+esc(l.company||'--')+'</td>'+
       '<td style="font-size:12px;color:var(--t2)">'+esc(l.country||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2)">'+esc(l.email||'--')+'</td>'+
+      '<td>'+catHtml+'</td>'+
       '<td style="font-size:11px"><span style="background:var(--bg3);padding:2px 7px;border-radius:6px">'+esc(l.type||'--')+'</span></td>'+
       '<td style="text-align:center;font-weight:700;color:var(--acc);font-size:12px">'+esc(l.volume||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t3)">'+esc(l.source||'--')+'</td>'+
@@ -3064,6 +3143,131 @@ function renderLeadsTable(filtered){
       '</div></td>'+
     '</tr>';
   }).join('');
+  updateLeadsBulkBar();
+}
+
+function leadsToggleAll(checkbox){
+  var visibleIds=Array.from(document.querySelectorAll('#leads-body .lchk')).map(function(c){return c.getAttribute('data-id');});
+  if(checkbox.checked){visibleIds.forEach(function(id){leadSel.add(id);});}
+  else{visibleIds.forEach(function(id){leadSel.delete(id);});}
+  renderLeads();
+}
+
+function leadsToggleOne(id,checkbox){
+  if(checkbox.checked) leadSel.add(id); else leadSel.delete(id);
+  // Update row background without full re-render
+  var tr=checkbox.closest('tr');
+  if(tr) tr.style.background=checkbox.checked?'rgba(37,99,235,.07)':'';
+  updateLeadsBulkBar();
+}
+
+function leadsClearSelection(){
+  leadSel.clear();
+  renderLeads();
+}
+
+function updateLeadsBulkBar(){
+  var bar=n('leads-bulk-bar');
+  var count=leadSel.size;
+  if(!bar) return;
+  bar.style.display=count>0?'':'none';
+  var lbl=n('leads-bulk-count');
+  if(lbl) lbl.textContent=count+' seleccionado'+(count!==1?'s':'');
+  // Update master "select all" state
+  var master=n('leads-sel-all');
+  if(master){
+    var visibleIds=Array.from(document.querySelectorAll('#leads-body .lchk')).map(function(c){return c.getAttribute('data-id');});
+    var allSelected=visibleIds.length>0&&visibleIds.every(function(id){return leadSel.has(id);});
+    master.checked=allSelected;
+    master.indeterminate=count>0&&!allSelected;
+  }
+}
+
+function leadsBulkDelete(){
+  var ids=Array.from(leadSel);if(!ids.length) return;
+  if(!confirm('Eliminar '+ids.length+' lead'+(ids.length!==1?'s':'')+' seleccionados?')) return;
+  leads=leads.filter(function(l){return !leadSel.has(l.id);});
+  SS('leads',leads);
+  leadSel.clear();
+  renderLeads();renderDash();
+}
+
+function leadsBulkChangeStatus(){
+  var ids=Array.from(leadSel);if(!ids.length) return;
+  var newStatus=prompt('Nuevo status para '+ids.length+' lead'+(ids.length!==1?'s':'')+'?\n\nOpciones: Nuevo, Contattato, Negoziando, Cliente, Perso','Contattato');
+  if(!newStatus) return;
+  if(LEAD_STATUSES.indexOf(newStatus)<0){alert('Status no valido. Usa: '+LEAD_STATUSES.join(', '));return;}
+  leads.forEach(function(l){if(leadSel.has(l.id)){l.status=newStatus;l.updatedAt=new Date().toISOString();}});
+  SS('leads',leads);
+  alert(ids.length+' lead'+(ids.length!==1?'s':'')+' actualizados a "'+newStatus+'"');
+  renderLeads();
+}
+
+function leadsBulkExportVcard(){
+  var ids=Array.from(leadSel);if(!ids.length) return;
+  var selected=leads.filter(function(l){return leadSel.has(l.id);});
+  // Concatenate all vCards into one .vcf file
+  var combined=selected.map(buildVcard).join('\r\n');
+  var blob=new Blob([combined],{type:'text/vcard'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='leads_'+selected.length+'_contactos.vcf';a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);},500);
+}
+
+function leadsBulkSync(){
+  var ids=Array.from(leadSel);if(!ids.length) return;
+  var selected=leads.filter(function(l){return leadSel.has(l.id);});
+  if(!confirm('Sincronizar '+selected.length+' lead'+(selected.length!==1?'s':'')+' con Google Contacts? Te pediremos permiso una vez.')) return;
+  getGoogleToken(function(token){
+    var done=0,errors=0;
+    function next(i){
+      if(i>=selected.length){
+        SS('leads',leads);
+        alert('Sincronizados: '+done+(errors?' / Errores: '+errors:''));
+        renderLeads();
+        return;
+      }
+      var l=selected[i];
+      pushLeadToGoogle(l,token,function(ok,err){
+        if(ok){l.googleResourceName=ok.resourceName;l.googleSyncedAt=new Date().toISOString();done++;}
+        else{errors++;console.warn('Sync fail '+l.name+':',err);}
+        // Slight delay to respect rate limits
+        setTimeout(function(){next(i+1);},150);
+      });
+    }
+    next(0);
+  });
+}
+
+function leadsBulkMoveToContacts(){
+  var ids=Array.from(leadSel);if(!ids.length) return;
+  var selected=leads.filter(function(l){return leadSel.has(l.id);});
+  if(!confirm('Mover '+selected.length+' lead'+(selected.length!==1?'s':'')+' a Contactos B2B? Se eliminaran de Leads despues.')) return;
+  selected.forEach(function(l){
+    var contact={
+      id:Date.now()+'_'+Math.floor(Math.random()*9999),
+      name:l.name||'',
+      company:l.company||'',
+      country:l.country||'',
+      role:'Comprador',
+      myCompany:'DMCAR GROUP',
+      phone:l.phone||'',
+      email:l.email||'',
+      notes:'(Convertido de Lead)\n'+(l.notes||'')+(l.category?'\nCategoria: '+l.category:'')+(l.volume?'\nVolumen: '+l.volume+'/mes':''),
+      tag:'reg',
+      lastContact:new Date().toISOString().split('T')[0]
+    };
+    contacts.push(contact);
+  });
+  SS('contacts',contacts);
+  // Remove from leads
+  leads=leads.filter(function(l){return !leadSel.has(l.id);});
+  SS('leads',leads);
+  leadSel.clear();
+  alert(selected.length+' lead'+(selected.length!==1?'s':'')+' movidos a Contactos B2B.');
+  renderLeads();
+  renderContactos&&renderContactos();
+  renderDash();
 }
 
 function renderLeadsKanban(filtered){
@@ -3092,6 +3296,11 @@ function renderLeadsKanban(filtered){
     col.innerHTML='<div class="fbet" style="margin-bottom:8px;padding:0 4px"><div style="font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">'+status+'</div><span class="tag '+sc+'" style="font-size:10px">'+items.length+'</span></div>';
     items.forEach(function(l){
       var initials=(l.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+      var catBadge='';
+      if(l.category){
+        var cc=LEAD_CAT_COLOR[l.category]||{bg:'var(--bg3)',fg:'var(--t2)'};
+        catBadge='<span style="background:'+cc.bg+';color:'+cc.fg+';padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.category)+'</span>';
+      }
       var card=document.createElement('div');
       card.draggable=true;
       card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:grab;transition:all .15s';
@@ -3106,8 +3315,9 @@ function renderLeadsKanban(filtered){
         '<div style="font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.company||'')+(l.city?' &middot; '+esc(l.city):'')+(l.country?' ('+esc(l.country)+')':'')+'</div></div>'+
         '</div>'+
         '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+
+          catBadge+
           (l.volume?'<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.volume)+'/mes</span>':'')+
-          (l.vtype?'<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.vtype)+'</span>':'')+
+          (l.vtype&&!l.category?'<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.vtype)+'</span>':'')+
         '</div>'+
         '<div style="font-size:9px;color:var(--t4);margin-top:6px">'+esc(l.source||'')+(l.createdAt?' &middot; '+fmtD(l.createdAt):'')+'</div>';
       col.appendChild(card);
@@ -3139,6 +3349,7 @@ function editLead(id){
   n('le-phone').value=l.phone||'';
   n('le-email').value=l.email||'';
   n('le-type').value=l.type||'';
+  n('le-category').value=l.category||'';
   n('le-vtype').value=l.vtype||'';
   n('le-volume').value=l.volume||'';
   n('le-import').value=l.import||'';
@@ -3161,6 +3372,7 @@ function saveLead(){
     phone:n('le-phone').value.trim(),
     email:n('le-email').value.trim(),
     type:n('le-type').value,
+    category:n('le-category').value,
     vtype:n('le-vtype').value,
     volume:n('le-volume').value,
     import:n('le-import').value,
@@ -3205,7 +3417,7 @@ function leadExtractFromPaste(){
   if(!text){alert('Pega el texto del formulario');return;}
   var btn=n('lp-extract');btn.disabled=true;
   n('lp-status-msg').textContent='Extrayendo datos con Claude...';
-  var sysPrompt='Extrae datos de este formulario de contacto y devuelve SOLO JSON puro sin markdown ni texto extra. Estructura: {"name":"nombre completo","company":"empresa","city":"ciudad","country":"codigo pais 2 letras (IT,ES,DE,FR,...)","phone":"telefono con prefijo","email":"email","type":"Commerciante/Privato/Agenzia","vtype":"Usato/Nuevo/KM 0/Mixto","volume":"1-2/3-5/5-10/10+","import":"Si/No","notes":"notas extra si las hay"}. Si un campo no aparece, dejalo vacio "". Detecta el codigo pais por la ciudad o telefono.';
+  var sysPrompt='Extrae datos de este formulario de contacto y devuelve SOLO JSON puro sin markdown ni texto extra. Estructura: {"name":"nombre completo","company":"empresa","city":"ciudad","country":"codigo pais 2 letras (IT,ES,DE,FR,...)","phone":"telefono con prefijo","email":"email","type":"Commerciante/Privato/Agenzia","vtype":"Usato/Nuevo/KM 0/Mixto","category":"Usato/KM 0/Nuevo/Alta gama/Industriales/Electricos/Mixto","volume":"1-2/3-5/5-10/10+","import":"Si/No","notes":"notas extra si las hay"}. Si un campo no aparece, dejalo vacio "". Detecta el codigo pais por la ciudad o telefono. Para "category": analiza "che_tipo_di_veicoli_cerchi" o similares - si dice solo "Usato" pon "Usato", si menciona "alta gama/lujo/premium/Mercedes/BMW/Audi premium" pon "Alta gama", si dice "industriale/camion/furgoni grandi" pon "Industriales", si dice "elettrico/EV/ibrido/PHEV" pon "Electricos", si dice "KM 0" pon "KM 0", si dice "Nuevo" pon "Nuevo", si pide varios tipos pon "Mixto".';
   callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,system:sysPrompt,messages:[{role:'user',content:text}]},function(resp,err){
     btn.disabled=false;
     if(err){n('lp-status-msg').textContent='Error: '+err;return;}
