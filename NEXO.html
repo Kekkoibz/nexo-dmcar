@@ -1080,17 +1080,26 @@ function renderStkTbl(){
   if(!stkFlt.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
 
+  var STATUS_OPTIONS=['Stock','1 semana','2 semanas','1 mes','Pedido a fabrica'];
+
+  function statusClass(s){
+    s=String(s||'').toLowerCase();
+    if(s==='stock') return 't-stk';
+    if(s.indexOf('1 sem')>=0) return 't-1s';
+    if(s.indexOf('2 sem')>=0) return 't-2s';
+    return 't-ped';
+  }
+
   var html='';
   stkFlt.forEach(function(item){
     var sel=stkSel.has(item.id);
-    var b=fnum(item.buy);var sv=fnum(item.sell);
-    var margin=(b&&sv)?(sv-b).toFixed(0)+' EUR':'';
-    var stCls=item.status==='Stock'?'t-stk':item.status==='1 semana'?'t-1s':item.status==='2 semanas'?'t-2s':'t-ped';
     var hasD=item.vehicles&&item.vehicles.length>0;
     var sid=String(item.id).replace(/[^a-z0-9]/gi,'_');
     var noteDisp=item.notes&&item.notes!=='--'?item.notes.substring(0,18)+(item.notes.length>18?'...':''):'';
     var unitsDisp=(item.units==='Varias'||item.units==='varias'||item.units==='0')?'<span style="color:var(--orange);font-weight:700">Varias</span>':(item.units||'1');
     var pickupDisp=esc(fmtPickup(item.pickup));
+    var curStatus=item.status||'Stock';
+    var stCls=statusClass(curStatus);
 
     html+='<tr id="tr-'+sid+'"'+(sel?' style="background:rgba(37,99,235,.07)"':'')+'>';
     html+='<td style="text-align:center"><input type="checkbox" class="rchk" data-id="'+item.id+'"'+(sel?' checked':'')+'></td>';
@@ -1109,10 +1118,17 @@ function renderStkTbl(){
     html+='<td><button class="btn bg eq-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 7px;max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(item.equip||'')+'">'+
     (item.equip&&item.equip!=='--'?ep:'--')+'</button></td>';
     html+='<td style="text-align:right;color:var(--t3);white-space:nowrap">'+esc(item.buy)+'</td>';
-    html+='<td style="text-align:right;font-weight:600;white-space:nowrap">'+esc(item.sell)+'</td>';
-    html+='<td style="text-align:right;color:var(--green);white-space:nowrap">'+margin+'</td>';
     html+='<td style="font-size:11px;white-space:nowrap">'+pickupDisp+'</td>';
-    html+='<td><span class="tag '+stCls+'">'+esc(item.status)+'</span></td>';
+    // Status: editable inline. Click on the tag to toggle the dropdown.
+    html+='<td style="white-space:nowrap"><select class="status-sel tag '+stCls+'" data-id="'+item.id+'" style="border:none;cursor:pointer;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px;border-radius:6px">';
+    var found=false;
+    STATUS_OPTIONS.forEach(function(opt){
+      var isSel=opt.toLowerCase()===String(curStatus).toLowerCase();
+      if(isSel) found=true;
+      html+='<option value="'+esc(opt)+'"'+(isSel?' selected':'')+'>'+esc(opt)+'</option>';
+    });
+    if(!found) html='<option value="'+esc(curStatus)+'" selected>'+esc(curStatus)+'</option>'+html;
+    html+='</select></td>';
     html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
       (noteDisp?'&#128221; '+esc(noteDisp):'&#128221; Nota')+'</button></td>';
     html+='<td><div class="fc g4">';
@@ -1126,7 +1142,7 @@ function renderStkTbl(){
     // Detail row
     if(hasD){
       html+='<tr class="det-row" id="det-'+sid+'" style="display:none">';
-      html+='<td colspan="20">';
+      html+='<td colspan="18">';
       html+='<div class="det-inner">';
       html+='<div style="font-size:10px;font-weight:700;color:var(--acc);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">&#9660; Vehiculos del lote ('+item.vehicles.length+')</div>';
       html+='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
@@ -1164,6 +1180,22 @@ function renderStkTbl(){
       if(tr) tr.style.background=this.checked?'rgba(37,99,235,.07)':'';
       updSelBar();
     });
+  });
+
+  // Status inline editor
+  tbody.querySelectorAll('.status-sel').forEach(function(sel){
+    sel.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+      if(idx<0) return;
+      stock[idx].status=this.value;
+      SS('stock',stock);
+      // Update tag class on the select itself
+      this.classList.remove('t-stk','t-1s','t-2s','t-ped');
+      this.classList.add(statusClass(this.value));
+    });
+    // Stop click from bubbling to the row
+    sel.addEventListener('click',function(e){e.stopPropagation();});
   });
 
   tbody.querySelectorAll('.eq-btn').forEach(function(b){
