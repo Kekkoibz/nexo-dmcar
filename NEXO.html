@@ -3210,8 +3210,11 @@ function leadExtractFromPaste(){
     btn.disabled=false;
     if(err){n('lp-status-msg').textContent='Error: '+err;return;}
     try{
-      var raw=resp.content[0].text.trim();
+      var raw=String(resp||'').trim();
       raw=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+      // Find JSON object boundaries to be safe
+      var start=raw.indexOf('{');var end=raw.lastIndexOf('}');
+      if(start>=0&&end>start) raw=raw.substring(start,end+1);
       var data=JSON.parse(raw);
       data.id='l'+Date.now()+'_'+Math.floor(Math.random()*9999);
       data.source=n('lp-source').value;
