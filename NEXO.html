@@ -642,6 +642,68 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
+<!-- ASK PICKUP (during import when missing) -->
+<div class="ovl" id="m-pickup">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">Falta luogo di carico</div><button class="btn bg" id="pk-cancel" style="padding:5px 10px">X</button></div>
+    <div id="pk-summary" style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:14px;line-height:1.5"></div>
+    <div class="mb10">
+      <label>Citt&agrave; / Pa&iacute;s de carga</label>
+      <select id="pk-sel">
+        <optgroup label="Espa&ntilde;a">
+          <option value="Madrid (ES)">Madrid (ES)</option>
+          <option value="Barcelona (ES)">Barcelona (ES)</option>
+          <option value="Valencia (ES)">Valencia (ES)</option>
+          <option value="Bilbao (ES)">Bilbao (ES)</option>
+          <option value="Sevilla (ES)">Sevilla (ES)</option>
+          <option value="M&aacute;laga (ES)">Málaga (ES)</option>
+          <option value="Zaragoza (ES)">Zaragoza (ES)</option>
+        </optgroup>
+        <optgroup label="Italia">
+          <option value="Roma (IT)">Roma (IT)</option>
+          <option value="Milano (IT)">Milano (IT)</option>
+          <option value="Bologna (IT)">Bologna (IT)</option>
+          <option value="Verona (IT)">Verona (IT)</option>
+          <option value="Torino (IT)">Torino (IT)</option>
+          <option value="Napoli (IT)">Napoli (IT)</option>
+        </optgroup>
+        <optgroup label="Deutschland">
+          <option value="M&uuml;nchen (DE)">München (DE)</option>
+          <option value="Berlin (DE)">Berlin (DE)</option>
+          <option value="Hamburg (DE)">Hamburg (DE)</option>
+          <option value="Frankfurt (DE)">Frankfurt (DE)</option>
+          <option value="Stuttgart (DE)">Stuttgart (DE)</option>
+          <option value="K&ouml;ln (DE)">Köln (DE)</option>
+        </optgroup>
+        <optgroup label="France">
+          <option value="Paris (FR)">Paris (FR)</option>
+          <option value="Lyon (FR)">Lyon (FR)</option>
+          <option value="Marseille (FR)">Marseille (FR)</option>
+          <option value="Lille (FR)">Lille (FR)</option>
+        </optgroup>
+        <optgroup label="Otros">
+          <option value="Lisboa (PT)">Lisboa (PT)</option>
+          <option value="Porto (PT)">Porto (PT)</option>
+          <option value="Bruxelles (BE)">Bruxelles (BE)</option>
+          <option value="Anvers (BE)">Anvers (BE)</option>
+          <option value="Rotterdam (NL)">Rotterdam (NL)</option>
+          <option value="Amsterdam (NL)">Amsterdam (NL)</option>
+          <option value="Praha (CZ)">Praha (CZ)</option>
+          <option value="__custom__">Otro... (escribir)</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="mb14" id="pk-custom-row" style="display:none">
+      <label>Escribe la ciudad y c&oacute;digo pa&iacute;s</label>
+      <input type="text" id="pk-custom" placeholder="Ej: Modena (IT), Stuttgart (DE), etc.">
+    </div>
+    <div class="fc g8" style="flex-wrap:wrap">
+      <button class="btn bp" id="pk-apply-all" style="flex:1">&#9889; Aplicar a todos</button>
+      <button class="btn bg" id="pk-skip" style="flex:0 0 auto">Saltar (dejar vacio)</button>
+    </div>
+  </div>
+</div>
+
 <!-- CONTACTO -->
 <div class="ovl" id="m-contact">
   <div class="modal">
@@ -1558,7 +1620,8 @@ function tryNativeExcelParse(rows){
     color: findCol('color ext','color','colour'),
     buy: findCol('precio export','export sin','precio compra','buy','net price'),
     damage: findCol('daño','dano','damage'),
-    sell: findCol('precio final','final sin','sell','venta')
+    sell: findCol('precio final','final sin','sell','venta'),
+    pickup: findCol('ubicacion','ubicación','pickup','pick up','luogo carico','luogo','carga','lugar carga','plaza','plazza','piazzale','location','standort')
   };
   // Need at least model column to do anything useful
   if(c.model<0) return null;
@@ -1698,7 +1761,8 @@ function tryNativeExcelParse(rows){
       color: shortColor(c.color>=0?row[c.color]:''),
       buy: num(c.buy>=0?row[c.buy]:0),
       damage: num(c.damage>=0?row[c.damage]:0),
-      sell: num(c.sell>=0?row[c.sell]:0)
+      sell: num(c.sell>=0?row[c.sell]:0),
+      pickup: c.pickup>=0?String(row[c.pickup]||'').trim():''
     });
   }
 
@@ -1712,7 +1776,9 @@ function tryNativeExcelParse(rows){
     var avgSell=sz?Math.round(sum(rs,function(r){return r.sell;})/sz):0;
     var allColors=[];rs.forEach(function(r){if(r.color&&allColors.indexOf(r.color)<0)allColors.push(r.color);});
     var firstReg=rs.find(function(r){return r.reg;});
-    var inner=rs.map(function(r){return {vin:r.vin||'--',color:r.color||'',kms:String(r.kms||''),damage:String(r.damage||''),reg:r.reg||'',plate:r.plate||''};});
+    // Take first non-empty pickup of the group as default for the group
+    var firstPickup=rs.find(function(r){return r.pickup;});
+    var inner=rs.map(function(r){return {vin:r.vin||'--',color:r.color||'',kms:String(r.kms||''),damage:String(r.damage||''),reg:r.reg||'',plate:r.plate||'',location:r.pickup||''};});
     return {
       brand: g.brand,
       model: g.model,
@@ -1727,7 +1793,7 @@ function tryNativeExcelParse(rows){
       equip: '',
       buy: String(avgBuy),
       sell: avgSell?String(avgSell):'',
-      pickup: '',
+      pickup: firstPickup?firstPickup.pickup:'',
       status: 'Stock',
       notes: '--',
       vehicles: inner
@@ -1741,23 +1807,92 @@ function iHandleResp(resp,manualSup){
     var parsed=parseResp(resp);
     var detSup=parsed.supplier||manualSup||'Desconocido';
     var vehicles=parsed.vehicles||[];
-    var added=0;
-    vehicles.forEach(function(v){
-      v.supplier=manualSup||v.supplier||detSup;
-      addStkItem(v);added++;
-    });
-    var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
-    n('i-status').textContent=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
-    setTimeout(function(){
-      closeM('m-import');
-      n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
-      n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
-      updBF();fStk();renderDash();
-    },1500);
+    if(!vehicles.length){n('i-status').textContent='No se detectaron vehiculos';n('i-btn').disabled=false;return;}
+
+    // Set supplier
+    vehicles.forEach(function(v){v.supplier=manualSup||v.supplier||detSup;});
+
+    // Check which vehicles are missing pickup
+    function hasPickup(p){return p&&p!=='--'&&String(p).trim()!=='';}
+    var missing=vehicles.filter(function(v){return !hasPickup(v.pickup);});
+
+    function finishImport(){
+      var added=0;
+      vehicles.forEach(function(v){addStkItem(v);added++;});
+      var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
+      n('i-status').textContent=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
+      setTimeout(function(){
+        closeM('m-import');
+        n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+        n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+        updBF();fStk();renderDash();
+      },1500);
+    }
+
+    if(missing.length===0){
+      finishImport();
+    } else {
+      // Open the pickup modal asking for the missing pickup(s)
+      askPickupForVehicles(missing,vehicles,finishImport);
+    }
   }catch(ex){
     n('i-status').textContent='Error parseando. Intenta de nuevo.';
     n('i-btn').disabled=false;
   }
+}
+
+// Ask for missing pickup location during import. Applies the chosen value to all vehicles in `missing`,
+// then calls onDone(). The user can also skip (leaves pickup as '--').
+function askPickupForVehicles(missing,allVehicles,onDone){
+  // Build the summary text
+  var lines=missing.map(function(v){
+    return (v.brand||'')+' '+(v.model||'')+' '+(v.version||'').substring(0,40)+(v.units?' x'+v.units:'');
+  });
+  var summary='<div style="font-weight:600;color:var(--orange);margin-bottom:6px">'+missing.length+' vehiculo'+(missing.length!==1?'s':'')+' sin luogo di carico:</div>'+
+    lines.slice(0,5).map(function(l){return '<div style="font-size:11px;color:var(--t2)">&middot; '+esc(l)+'</div>';}).join('')+
+    (lines.length>5?'<div style="font-size:11px;color:var(--t3);font-style:italic;margin-top:4px">y '+(lines.length-5)+' m&aacute;s...</div>':'');
+  n('pk-summary').innerHTML=summary;
+
+  // Reset
+  n('pk-sel').value='Madrid (ES)';
+  n('pk-custom').value='';
+  n('pk-custom-row').style.display='none';
+
+  // Toggle custom input when "Otro..." is selected
+  n('pk-sel').onchange=function(){
+    n('pk-custom-row').style.display=(this.value==='__custom__')?'block':'none';
+    if(this.value==='__custom__') setTimeout(function(){n('pk-custom').focus();},50);
+  };
+
+  function getValue(){
+    if(n('pk-sel').value==='__custom__'){
+      return n('pk-custom').value.trim();
+    }
+    return n('pk-sel').value;
+  }
+
+  n('pk-apply-all').onclick=function(){
+    var val=getValue();
+    if(!val){alert('Escribe una ciudad o selecciona una de la lista');return;}
+    missing.forEach(function(v){v.pickup=val;});
+    closeM('m-pickup');
+    onDone();
+  };
+
+  n('pk-skip').onclick=function(){
+    missing.forEach(function(v){if(!v.pickup) v.pickup='--';});
+    closeM('m-pickup');
+    onDone();
+  };
+
+  n('pk-cancel').onclick=function(){
+    // User aborted - cancel the import entirely
+    closeM('m-pickup');
+    n('i-status').textContent='Importacion cancelada';
+    n('i-btn').disabled=false;
+  };
+
+  openM('m-pickup');
 }
 
 // -- GENERATE FROM STOCK --------------------------------------
