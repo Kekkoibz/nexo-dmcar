@@ -467,6 +467,7 @@ En que te puedo ayudar hoy?</div></div>
             <button class="btn bok" onclick="exportAll()">&#11123; Exportar backup JSON</button>
             <label for="restore-file" class="fb" style="cursor:pointer">&#128229; Importar backup JSON</label>
             <input type="file" id="restore-file" accept=".json,application/json" style="display:none" onchange="importAll(this)">
+            <button class="btn bs" onclick="cleanStockTransmission()" style="font-size:12px">&#9881; Limpiar M/T en electricos/hibridos</button>
           </div>
           <div id="backup-msg" style="font-size:11px;margin-bottom:10px;min-height:14px"></div>
           <button class="btn bd" onclick="clrAll()">Borrar todos los datos</button>
@@ -518,9 +519,18 @@ En que te puedo ayudar hoy?</div></div>
     </div>
     <div class="tp" id="ipanel-email">
       <div style="display:flex;flex-direction:column;gap:10px">
-        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128231; Mail iOS (iPhone)</div><div style="font-size:11px;color:var(--t3)">Abre email &rarr; Mantén pulsado &rarr; Seleccionar todo &rarr; Copia &rarr; Pega en Texto</div></div>
-        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128247; Captura de pantalla</div><div style="font-size:11px;color:var(--t3)">Haz captura del email &rarr; Subela en la pestana Imagen</div></div>
-        <div class="card" style="padding:12px"><div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128190; Adjunto EML/MSG</div><div style="font-size:11px;color:var(--t3)">Guarda el email como .eml &rarr; Subelo en la pestana Archivo</div></div>
+        <div class="card" style="padding:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--border)'" onclick="iTab('text');setTimeout(function(){var t=document.getElementById('i-text');if(t){t.focus();}},100)">
+          <div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128231; Mail iOS (iPhone) &rarr;</div>
+          <div style="font-size:11px;color:var(--t3)">Abre email &rarr; Mantén pulsado &rarr; Seleccionar todo &rarr; Copia &rarr; <strong>Pega aqu&iacute;</strong></div>
+        </div>
+        <div class="card" style="padding:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--border)'" onclick="iTab('img');setTimeout(function(){var f=document.getElementById('i-img-file');if(f)f.click();},100)">
+          <div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128247; Captura de pantalla &rarr;</div>
+          <div style="font-size:11px;color:var(--t3)">Haz captura del email &rarr; <strong>Click aqu&iacute; para seleccionar imagen</strong></div>
+        </div>
+        <div class="card" style="padding:12px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--border)'" onclick="iTab('file');setTimeout(function(){var f=document.getElementById('i-file');if(f)f.click();},100)">
+          <div style="font-weight:700;font-size:12px;margin-bottom:5px">&#128190; Adjunto EML/MSG &rarr;</div>
+          <div style="font-size:11px;color:var(--t3)">Guarda el email como .eml &rarr; <strong>Click aqu&iacute; para subirlo</strong></div>
+        </div>
       </div>
     </div>
     <div style="margin-top:12px"><label>Proveedor (opcional &mdash; se detecta automaticamente)</label><input type="text" id="i-sup" placeholder="Deja vacio si esta en el archivo o texto"></div>
@@ -1413,6 +1423,23 @@ function undoLastImport(){
   SS('lastImportBatch','');  // clear so undo can't be repeated
   fStk();renderDash();
   alert(toRemove.length+' vehiculo'+(toRemove.length!==1?'s':'')+' eliminados.');
+}
+
+// Scan stock and remove M/T from electric/hybrid vehicles (since they're always automatic)
+function cleanStockTransmission(){
+  var isElectric=/(FULL\s+ELECTRIC|\bBEV\b|\bEV\b|\bELETTRICA\b|\bELETRICO\b|\bELECTRICO\b|PLUG-?IN|\bPHEV\b|\bHEV\b|\bHYBRID\b|\bHIBRIDO\b|\bIBRIDA\b)/i;
+  var fixed=0;
+  stock.forEach(function(item){
+    var v=item.version||'';
+    if(isElectric.test(v)&&/\bM\/T\b/i.test(v)){
+      item.version=v.replace(/\bM\/T\b/gi,'').replace(/\s+/g,' ').trim();
+      fixed++;
+    }
+  });
+  if(!fixed){alert('No se encontraron vehiculos electricos/hibridos con M/T mal puesto.');return;}
+  SS('stock',stock);
+  fStk();
+  alert('Corregidos '+fixed+' vehiculos electricos/hibridos: M/T eliminado de la version.');
 }
 
 function saveManual(){
