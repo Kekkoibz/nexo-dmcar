@@ -3609,17 +3609,36 @@ function buildWelcomeMessage(l){
     'We remain at your disposal for any further requests.';
 }
 
+// Hold a reference to the WhatsApp window we open so we can reuse it
+var dmcarWhatsAppWindow=null;
+
+function openWhatsAppNewMessage(phone,msg){
+  var url='https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg);
+  // Check if our tracked window is still open and not closed by user
+  if(dmcarWhatsAppWindow&&!dmcarWhatsAppWindow.closed){
+    try{
+      // Navigate the existing window to the new URL (changes the chat in WhatsApp Web)
+      dmcarWhatsAppWindow.location.href=url;
+      dmcarWhatsAppWindow.focus();
+      return;
+    }catch(e){
+      // Cross-origin error or window unreachable - fall through to opening a new one
+      dmcarWhatsAppWindow=null;
+    }
+  }
+  // Open new window with named target - if user has another web.whatsapp tab open this might still go there
+  dmcarWhatsAppWindow=window.open(url,'dmcar_whatsapp');
+}
+
 function openWhatsAppForLead(){
   var phone=n('le-phone').value.trim().replace(/[^0-9+]/g,'');
   if(!phone){alert('Falta el telefono del Lead');return;}
-  // Build a temp Lead from form values to pick the right template
   var temp={
     name:n('le-name').value.trim(),
     country:n('le-country').value.trim().toUpperCase()
   };
   var msg=buildWelcomeMessage(temp);
-  // Use a named target so the same tab is reused on every call
-  window.open('https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg),'dmcar_whatsapp');
+  openWhatsAppNewMessage(phone,msg);
 }
 
 function quickWhatsApp(id){
@@ -3627,8 +3646,7 @@ function quickWhatsApp(id){
   if(!l||!l.phone){alert('Falta el telefono');return;}
   var phone=l.phone.replace(/[^0-9+]/g,'');
   var msg=buildWelcomeMessage(l);
-  // Reuse the same tab named "dmcar_whatsapp"
-  window.open('https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg),'dmcar_whatsapp');
+  openWhatsAppNewMessage(phone,msg);
 }
 
 // Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
