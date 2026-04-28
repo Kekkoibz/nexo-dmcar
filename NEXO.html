@@ -3561,7 +3561,7 @@ function openWhatsAppForLead(){
   };
   var msg=buildWelcomeMessage(temp);
   // Use a named target so the same tab is reused on every call
-  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'dmcar_whatsapp');
+  window.open('https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg),'dmcar_whatsapp');
 }
 
 function quickWhatsApp(id){
@@ -3570,7 +3570,7 @@ function quickWhatsApp(id){
   var phone=l.phone.replace(/[^0-9+]/g,'');
   var msg=buildWelcomeMessage(l);
   // Reuse the same tab named "dmcar_whatsapp"
-  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'dmcar_whatsapp');
+  window.open('https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg),'dmcar_whatsapp');
 }
 
 // Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
@@ -3778,7 +3778,9 @@ function getGoogleToken(cb){
         }
       });
     }
-    googleTokenClient.requestAccessToken();
+    // prompt:'' tells Google "do not show the account chooser if the user already authorized this app"
+    // Only first time user will see the dialog. Subsequent calls within the same session pass silently.
+    googleTokenClient.requestAccessToken({prompt:''});
   });
 }
 
