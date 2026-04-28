@@ -417,15 +417,69 @@ En que te puedo ayudar hoy?</div></div>
     <!-- LEADS -->
     <div class="view" id="view-leads">
       <div class="fbet mb14">
-        <div><div class="st">Leads</div><div class="ss">Web DMCAR, Instagram, Facebook, LinkedIn</div></div>
-        <button class="btn bp" onclick="openM('m-lead')">+ Lead</button>
-      </div>
-      <div class="card" style="padding:0">
-        <div class="tbl">
-          <table><thead><tr><th>Nombre</th><th>Fuente</th><th>Empresa</th><th>Interes</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
-          <tbody id="leads-body"></tbody></table>
-          <div id="leads-empty" class="tbl-empty" style="display:none">Sin leads</div>
+        <div><div class="st">Leads</div><div class="ss">Formularios web, IG, FB, WhatsApp, Email</div></div>
+        <div class="fc g8">
+          <button class="btn bs" onclick="leadsViewMode('table')" id="lv-table" style="font-size:11px">&#128203; Tabla</button>
+          <button class="btn bs" onclick="leadsViewMode('kanban')" id="lv-kanban" style="font-size:11px">&#128301; Kanban</button>
+          <button class="btn bs" onclick="openM('m-lead-paste')" style="font-size:11px">&#128203; Pegar formulario</button>
+          <button class="btn bp" onclick="openLeadModal()">+ Nuevo Lead</button>
         </div>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="card mb10" style="padding:12px">
+        <div class="g4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="lf-q" placeholder="Nombre, empresa, email..." oninput="renderLeads()"></div>
+          <div><label style="font-size:10px;color:var(--t3)">Status</label>
+            <select id="lf-status" onchange="renderLeads()">
+              <option value="">Todos</option>
+              <option value="Nuevo">Nuevo</option>
+              <option value="Contattato">Contattato</option>
+              <option value="Negoziando">Negoziando</option>
+              <option value="Cliente">Cliente</option>
+              <option value="Perso">Perso</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Origen</label>
+            <select id="lf-source" onchange="renderLeads()">
+              <option value="">Todos</option>
+              <option value="Instagram">Instagram</option>
+              <option value="Facebook">Facebook</option>
+              <option value="Web">Web DMCAR</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Email">Email</option>
+              <option value="Referral">Referral</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Pais</label><input type="text" id="lf-country" placeholder="IT, ES, DE..." oninput="renderLeads()"></div>
+        </div>
+        <div id="leads-info" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
+      </div>
+
+      <!-- TABLE VIEW -->
+      <div id="leads-table-view" class="card" style="padding:0">
+        <div class="tbl">
+          <table>
+            <thead><tr>
+              <th style="width:36px"></th>
+              <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tel</th><th>Email</th>
+              <th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
+              <th style="width:130px">Acciones</th>
+            </tr></thead>
+            <tbody id="leads-body"></tbody>
+          </table>
+          <div id="leads-empty" class="tbl-empty" style="display:none">
+            <div style="font-size:32px;margin-bottom:8px">&#128272;</div>
+            <div>No hay leads todavia</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:6px">Pulsa "+ Nuevo Lead" o "&#128203; Pegar formulario"</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KANBAN VIEW -->
+      <div id="leads-kanban-view" style="display:none">
+        <div id="leads-kanban-cols" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start"></div>
       </div>
     </div>
 
@@ -716,6 +770,111 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
+<!-- LEAD: PEGAR FORMULARIO -->
+<div class="ovl" id="m-lead-paste">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">Pegar formulario</div><button class="btn bg" onclick="closeM('m-lead-paste')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Copia el texto del WhatsApp, email, IG o FB con los datos del formulario. NEXO extrae los campos automaticamente.</div>
+    <textarea id="lp-text" rows="10" placeholder="Ej:&#10;company_name: Elite cars&#10;city: Ostuni&#10;sei_un_operatore_del_settore_automotive: Si, commerciante&#10;che_tipo_di_veicoli_cerchi: Usato&#10;email: elitecars@blu.it&#10;hai_esperienza_con_import/export: SI&#10;full_name: Antonello Giannotti&#10;phone_number: +393343114631&#10;quanti_veicoli_acquisti_abitualmente_al_mese: 3-5"></textarea>
+    <div class="g2 mb10" style="margin-top:10px">
+      <div><label>Origen</label><select id="lp-source"><option value="WhatsApp">WhatsApp</option><option value="Email">Email</option><option value="Web">Web DMCAR</option><option value="Instagram">Instagram</option><option value="Facebook">Facebook</option><option value="Otro">Otro</option></select></div>
+      <div><label>Status inicial</label><select id="lp-status"><option value="Nuevo" selected>Nuevo</option><option value="Contattato">Contattato</option></select></div>
+    </div>
+    <div id="lp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin-bottom:8px"></div>
+    <button class="btn bp" id="lp-extract" onclick="leadExtractFromPaste()" style="width:100%">&#9889; Extraer y crear Lead</button>
+  </div>
+</div>
+
+<!-- LEAD: NUEVO / EDITAR -->
+<div class="ovl" id="m-lead-edit">
+  <div class="modal" style="max-width:640px">
+    <div class="fbet mb14"><div class="mt" id="le-title">Nuevo Lead</div><button class="btn bg" onclick="closeM('m-lead-edit')" style="padding:5px 10px">X</button></div>
+    <input type="hidden" id="le-id">
+    <div class="g2 mb10">
+      <div><label>Nombre completo *</label><input type="text" id="le-name" placeholder="Antonello Giannotti"></div>
+      <div><label>Empresa</label><input type="text" id="le-company" placeholder="Elite cars"></div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Ciudad</label><input type="text" id="le-city" placeholder="Ostuni"></div>
+      <div><label>Pais (codigo)</label><input type="text" id="le-country" placeholder="IT, ES, DE, FR..."></div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Telefono</label><input type="tel" id="le-phone" placeholder="+39 334 311 4631"></div>
+      <div><label>Email</label><input type="email" id="le-email" placeholder="elitecars@blu.it"></div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Tipo de operador</label>
+        <select id="le-type">
+          <option value="">--</option>
+          <option>Commerciante</option>
+          <option>Privato</option>
+          <option>Agenzia</option>
+          <option>Concesionaria</option>
+          <option>Otro</option>
+        </select>
+      </div>
+      <div><label>Tipo de vehiculos</label>
+        <select id="le-vtype">
+          <option value="">--</option>
+          <option>Usato</option>
+          <option>Nuevo</option>
+          <option>KM 0</option>
+          <option>Mixto</option>
+        </select>
+      </div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Volumen mensual</label>
+        <select id="le-volume">
+          <option value="">--</option>
+          <option>1-2</option>
+          <option>3-5</option>
+          <option>5-10</option>
+          <option>10+</option>
+        </select>
+      </div>
+      <div><label>Experiencia import/export</label>
+        <select id="le-import">
+          <option value="">--</option>
+          <option>Si</option>
+          <option>No</option>
+        </select>
+      </div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Origen</label>
+        <select id="le-source">
+          <option value="">--</option>
+          <option value="WhatsApp">WhatsApp</option>
+          <option value="Email">Email</option>
+          <option value="Web">Web DMCAR</option>
+          <option value="Instagram">Instagram</option>
+          <option value="Facebook">Facebook</option>
+          <option value="Referral">Referral</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+      <div><label>Status</label>
+        <select id="le-status">
+          <option value="Nuevo">Nuevo</option>
+          <option value="Contattato">Contattato</option>
+          <option value="Negoziando">Negoziando</option>
+          <option value="Cliente">Cliente</option>
+          <option value="Perso">Perso</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb10"><label>Notas</label><textarea id="le-notes" rows="3" placeholder="Preferencias, observaciones, historial..."></textarea></div>
+    <div id="le-google-status" style="font-size:11px;color:var(--t3);margin-bottom:8px;min-height:14px"></div>
+    <div class="fc g8" style="flex-wrap:wrap">
+      <button class="btn bp" onclick="saveLead()" style="flex:1">&#128190; Guardar</button>
+      <button class="btn bs" onclick="syncLeadToGoogle()" id="le-google-btn" style="font-size:12px">&#128241; Sync con Google</button>
+      <button class="btn bs" onclick="exportLeadVcard()" style="font-size:12px">&#128196; vCard (.vcf)</button>
+      <button class="btn bs" onclick="openWhatsAppForLead()" style="font-size:12px">&#128172; WhatsApp</button>
+    </div>
+  </div>
+</div>
+
 <!-- CONTACTO -->
 <div class="ovl" id="m-contact">
   <div class="modal">
@@ -730,17 +889,6 @@ En que te puedo ayudar hoy?</div></div>
 </div>
 
 <!-- LEAD -->
-<div class="ovl" id="m-lead">
-  <div class="modal">
-    <div class="fbet mb14"><div class="mt">Nuevo lead</div><button class="btn bg" onclick="closeM('m-lead')" style="padding:5px 10px">X</button></div>
-    <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="ld-name" placeholder="Nombre"></div><div><label>Fuente</label><select id="ld-src"><option>Web DMCAR</option><option>Instagram</option><option>Facebook</option><option>LinkedIn</option><option>WhatsApp</option><option>Email</option><option>Referido</option></select></div></div>
-    <div class="g2 mb10"><div><label>Empresa</label><input type="text" id="ld-co" placeholder="Opcional"></div><div><label>Contacto</label><input type="text" id="ld-con" placeholder="+34 600..."></div></div>
-    <div class="mb10"><label>Interes</label><textarea id="ld-int" rows="3" placeholder="Interesado en..."></textarea></div>
-    <div class="g2 mb14"><div><label>Mi empresa</label><select id="ld-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Estado</label><select id="ld-status"><option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="cualificado">Cualificado</option><option value="perdido">Perdido</option></select></div></div>
-    <button class="btn bp" style="width:100%" onclick="saveLead()">Guardar</button>
-  </div>
-</div>
-
 <div class="ovl" id="m-equip">
   <div class="modal" style="max-width:480px">
     <div class="fbet mb12"><div class="mt" style="margin:0">Equipamiento</div><button class="btn bg" id="btn-eq-close" style="padding:5px 10px">X</button></div>
@@ -2848,25 +2996,430 @@ function saveCont(){
 }
 
 // -- LEADS ----------------------------------------------------
+// Status options and color mapping
+var LEAD_STATUSES=['Nuevo','Contattato','Negoziando','Cliente','Perso'];
+var LEAD_STATUS_CLASS={'Nuevo':'t-hot','Contattato':'t-pend','Negoziando':'t-2s','Cliente':'t-stk','Perso':'t-ped'};
+var leadsViewCurrent='table';
+
 function renderLeads(){
+  // Update sidebar/dashboard counters
+  n('cnt-leads').textContent=leads.filter(function(l){return l.status==='Nuevo';}).length;
+  if(n('ds-leads')) n('ds-leads').textContent=leads.length;
+
+  // Filter
+  var q=(n('lf-q')&&n('lf-q').value||'').toLowerCase();
+  var stFilter=n('lf-status')&&n('lf-status').value||'';
+  var srcFilter=n('lf-source')&&n('lf-source').value||'';
+  var ctFilter=(n('lf-country')&&n('lf-country').value||'').toLowerCase();
+  var filtered=leads.filter(function(l){
+    if(q&&!((l.name||'').toLowerCase().indexOf(q)>=0||(l.company||'').toLowerCase().indexOf(q)>=0||(l.email||'').toLowerCase().indexOf(q)>=0)) return false;
+    if(stFilter&&l.status!==stFilter) return false;
+    if(srcFilter&&l.source!==srcFilter) return false;
+    if(ctFilter&&!((l.country||'').toLowerCase().indexOf(ctFilter)>=0)) return false;
+    return true;
+  });
+  if(n('leads-info')) n('leads-info').textContent=filtered.length+' de '+leads.length+' leads';
+
+  if(leadsViewCurrent==='table') renderLeadsTable(filtered);
+  else renderLeadsKanban(filtered);
+}
+
+function leadsViewMode(mode){
+  leadsViewCurrent=mode;
+  n('leads-table-view').style.display=(mode==='table')?'':'none';
+  n('leads-kanban-view').style.display=(mode==='kanban')?'':'none';
+  // Visual highlight on the toggle buttons
+  ['table','kanban'].forEach(function(m){
+    var b=n('lv-'+m);if(!b) return;
+    if(m===mode){b.classList.remove('bs');b.classList.add('bp');}
+    else{b.classList.remove('bp');b.classList.add('bs');}
+  });
+  renderLeads();
+}
+
+function renderLeadsTable(filtered){
   var tbody=n('leads-body');var empty=n('leads-empty');
-  n('cnt-leads').textContent=leads.filter(function(l){return l.status==='nuevo';}).length;
-  n('ds-leads').textContent=leads.length;
-  if(!leads.length){tbody.innerHTML='';empty.style.display='block';return;}
+  if(!filtered.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
-  tbody.innerHTML=leads.map(function(l){
-    var sc=l.status==='nuevo'?'t-hot':l.status==='contactado'?'t-pend':l.status==='cualificado'?'t-reg':'t-cold';
-    return'<tr><td><strong>'+esc(l.name)+'</strong>'+(l.contact?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.contact)+'</span>':'')+'</td><td><span style="font-size:10px;background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(l.source)+'</span></td><td style="font-size:11px">'+esc(l.myCompany)+'</td><td style="font-size:11px;color:var(--t2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.interest)+'</td><td><span class="tag '+sc+'">'+l.status+'</span></td><td style="font-size:10px;color:var(--t3)">'+fmtD(l.date)+'</td><td><button class="btn bd" style="padding:2px 7px;font-size:10px" onclick="delLead('+l.id+')">x</button></td></tr>';
+  tbody.innerHTML=filtered.map(function(l){
+    var sc=LEAD_STATUS_CLASS[l.status]||'t-hot';
+    var initials=(l.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+    return '<tr>'+
+      '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
+      '<td><strong>'+esc(l.name||'--')+'</strong>'+(l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+'</td>'+
+      '<td style="font-size:12px">'+esc(l.company||'--')+'</td>'+
+      '<td style="font-size:12px;color:var(--t2)">'+esc(l.country||'--')+'</td>'+
+      '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
+      '<td style="font-size:11px;color:var(--t2)">'+esc(l.email||'--')+'</td>'+
+      '<td style="font-size:11px"><span style="background:var(--bg3);padding:2px 7px;border-radius:6px">'+esc(l.type||'--')+'</span></td>'+
+      '<td style="text-align:center;font-weight:700;color:var(--acc);font-size:12px">'+esc(l.volume||'--')+'</td>'+
+      '<td style="font-size:11px;color:var(--t3)">'+esc(l.source||'--')+'</td>'+
+      '<td><span class="tag '+sc+'">'+esc(l.status)+'</span></td>'+
+      '<td style="font-size:10px;color:var(--t3)">'+fmtD(l.createdAt||'')+'</td>'+
+      '<td><div class="fc g4">'+
+        '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar">&#9998;</button>'+
+        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp">&#128172;</button>'+
+        '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google">&#128241;</button>'+
+        '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar">x</button>'+
+      '</div></td>'+
+    '</tr>';
   }).join('');
 }
 
-function saveLead(){
-  var l={id:Date.now(),name:n('ld-name').value.trim(),source:n('ld-src').value,company:n('ld-co').value.trim(),contact:n('ld-con').value.trim(),interest:n('ld-int').value.trim(),myCompany:n('ld-myco').value,status:n('ld-status').value,date:new Date().toISOString().split('T')[0]};
-  if(!l.name){alert('Nombre obligatorio');return;}
-  leads.push(l);SS('leads',leads);closeM('m-lead');renderLeads();renderDash();
+function renderLeadsKanban(filtered){
+  var cols=n('leads-kanban-cols');
+  cols.innerHTML='';
+  var byStatus={};
+  LEAD_STATUSES.forEach(function(s){byStatus[s]=[];});
+  filtered.forEach(function(l){if(byStatus[l.status]) byStatus[l.status].push(l);});
+
+  LEAD_STATUSES.forEach(function(status){
+    var items=byStatus[status]||[];
+    var sc=LEAD_STATUS_CLASS[status]||'t-hot';
+    var col=document.createElement('div');
+    col.style.cssText='background:var(--bg3);border-radius:10px;padding:10px;min-height:120px';
+    col.setAttribute('data-status',status);
+    col.ondragover=function(e){e.preventDefault();col.style.background='var(--bg4)';};
+    col.ondragleave=function(){col.style.background='var(--bg3)';};
+    col.ondrop=function(e){
+      e.preventDefault();col.style.background='var(--bg3)';
+      var id=e.dataTransfer.getData('leadid');if(!id) return;
+      var idx=leads.findIndex(function(x){return String(x.id)===String(id);});
+      if(idx<0) return;
+      leads[idx].status=status;leads[idx].updatedAt=new Date().toISOString();
+      SS('leads',leads);renderLeads();
+    };
+    col.innerHTML='<div class="fbet" style="margin-bottom:8px;padding:0 4px"><div style="font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">'+status+'</div><span class="tag '+sc+'" style="font-size:10px">'+items.length+'</span></div>';
+    items.forEach(function(l){
+      var initials=(l.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
+      var card=document.createElement('div');
+      card.draggable=true;
+      card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:grab;transition:all .15s';
+      card.onmouseenter=function(){this.style.borderColor='var(--acc)';};
+      card.onmouseleave=function(){this.style.borderColor='var(--border)';};
+      card.ondragstart=function(e){e.dataTransfer.setData('leadid',l.id);card.style.opacity='.5';};
+      card.ondragend=function(){card.style.opacity='1';};
+      card.onclick=function(){editLead(l.id);};
+      card.innerHTML='<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">'+
+        '<div style="width:26px;height:26px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0">'+initials+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.name||'--')+'</div>'+
+        '<div style="font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.company||'')+(l.city?' &middot; '+esc(l.city):'')+(l.country?' ('+esc(l.country)+')':'')+'</div></div>'+
+        '</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+
+          (l.volume?'<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.volume)+'/mes</span>':'')+
+          (l.vtype?'<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.vtype)+'</span>':'')+
+        '</div>'+
+        '<div style="font-size:9px;color:var(--t4);margin-top:6px">'+esc(l.source||'')+(l.createdAt?' &middot; '+fmtD(l.createdAt):'')+'</div>';
+      col.appendChild(card);
+    });
+    cols.appendChild(col);
+  });
 }
 
-function delLead(id){if(!confirm('Eliminar lead?'))return;leads=leads.filter(function(l){return l.id!==id;});SS('leads',leads);renderLeads();}
+function openLeadModal(){
+  // Reset all fields
+  n('le-title').textContent='Nuevo Lead';
+  n('le-id').value='';
+  ['le-name','le-company','le-city','le-country','le-phone','le-email','le-notes'].forEach(function(id){n(id).value='';});
+  ['le-type','le-vtype','le-volume','le-import','le-source'].forEach(function(id){n(id).value='';});
+  n('le-status').value='Nuevo';
+  n('le-google-status').textContent='';
+  openM('m-lead-edit');
+}
+
+function editLead(id){
+  var l=leads.find(function(x){return String(x.id)===String(id);});
+  if(!l) return;
+  n('le-title').textContent='Editar Lead';
+  n('le-id').value=l.id;
+  n('le-name').value=l.name||'';
+  n('le-company').value=l.company||'';
+  n('le-city').value=l.city||'';
+  n('le-country').value=l.country||'';
+  n('le-phone').value=l.phone||'';
+  n('le-email').value=l.email||'';
+  n('le-type').value=l.type||'';
+  n('le-vtype').value=l.vtype||'';
+  n('le-volume').value=l.volume||'';
+  n('le-import').value=l.import||'';
+  n('le-source').value=l.source||'';
+  n('le-status').value=l.status||'Nuevo';
+  n('le-notes').value=l.notes||'';
+  n('le-google-status').textContent=l.googleResourceName?'\u2713 Sincronizado con Google ('+l.googleSyncedAt||''+')':'';
+  openM('m-lead-edit');
+}
+
+function saveLead(){
+  var name=n('le-name').value.trim();
+  if(!name){alert('Nombre obligatorio');return;}
+  var id=n('le-id').value;
+  var data={
+    name:name,
+    company:n('le-company').value.trim(),
+    city:n('le-city').value.trim(),
+    country:n('le-country').value.trim().toUpperCase(),
+    phone:n('le-phone').value.trim(),
+    email:n('le-email').value.trim(),
+    type:n('le-type').value,
+    vtype:n('le-vtype').value,
+    volume:n('le-volume').value,
+    import:n('le-import').value,
+    source:n('le-source').value,
+    status:n('le-status').value,
+    notes:n('le-notes').value.trim()
+  };
+  if(id){
+    var idx=leads.findIndex(function(x){return String(x.id)===String(id);});
+    if(idx>=0){
+      Object.keys(data).forEach(function(k){leads[idx][k]=data[k];});
+      leads[idx].updatedAt=new Date().toISOString();
+    }
+  } else {
+    data.id='l'+Date.now()+'_'+Math.floor(Math.random()*9999);
+    data.createdAt=new Date().toISOString();
+    data.updatedAt=data.createdAt;
+    leads.push(data);
+  }
+  SS('leads',leads);
+  closeM('m-lead-edit');
+  renderLeads();renderDash();
+}
+
+function delLead(id){
+  if(!confirm('Eliminar lead?'))return;
+  leads=leads.filter(function(l){return String(l.id)!==String(id);});
+  SS('leads',leads);renderLeads();renderDash();
+}
+
+// Build the "DM IT ANTONELLO GIANNOTTI - Elite cars" name format the user wants
+function leadDisplayName(l){
+  var country=l.country?l.country.toUpperCase()+' ':'';
+  var name=(l.name||'').toUpperCase();
+  var company=l.company?' - '+l.company:'';
+  return ('DM '+country+name+company).replace(/\s+/g,' ').trim();
+}
+
+// Extract Lead from pasted form text using Claude
+function leadExtractFromPaste(){
+  var text=n('lp-text').value.trim();
+  if(!text){alert('Pega el texto del formulario');return;}
+  var btn=n('lp-extract');btn.disabled=true;
+  n('lp-status-msg').textContent='Extrayendo datos con Claude...';
+  var sysPrompt='Extrae datos de este formulario de contacto y devuelve SOLO JSON puro sin markdown ni texto extra. Estructura: {"name":"nombre completo","company":"empresa","city":"ciudad","country":"codigo pais 2 letras (IT,ES,DE,FR,...)","phone":"telefono con prefijo","email":"email","type":"Commerciante/Privato/Agenzia","vtype":"Usato/Nuevo/KM 0/Mixto","volume":"1-2/3-5/5-10/10+","import":"Si/No","notes":"notas extra si las hay"}. Si un campo no aparece, dejalo vacio "". Detecta el codigo pais por la ciudad o telefono.';
+  callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,system:sysPrompt,messages:[{role:'user',content:text}]},function(resp,err){
+    btn.disabled=false;
+    if(err){n('lp-status-msg').textContent='Error: '+err;return;}
+    try{
+      var raw=resp.content[0].text.trim();
+      raw=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+      var data=JSON.parse(raw);
+      data.id='l'+Date.now()+'_'+Math.floor(Math.random()*9999);
+      data.source=n('lp-source').value;
+      data.status=n('lp-status').value;
+      data.createdAt=new Date().toISOString();
+      data.updatedAt=data.createdAt;
+      // Normalize country to uppercase 2-letter
+      if(data.country) data.country=String(data.country).toUpperCase().substring(0,3);
+      leads.push(data);
+      SS('leads',leads);
+      n('lp-status-msg').innerHTML='<span style="color:var(--green)">&#10003; Lead creado: <strong>'+esc(data.name)+'</strong></span>';
+      n('lp-text').value='';
+      renderLeads();renderDash();
+      setTimeout(function(){closeM('m-lead-paste');n('lp-status-msg').textContent='';},1500);
+    }catch(ex){
+      n('lp-status-msg').textContent='Error parseando respuesta: '+ex.message;
+    }
+  });
+}
+
+// Open WhatsApp chat with the Lead's phone number
+function openWhatsAppForLead(){
+  var phone=n('le-phone').value.trim().replace(/[^0-9+]/g,'');
+  if(!phone){alert('Falta el telefono del Lead');return;}
+  // wa.me format: https://wa.me/+393343114631?text=Hola
+  var name=n('le-name').value.trim().split(' ')[0]||'';
+  var msg='Hola '+name+', soy Francesco de DMCAR Group. Recibimos tu interes a traves del formulario.';
+  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
+}
+function quickWhatsApp(id){
+  var l=leads.find(function(x){return String(x.id)===String(id);});
+  if(!l||!l.phone){alert('Falta el telefono');return;}
+  var phone=l.phone.replace(/[^0-9+]/g,'');
+  var name=(l.name||'').split(' ')[0]||'';
+  var msg='Hola '+name+', soy Francesco de DMCAR Group.';
+  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
+}
+
+// vCard export
+function buildVcard(l){
+  var displayName=leadDisplayName(l);
+  var vc='BEGIN:VCARD\r\nVERSION:3.0\r\n';
+  vc+='FN:'+displayName+'\r\n';
+  // Surname / Given name parsing
+  var parts=(l.name||'').split(' ');
+  var first=parts[0]||'';
+  var last=parts.slice(1).join(' ')||'';
+  vc+='N:'+last+';'+first+';;;\r\n';
+  if(l.company) vc+='ORG:'+l.company+'\r\n';
+  if(l.phone) vc+='TEL;TYPE=CELL:'+l.phone+'\r\n';
+  if(l.email) vc+='EMAIL:'+l.email+'\r\n';
+  if(l.city||l.country) vc+='ADR;TYPE=WORK:;;'+(l.city||'')+';;;'+(l.country||'')+'\r\n';
+  var notesLines=[];
+  if(l.type) notesLines.push('Tipo: '+l.type);
+  if(l.vtype) notesLines.push('Vehiculos: '+l.vtype);
+  if(l.volume) notesLines.push('Volumen: '+l.volume+'/mes');
+  if(l.source) notesLines.push('Origen: '+l.source);
+  if(l.notes) notesLines.push('Notas: '+l.notes);
+  if(notesLines.length) vc+='NOTE:'+notesLines.join(' | ')+'\r\n';
+  vc+='END:VCARD\r\n';
+  return vc;
+}
+
+function exportLeadVcard(){
+  var id=n('le-id').value;
+  var l=id?leads.find(function(x){return String(x.id)===String(id);}):null;
+  if(!l){
+    // From the form (not yet saved): build from current form values
+    l={
+      name:n('le-name').value.trim(),
+      company:n('le-company').value.trim(),
+      city:n('le-city').value.trim(),
+      country:n('le-country').value.trim().toUpperCase(),
+      phone:n('le-phone').value.trim(),
+      email:n('le-email').value.trim(),
+      type:n('le-type').value,vtype:n('le-vtype').value,volume:n('le-volume').value,
+      source:n('le-source').value,notes:n('le-notes').value.trim()
+    };
+    if(!l.name){alert('Falta el nombre');return;}
+  }
+  var vc=buildVcard(l);
+  var fname=(l.name||'lead').replace(/[^\w]/g,'_')+'.vcf';
+  var blob=new Blob([vc],{type:'text/vcard'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download=fname;a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);},500);
+}
+
+// ========== GOOGLE CONTACTS API INTEGRATION ==========
+var GOOGLE_CLIENT_ID='540269511205-sfora45ouhq4jhl8t2c3c981bgfhf4am.apps.googleusercontent.com';
+var GOOGLE_SCOPE='https://www.googleapis.com/auth/contacts';
+var googleTokenClient=null;
+var googleAccessToken=null;
+
+// Load Google Identity Services script if not already loaded
+function ensureGoogleAuth(cb){
+  if(window.google&&window.google.accounts&&window.google.accounts.oauth2){cb();return;}
+  var s=document.createElement('script');
+  s.src='https://accounts.google.com/gsi/client';
+  s.async=true;s.defer=true;
+  s.onload=function(){cb();};
+  s.onerror=function(){alert('Error cargando Google Auth');};
+  document.head.appendChild(s);
+}
+
+function getGoogleToken(cb){
+  ensureGoogleAuth(function(){
+    if(!googleTokenClient){
+      googleTokenClient=window.google.accounts.oauth2.initTokenClient({
+        client_id:GOOGLE_CLIENT_ID,
+        scope:GOOGLE_SCOPE,
+        callback:function(resp){
+          if(resp.error){alert('Google auth error: '+resp.error);return;}
+          googleAccessToken=resp.access_token;
+          cb(googleAccessToken);
+        }
+      });
+    }
+    googleTokenClient.requestAccessToken();
+  });
+}
+
+function syncLeadToGoogle(){
+  var id=n('le-id').value;
+  var l=id?leads.find(function(x){return String(x.id)===String(id);}):null;
+  if(!l){
+    alert('Guarda el Lead primero antes de sincronizar');return;
+  }
+  n('le-google-status').innerHTML='<span style="color:var(--orange)">Conectando con Google...</span>';
+  getGoogleToken(function(token){
+    pushLeadToGoogle(l,token,function(ok,err){
+      if(ok){
+        l.googleResourceName=ok.resourceName;
+        l.googleSyncedAt=new Date().toISOString();
+        SS('leads',leads);
+        n('le-google-status').innerHTML='<span style="color:var(--green)">&#10003; Sincronizado con Google Contacts</span>';
+      } else {
+        n('le-google-status').innerHTML='<span style="color:var(--red)">Error: '+err+'</span>';
+      }
+    });
+  });
+}
+
+function quickGoogleSync(id){
+  var l=leads.find(function(x){return String(x.id)===String(id);});
+  if(!l) return;
+  getGoogleToken(function(token){
+    pushLeadToGoogle(l,token,function(ok,err){
+      if(ok){
+        l.googleResourceName=ok.resourceName;
+        l.googleSyncedAt=new Date().toISOString();
+        SS('leads',leads);
+        alert('\u2713 '+(l.name||'Lead')+' sincronizado con Google Contacts');
+      } else {
+        alert('Error sincronizando: '+err);
+      }
+    });
+  });
+}
+
+// Push a single Lead to Google Contacts via People API
+function pushLeadToGoogle(l,token,cb){
+  var displayName=leadDisplayName(l);
+  var nameParts=(l.name||'').split(' ');
+  var first=nameParts[0]||'';
+  var last=nameParts.slice(1).join(' ')||'';
+
+  var person={
+    names:[{givenName:first,familyName:last,displayName:displayName,unstructuredName:displayName}]
+  };
+  if(l.company) person.organizations=[{name:l.company}];
+  if(l.phone) person.phoneNumbers=[{value:l.phone,type:'mobile'}];
+  if(l.email) person.emailAddresses=[{value:l.email}];
+  if(l.city||l.country) person.addresses=[{city:l.city||'',countryCode:l.country||'',type:'work'}];
+  var noteParts=[];
+  if(l.type) noteParts.push('Tipo: '+l.type);
+  if(l.vtype) noteParts.push('Vehiculos: '+l.vtype);
+  if(l.volume) noteParts.push('Volumen: '+l.volume+'/mes');
+  if(l.source) noteParts.push('Origen: '+l.source);
+  if(l.notes) noteParts.push(l.notes);
+  if(noteParts.length) person.biographies=[{value:noteParts.join('\n'),contentType:'TEXT_PLAIN'}];
+  person.userDefined=[{key:'NEXO_LEAD_ID',value:String(l.id)}];
+
+  // If already synced, do an UPDATE; else CREATE
+  var url,method;
+  if(l.googleResourceName){
+    url='https://people.googleapis.com/v1/'+l.googleResourceName+':updateContact?updatePersonFields=names,organizations,phoneNumbers,emailAddresses,addresses,biographies,userDefined';
+    method='PATCH';
+    person.etag=l.googleEtag||undefined;
+  } else {
+    url='https://people.googleapis.com/v1/people:createContact';
+    method='POST';
+  }
+
+  fetch(url,{
+    method:method,
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify(person)
+  }).then(function(r){return r.json().then(function(data){return {status:r.status,data:data};});})
+  .then(function(res){
+    if(res.status>=200&&res.status<300){
+      cb({resourceName:res.data.resourceName,etag:res.data.etag},null);
+    } else {
+      cb(null,(res.data&&res.data.error&&res.data.error.message)||('HTTP '+res.status));
+    }
+  }).catch(function(e){cb(null,e.message);});
+}
+
 
 // -- TAREAS ---------------------------------------------------
 function renderTareas(){
