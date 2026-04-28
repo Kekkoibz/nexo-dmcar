@@ -3448,20 +3448,47 @@ function leadExtractFromPaste(){
 }
 
 // Open WhatsApp chat with the Lead's phone number
+// Build the surname/title for italian formal greeting (Sig. Giannotti)
+function leadSurname(l){
+  var parts=(l.name||'').split(/\s+/).filter(Boolean);
+  if(parts.length<=1) return parts[0]||'';
+  // Take everything after the first word as surname (most cases: "Antonello Giannotti" -> "Giannotti")
+  return parts.slice(1).join(' ');
+}
+
+// Pick the right welcome template based on the Lead's country
+function buildWelcomeMessage(l){
+  var country=(l.country||'').toUpperCase();
+  var surname=leadSurname(l);
+  var firstName=(l.name||'').split(/\s+/)[0]||'';
+  var msgIT='Buonasera Sig. '+surname+',\n'+
+    'la ringraziamo per aver compilato il nostro modulo e per l\u2019interesse mostrato verso la nostra azienda.\n'+
+    'Abbiamo ricevuto correttamente i suoi dati. Una nostra responsabile commerciale per il mercato italiano, Grazia Assi, la contattera\u0300 nei prossimi giorni per fornirle tutte le informazioni necessarie e assisterla al meglio in base alle sue esigenze.\n'+
+    'Restiamo a disposizione per qualsiasi ulteriore richiesta.';
+  var msgGEN='Buonasera Sig. '+surname+',\n'+
+    'la ringraziamo per aver compilato il nostro modulo e per l\u2019interesse mostrato verso la nostra azienda.\n'+
+    'Abbiamo ricevuto correttamente i suoi dati. Un nostro commerciale la contattera\u0300 nei prossimi giorni per fornirle tutte le informazioni necessarie e assisterla al meglio in base alle sue esigenze.\n'+
+    'Restiamo a disposizione per qualsiasi ulteriore richiesta.';
+  return country==='IT'?msgIT:msgGEN;
+}
+
 function openWhatsAppForLead(){
   var phone=n('le-phone').value.trim().replace(/[^0-9+]/g,'');
   if(!phone){alert('Falta el telefono del Lead');return;}
-  // wa.me format: https://wa.me/+393343114631?text=Hola
-  var name=n('le-name').value.trim().split(' ')[0]||'';
-  var msg='Hola '+name+', soy Francesco de DMCAR Group. Recibimos tu interes a traves del formulario.';
+  // Build a temp Lead from form values to pick the right template
+  var temp={
+    name:n('le-name').value.trim(),
+    country:n('le-country').value.trim().toUpperCase()
+  };
+  var msg=buildWelcomeMessage(temp);
   window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
 }
+
 function quickWhatsApp(id){
   var l=leads.find(function(x){return String(x.id)===String(id);});
   if(!l||!l.phone){alert('Falta el telefono');return;}
   var phone=l.phone.replace(/[^0-9+]/g,'');
-  var name=(l.name||'').split(' ')[0]||'';
-  var msg='Hola '+name+', soy Francesco de DMCAR Group.';
+  var msg=buildWelcomeMessage(l);
   window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
 }
 
