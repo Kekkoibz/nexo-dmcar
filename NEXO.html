@@ -782,6 +782,16 @@ function today(){return new Date().toLocaleDateString('es-ES',{day:'2-digit',mon
 function fmtD(s){if(!s)return '--';try{return new Date(s+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'});}catch(e){return s;}}
 function isOD(s){return s&&new Date(s+'T23:59:00')<new Date();}
 function fnum(s){return parseFloat((s||'0').toString().replace(/[^0-9.]/g,''))||0;}
+
+// Total units across all stock groups (counts vehicles[] inner length when present, else 'units' field)
+function stockTotalUnits(){
+  return stock.reduce(function(s,i){
+    if(i.vehicles&&i.vehicles.length) return s+i.vehicles.length;
+    var u=String(i.units||'1').toLowerCase();
+    if(u==='varias'||u==='several'||u==='0') return s+1;
+    return s+(parseInt(u,10)||1);
+  },0);
+}
 function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // EML/MIME parser: handles multipart, base64, quoted-printable, HTML stripping
@@ -989,7 +999,7 @@ function renderDash(){
   n('ds-tasks').textContent=pd.length;
   n('cnt-leads').textContent=leads.filter(function(l){return l.status==='nuevo';}).length;
   n('cnt-tareas').textContent=od.length||pd.length;
-  n('cnt-stock').textContent=stock.length;
+  n('cnt-stock').textContent=stockTotalUnits();
 
   var urg=pd.filter(function(t){return t.priority==='urgente'||t.priority==='alta';}).slice(0,4);
   n('d-urg').innerHTML=urg.length?urg.map(function(t){return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)"><span class="pdot p'+t.priority[0]+'" style="flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.title)+'</div><div style="font-size:10px;color:var(--t3)">'+t.company+' &middot; '+fmtD(t.dueDate)+(isOD(t.dueDate)&&!t.done?'<span style="color:#f87171"> VENCIDA</span>':'')+'</div></div></div>';}).join(''):'<div style="color:var(--t3);font-size:12px">Sin tareas urgentes</div>';
@@ -1075,7 +1085,7 @@ function renderStkTbl(){
   var tbody=n('stk-body');
   var empty=n('stk-empty');
   var info=n('stk-info');
-  n('cnt-stock').textContent=stock.length;
+  n('cnt-stock').textContent=stockTotalUnits();
   if(info) info.textContent='Mostrando '+stkFlt.length+' de '+stock.length+' entradas';
   if(!stkFlt.length){tbody.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
