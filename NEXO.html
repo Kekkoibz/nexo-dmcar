@@ -3458,20 +3458,84 @@ function leadSurname(l){
   return parts.slice(1).join(' ');
 }
 
-// Pick the right welcome template based on the Lead's country
+// Build greeting based on time of day in target language
+function getTimeGreeting(lang){
+  var h=new Date().getHours();
+  // Define greetings by language and period
+  var greetings={
+    'it':{morning:'Buongiorno',afternoon:'Buongiorno',evening:'Buonasera'},
+    'es':{morning:'Buenos dias',afternoon:'Buenas tardes',evening:'Buenas noches'},
+    'en':{morning:'Good morning',afternoon:'Good afternoon',evening:'Good evening'},
+    'fr':{morning:'Bonjour',afternoon:'Bonjour',evening:'Bonsoir'},
+    'de':{morning:'Guten Morgen',afternoon:'Guten Tag',evening:'Guten Abend'},
+    'pt':{morning:'Bom dia',afternoon:'Boa tarde',evening:'Boa noite'}
+  };
+  var g=greetings[lang]||greetings.it;
+  if(h<12) return g.morning;
+  if(h<19) return g.afternoon;
+  return g.evening;
+}
+
+// Map country code to language code for the welcome message
+function langForCountry(country){
+  var c=(country||'').toUpperCase();
+  // Italian
+  if(c==='IT') return 'it';
+  // Spanish-speaking
+  if(['ES','MX','AR','CL','CO','PE','VE','UY','PY','BO','EC','GT','CR','SV','HN','NI','PA','DO','CU'].indexOf(c)>=0) return 'es';
+  // French-speaking
+  if(['FR','BE','CH','LU','MC','CA'].indexOf(c)>=0) return 'fr';
+  // German-speaking
+  if(['DE','AT'].indexOf(c)>=0) return 'de';
+  // Portuguese-speaking
+  if(['PT','BR'].indexOf(c)>=0) return 'pt';
+  // Default: English
+  return 'en';
+}
+
+// Pick the right welcome template based on the Lead's country and time
 function buildWelcomeMessage(l){
   var country=(l.country||'').toUpperCase();
   var surname=leadSurname(l);
-  var firstName=(l.name||'').split(/\s+/)[0]||'';
-  var msgIT='Buonasera Sig. '+surname+',\n'+
-    'la ringraziamo per aver compilato il nostro modulo e per l\u2019interesse mostrato verso la nostra azienda.\n'+
-    'Abbiamo ricevuto correttamente i suoi dati. Una nostra responsabile commerciale per il mercato italiano, Grazia Assi, la contattera\u0300 nei prossimi giorni per fornirle tutte le informazioni necessarie e assisterla al meglio in base alle sue esigenze.\n'+
-    'Restiamo a disposizione per qualsiasi ulteriore richiesta.';
-  var msgGEN='Buonasera Sig. '+surname+',\n'+
-    'la ringraziamo per aver compilato il nostro modulo e per l\u2019interesse mostrato verso la nostra azienda.\n'+
-    'Abbiamo ricevuto correttamente i suoi dati. Un nostro commerciale la contattera\u0300 nei prossimi giorni per fornirle tutte le informazioni necessarie e assisterla al meglio in base alle sue esigenze.\n'+
-    'Restiamo a disposizione per qualsiasi ulteriore richiesta.';
-  return country==='IT'?msgIT:msgGEN;
+  var lang=langForCountry(country);
+  var greeting=getTimeGreeting(lang);
+
+  // Italian (uses Grazia Assi if country is Italy)
+  if(lang==='it'){
+    return greeting+' Sig. '+surname+',\n'+
+      'la ringraziamo per aver compilato il nostro modulo e per l\u2019interesse mostrato verso la nostra azienda.\n'+
+      'Abbiamo ricevuto correttamente i suoi dati. Una nostra responsabile commerciale per il mercato italiano, Grazia Assi, la contattera\u0300 nei prossimi giorni per fornirle tutte le informazioni necessarie e assisterla al meglio in base alle sue esigenze.\n'+
+      'Restiamo a disposizione per qualsiasi ulteriore richiesta.';
+  }
+  if(lang==='es'){
+    return greeting+' Sr. '+surname+',\n'+
+      'le agradecemos por haber rellenado nuestro formulario y por el interes mostrado hacia nuestra empresa.\n'+
+      'Hemos recibido correctamente sus datos. Uno de nuestros comerciales le contactara en los proximos dias para proporcionarle toda la informacion necesaria y asistirle de la mejor manera segun sus necesidades.\n'+
+      'Quedamos a su disposicion para cualquier consulta.';
+  }
+  if(lang==='fr'){
+    return greeting+' M. '+surname+',\n'+
+      'nous vous remercions d\u2019avoir rempli notre formulaire et pour l\u2019interet manifeste envers notre entreprise.\n'+
+      'Nous avons bien recu vos donnees. L\u2019un de nos commerciaux vous contactera dans les prochains jours pour vous fournir toutes les informations necessaires et vous assister au mieux selon vos besoins.\n'+
+      'Nous restons a votre disposition pour toute demande supplementaire.';
+  }
+  if(lang==='de'){
+    return greeting+' Herr '+surname+',\n'+
+      'wir danken Ihnen, dass Sie unser Formular ausgefullt haben und fur Ihr Interesse an unserem Unternehmen.\n'+
+      'Wir haben Ihre Daten korrekt erhalten. Einer unserer Vertriebsmitarbeiter wird Sie in den nachsten Tagen kontaktieren, um Ihnen alle notwendigen Informationen zu geben und Sie nach Ihren Bedurfnissen optimal zu unterstutzen.\n'+
+      'Wir stehen Ihnen fur weitere Anfragen gerne zur Verfugung.';
+  }
+  if(lang==='pt'){
+    return greeting+' Sr. '+surname+',\n'+
+      'agradecemos por ter preenchido o nosso formulario e pelo interesse demonstrado pela nossa empresa.\n'+
+      'Recebemos corretamente os seus dados. Um dos nossos comerciais entrara em contato consigo nos proximos dias para lhe fornecer todas as informacoes necessarias e ajuda-lo da melhor forma segundo as suas necessidades.\n'+
+      'Ficamos a sua disposicao para qualquer pedido adicional.';
+  }
+  // Default English
+  return greeting+' Mr. '+surname+',\n'+
+    'thank you for filling out our form and for the interest shown in our company.\n'+
+    'We have correctly received your data. One of our sales representatives will contact you in the next few days to provide you with all the necessary information and assist you according to your needs.\n'+
+    'We remain at your disposal for any further requests.';
 }
 
 function openWhatsAppForLead(){
@@ -3483,7 +3547,8 @@ function openWhatsAppForLead(){
     country:n('le-country').value.trim().toUpperCase()
   };
   var msg=buildWelcomeMessage(temp);
-  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
+  // Use a named target so the same tab is reused on every call
+  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'dmcar_whatsapp');
 }
 
 function quickWhatsApp(id){
@@ -3491,7 +3556,8 @@ function quickWhatsApp(id){
   if(!l||!l.phone){alert('Falta el telefono');return;}
   var phone=l.phone.replace(/[^0-9+]/g,'');
   var msg=buildWelcomeMessage(l);
-  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
+  // Reuse the same tab named "dmcar_whatsapp"
+  window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'dmcar_whatsapp');
 }
 
 // Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
