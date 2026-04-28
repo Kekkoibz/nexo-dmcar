@@ -466,6 +466,14 @@ En que te puedo ayudar hoy?</div></div>
           </div>
           <div><label style="font-size:10px;color:var(--t3)">Pais</label><input type="text" id="lf-country" placeholder="IT, ES, DE..." oninput="renderLeads()"></div>
         </div>
+        <!-- Labels filter row -->
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-size:10px;color:var(--t3);margin:0">Filtrar por etiquetas:</label>
+          <div id="lf-labels-display" style="flex:1;min-height:28px;padding:4px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsFilterPicker()">
+            <span id="lf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>
+          </div>
+          <button class="btn bg" onclick="clearLabelsFilter()" id="lf-labels-clear" style="font-size:10px;padding:4px 8px;display:none">X Quitar</button>
+        </div>
         <div id="leads-info" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
       </div>
 
@@ -495,7 +503,7 @@ En que te puedo ayudar hoy?</div></div>
               <th style="width:36px"><input type="checkbox" id="leads-sel-all" onchange="leadsToggleAll(this)"></th>
               <th style="width:36px"></th>
               <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tel</th><th>Email</th>
-              <th>Categoria</th><th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
+              <th>Categoria</th><th>Etiquetas</th><th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
               <th style="width:130px">Acciones</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
@@ -924,6 +932,13 @@ En que te puedo ayudar hoy?</div></div>
         </select>
       </div>
     </div>
+    <div class="mb10">
+      <label>Etiquetas</label>
+      <div id="le-labels-display" style="min-height:36px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:5px;align-items:center;cursor:pointer" onclick="openLabelsPicker()">
+        <span id="le-labels-empty" style="color:var(--t3);font-size:11px">Click para anadir etiquetas...</span>
+      </div>
+      <input type="hidden" id="le-labels-data" value="">
+    </div>
     <div class="mb10"><label>Notas</label><textarea id="le-notes" rows="3" placeholder="Preferencias, observaciones, historial..."></textarea></div>
     <div id="le-google-status" style="font-size:11px;color:var(--t3);margin-bottom:8px;min-height:14px"></div>
     <div class="fc g8" style="flex-wrap:wrap">
@@ -932,6 +947,33 @@ En que te puedo ayudar hoy?</div></div>
       <button class="btn bs" onclick="exportLeadVcard()" style="font-size:12px">&#128196; vCard (.vcf)</button>
       <button class="btn bs" onclick="openWhatsAppForLead()" style="font-size:12px">&#128172; WhatsApp Web</button>
       <button class="btn bs" onclick="copyWelcomeMessage()" style="font-size:12px">&#128203; Copiar mensaje</button>
+    </div>
+  </div>
+</div>
+
+<!-- LABELS PICKER -->
+<div class="ovl" id="m-labels-picker">
+  <div class="modal" style="max-width:600px">
+    <div class="fbet mb14"><div class="mt">Etiquetas</div><button class="btn bg" onclick="closeM('m-labels-picker')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Click para seleccionar/deseleccionar. O escribe una nueva abajo y pulsa <strong>Enter</strong> o <strong>+</strong>.</div>
+
+    <!-- New label input -->
+    <div class="fc g8 mb10">
+      <input type="text" id="lp-new-label" placeholder="Nueva etiqueta (ej: 4x4-diesel)" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addNewLabel();}">
+      <button class="btn bp" onclick="addNewLabel()" style="font-size:12px">+ Anadir</button>
+    </div>
+
+    <!-- Search filter -->
+    <input type="text" id="lp-search" placeholder="&#128270; Buscar etiqueta..." oninput="renderLabelsPicker()" style="margin-bottom:10px">
+
+    <!-- Labels grid -->
+    <div id="lp-labels-grid" style="max-height:340px;overflow-y:auto;padding:8px;background:var(--bg3);border-radius:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
+
+    <div style="font-size:10px;color:var(--t4);margin-top:6px" id="lp-stats"></div>
+
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bp" onclick="confirmLabelsPicker()" style="flex:1">&#10003; Confirmar seleccion</button>
+      <button class="btn bg" onclick="closeM('m-labels-picker')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -998,6 +1040,31 @@ var tasks=LS('tasks',[
 ]);
 var leads=LS('leads',[]);
 var offerHist=LS('offerHist',[]);
+
+// LABELS (etichette) for Leads — categorized into groups
+// Default suggested labels that NEXO seeds the system with on first use
+var DEFAULT_LABELS=[
+  // Marca
+  'audi','bmw','mercedes','vw','seat','skoda','porsche','byd','tesla','peugeot','renault','fiat','alfa-romeo','toyota','hyundai','kia','volvo','ford','citroen','dacia','jeep','mini','land-rover',
+  // Tipo
+  '4x4','suv','berlina','monovolumen','coupe','cabrio','furgon','pickup','industriale','commerciale','familiar','utilitario',
+  // Combustibile
+  'gasolina','diesel','electrico','hibrido','phev','hev','gpl','metano',
+  // Cambio
+  'manual','automatico',
+  // Range prezzo
+  'under-15k','15-25k','25-40k','40-60k','60-100k','over-100k',
+  // Anno
+  'dal-2018','dal-2020','dal-2022','dal-2024','dal-2025','dal-2026','nuovo','km-0',
+  // Gama
+  'economico','media-gama','premium','lujo','super-car'
+];
+// User's saved labels (combination of defaults + manually added)
+var savedLabels=LS('savedLabels',null);
+if(!savedLabels||!savedLabels.length){
+  savedLabels=DEFAULT_LABELS.slice();
+  SS('savedLabels',savedLabels);
+}
 var chatHist=[];
 var stkSel=new Set();
 var stkFlt=[];
@@ -3132,6 +3199,13 @@ function renderLeads(){
     if(srcFilter&&l.source!==srcFilter) return false;
     if(catFilter&&l.category!==catFilter) return false;
     if(ctFilter&&!((l.country||'').toLowerCase().indexOf(ctFilter)>=0)) return false;
+    // Labels filter: AND logic (lead must have ALL selected filter labels)
+    if(leadsLabelsFilter.size>0){
+      var leadLabels=new Set(l.labels||[]);
+      var ok=true;
+      leadsLabelsFilter.forEach(function(t){if(!leadLabels.has(t)) ok=false;});
+      if(!ok) return false;
+    }
     return true;
   });
   if(n('leads-info')) n('leads-info').textContent=filtered.length+' de '+leads.length+' leads';
@@ -3167,6 +3241,17 @@ function renderLeadsTable(filtered){
       var cc=LEAD_CAT_COLOR[l.category]||{bg:'var(--bg3)',fg:'var(--t2)'};
       catHtml='<span style="background:'+cc.bg+';color:'+cc.fg+';padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">'+esc(l.category)+'</span>';
     }
+    // Labels (etiquetas) badges - up to 4 visible, "+N more" if extra
+    var lblHtml='--';
+    if(l.labels&&l.labels.length){
+      var visible=l.labels.slice(0,4);
+      var extra=l.labels.length-visible.length;
+      lblHtml=visible.map(function(t){
+        var col=labelColor(t);
+        return '<span onclick="event.stopPropagation();toggleLabelsFilterTag(\''+esc(t)+'\')" style="background:'+col.bg+';color:'+col.fg+';padding:1px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;display:inline-block" title="Click para filtrar">'+esc(t)+'</span>';
+      }).join(' ');
+      if(extra>0) lblHtml+=' <span style="font-size:9px;color:var(--t4)">+'+extra+'</span>';
+    }
     return '<tr'+(leadSel.has(l.id)?' style="background:rgba(37,99,235,.07)"':'')+'>'+
       '<td style="text-align:center"><input type="checkbox" class="lchk" data-id="'+l.id+'" onchange="leadsToggleOne(\''+l.id+'\',this)"'+checked+'></td>'+
       '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
@@ -3179,6 +3264,7 @@ function renderLeadsTable(filtered){
       '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2)">'+esc(l.email||'--')+'</td>'+
       '<td>'+catHtml+'</td>'+
+      '<td style="max-width:180px;line-height:1.6">'+lblHtml+'</td>'+
       '<td style="font-size:11px"><span style="background:var(--bg3);padding:2px 7px;border-radius:6px">'+esc(l.type||'--')+'</span></td>'+
       '<td style="text-align:center;font-weight:700;color:var(--acc);font-size:12px">'+esc(l.volume||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t3)">'+esc(l.source||'--')+'</td>'+
@@ -3384,6 +3470,8 @@ function openLeadModal(){
   ['le-type','le-vtype','le-volume','le-import','le-source'].forEach(function(id){n(id).value='';});
   n('le-status').value='Nuevo';
   n('le-google-status').textContent='';
+  n('le-labels-data').value='';
+  renderLeadLabelsDisplay();
   openM('m-lead-edit');
 }
 
@@ -3406,6 +3494,8 @@ function editLead(id){
   n('le-source').value=l.source||'';
   n('le-status').value=l.status||'Nuevo';
   n('le-notes').value=l.notes||'';
+  n('le-labels-data').value=(l.labels||[]).join(',');
+  renderLeadLabelsDisplay();
   n('le-google-status').textContent=l.googleResourceName?'\u2713 Sincronizado con Google ('+l.googleSyncedAt||''+')':'';
   openM('m-lead-edit');
 }
@@ -3428,7 +3518,8 @@ function saveLead(){
     import:n('le-import').value,
     source:n('le-source').value,
     status:n('le-status').value,
-    notes:n('le-notes').value.trim()
+    notes:n('le-notes').value.trim(),
+    labels:(n('le-labels-data').value||'').split(',').filter(Boolean)
   };
   if(id){
     var idx=leads.findIndex(function(x){return String(x.id)===String(id);});
@@ -3451,6 +3542,211 @@ function delLead(id){
   if(!confirm('Eliminar lead?'))return;
   leads=leads.filter(function(l){return String(l.id)!==String(id);});
   SS('leads',leads);renderLeads();renderDash();
+}
+
+// ========== LABELS (etiquetas) ==========
+// Currently selected labels in the picker (temporary state during modal session)
+var labelsPickerSel=new Set();
+// Where the picker results should go: 'lead' (le-labels-data) or 'filter' (lf-labels)
+var labelsPickerTarget='lead';
+// Currently active labels filter for the leads view
+var leadsLabelsFilter=new Set();
+
+// Normalize a label: lowercase, dashes for spaces, remove diacritics, alphanumeric
+function normalizeLabel(s){
+  s=String(s||'').trim().toLowerCase();
+  // Replace accented characters with simple ones
+  s=s.normalize?s.normalize('NFD').replace(/[\u0300-\u036f]/g,''):s;
+  // Replace spaces and underscores with dashes
+  s=s.replace(/[\s_]+/g,'-');
+  // Remove forbidden characters (keep only a-z, 0-9, dash)
+  s=s.replace(/[^a-z0-9\-]/g,'');
+  // Collapse multiple dashes
+  s=s.replace(/-+/g,'-').replace(/^-|-$/g,'');
+  return s;
+}
+
+// Generate a stable color for a label based on hash of its name
+function labelColor(label){
+  // Simple hash
+  var hash=0;
+  for(var i=0;i<label.length;i++){
+    hash=((hash<<5)-hash)+label.charCodeAt(i);
+    hash|=0;
+  }
+  // 12 distinct color pairs (light bg, dark fg readable)
+  var palette=[
+    {bg:'#dbeafe',fg:'#1e40af'},
+    {bg:'#dcfce7',fg:'#166534'},
+    {bg:'#fef9c3',fg:'#854d0e'},
+    {bg:'#fed7aa',fg:'#9a3412'},
+    {bg:'#fee2e2',fg:'#991b1b'},
+    {bg:'#f3e8ff',fg:'#6b21a8'},
+    {bg:'#fce7f3',fg:'#9f1239'},
+    {bg:'#cffafe',fg:'#155e75'},
+    {bg:'#e0e7ff',fg:'#3730a3'},
+    {bg:'#ccfbf1',fg:'#115e59'},
+    {bg:'#ffe4e6',fg:'#9f1239'},
+    {bg:'#e2e8f0',fg:'#334155'}
+  ];
+  var idx=Math.abs(hash)%palette.length;
+  return palette[idx];
+}
+
+// Get all known labels (saved + extracted from existing leads), sorted alphabetically
+function allKnownLabels(){
+  var set=new Set(savedLabels);
+  leads.forEach(function(l){
+    if(l.labels) l.labels.forEach(function(t){set.add(t);});
+  });
+  return Array.from(set).sort();
+}
+
+// Add a brand new label to saved list
+function addNewLabel(){
+  var raw=n('lp-new-label').value;
+  var lbl=normalizeLabel(raw);
+  if(!lbl){alert('Etiqueta no valida');return;}
+  if(savedLabels.indexOf(lbl)>=0){
+    showToast('Etiqueta "'+lbl+'" ya existe');
+  } else {
+    savedLabels.push(lbl);
+    savedLabels.sort();
+    SS('savedLabels',savedLabels);
+    showToast('\u2713 Etiqueta "'+lbl+'" creada');
+  }
+  // Auto-select the newly added label
+  labelsPickerSel.add(lbl);
+  n('lp-new-label').value='';
+  renderLabelsPicker();
+}
+
+// Open picker for editing a Lead's labels (called from lead modal)
+function openLabelsPicker(){
+  labelsPickerTarget='lead';
+  labelsPickerSel=new Set();
+  // Load current Lead's labels from hidden field
+  var current=n('le-labels-data').value;
+  if(current){
+    current.split(',').forEach(function(t){if(t) labelsPickerSel.add(t.trim());});
+  }
+  n('lp-search').value='';
+  n('lp-new-label').value='';
+  renderLabelsPicker();
+  openM('m-labels-picker');
+  setTimeout(function(){n('lp-new-label').focus();},150);
+}
+
+// Open picker for filtering the Leads list
+function openLabelsFilterPicker(){
+  labelsPickerTarget='filter';
+  labelsPickerSel=new Set(leadsLabelsFilter);
+  n('lp-search').value='';
+  n('lp-new-label').value='';
+  renderLabelsPicker();
+  openM('m-labels-picker');
+}
+
+// Render the picker grid with all labels and selection state
+function renderLabelsPicker(){
+  var grid=n('lp-labels-grid');
+  if(!grid) return;
+  var search=normalizeLabel(n('lp-search').value||'');
+  var labels=allKnownLabels();
+  var filtered=search?labels.filter(function(t){return t.indexOf(search)>=0;}):labels;
+  var stats=n('lp-stats');
+  if(stats) stats.textContent=labels.length+' etiquetas en sistema | '+labelsPickerSel.size+' seleccionadas';
+
+  if(!filtered.length){
+    grid.innerHTML='<div style="color:var(--t3);font-size:11px;padding:20px;width:100%;text-align:center">No hay etiquetas. Crea una arriba.</div>';
+    return;
+  }
+  grid.innerHTML=filtered.map(function(t){
+    var col=labelColor(t);
+    var sel=labelsPickerSel.has(t);
+    var bg=sel?col.bg:'var(--bg2)';
+    var fg=sel?col.fg:'var(--t2)';
+    var bord=sel?col.fg:'var(--border)';
+    var prefix=sel?'\u2713 ':'';
+    return '<span onclick="togglePickerLabel(\''+esc(t)+'\')" style="background:'+bg+';color:'+fg+';border:1.5px solid '+bord+';padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;transition:all .1s">'+prefix+esc(t)+'</span>';
+  }).join('');
+}
+
+function togglePickerLabel(t){
+  if(labelsPickerSel.has(t)) labelsPickerSel.delete(t);
+  else labelsPickerSel.add(t);
+  renderLabelsPicker();
+}
+
+// Confirm picker selection — apply to lead modal or filter
+function confirmLabelsPicker(){
+  var arr=Array.from(labelsPickerSel).sort();
+  if(labelsPickerTarget==='lead'){
+    n('le-labels-data').value=arr.join(',');
+    renderLeadLabelsDisplay();
+  } else {
+    leadsLabelsFilter=new Set(arr);
+    renderLeadsFilterLabelsDisplay();
+    renderLeads();
+  }
+  closeM('m-labels-picker');
+}
+
+// Render the chips inside the lead modal
+function renderLeadLabelsDisplay(){
+  var box=n('le-labels-display');
+  var empty=n('le-labels-empty');
+  if(!box) return;
+  var data=n('le-labels-data').value;
+  var arr=data?data.split(',').filter(Boolean):[];
+  if(!arr.length){
+    box.innerHTML='<span id="le-labels-empty" style="color:var(--t3);font-size:11px">Click para anadir etiquetas...</span>';
+    return;
+  }
+  box.innerHTML=arr.map(function(t){
+    var col=labelColor(t);
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:5px">'+esc(t)+'<span onclick="event.stopPropagation();removeLeadLabel(\''+esc(t)+'\')" style="cursor:pointer;font-weight:bold;opacity:.7" title="Quitar">x</span></span>';
+  }).join(' ');
+}
+
+function removeLeadLabel(t){
+  var data=n('le-labels-data').value;
+  var arr=data?data.split(',').filter(Boolean):[];
+  arr=arr.filter(function(x){return x!==t;});
+  n('le-labels-data').value=arr.join(',');
+  renderLeadLabelsDisplay();
+}
+
+// Render filter chips and toggle clear button
+function renderLeadsFilterLabelsDisplay(){
+  var box=n('lf-labels-display');
+  var clearBtn=n('lf-labels-clear');
+  if(!box) return;
+  var arr=Array.from(leadsLabelsFilter);
+  if(!arr.length){
+    box.innerHTML='<span id="lf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>';
+    if(clearBtn) clearBtn.style.display='none';
+    return;
+  }
+  box.innerHTML=arr.map(function(t){
+    var col=labelColor(t);
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(t)+'</span>';
+  }).join(' ');
+  if(clearBtn) clearBtn.style.display='';
+}
+
+function clearLabelsFilter(){
+  leadsLabelsFilter.clear();
+  renderLeadsFilterLabelsDisplay();
+  renderLeads();
+}
+
+// Click on a label chip in the table to toggle filter
+function toggleLabelsFilterTag(t){
+  if(leadsLabelsFilter.has(t)) leadsLabelsFilter.delete(t);
+  else leadsLabelsFilter.add(t);
+  renderLeadsFilterLabelsDisplay();
+  renderLeads();
 }
 
 // Build the "DM IT ANTONELLO GIANNOTTI - Elite cars" name format the user wants
@@ -3612,22 +3908,32 @@ function buildWelcomeMessage(l){
 // Hold a reference to the WhatsApp window we open so we can reuse it
 var dmcarWhatsAppWindow=null;
 
-function openWhatsAppNewMessage(phone,msg){
-  var url='https://web.whatsapp.com/send?phone='+phone.replace('+','')+'&text='+encodeURIComponent(msg);
-  // Check if our tracked window is still open and not closed by user
+// Open WhatsApp Web Business tab (just the homepage) - reuse same tab if possible
+function openWhatsAppHome(){
+  var url='https://web.whatsapp.com/';
   if(dmcarWhatsAppWindow&&!dmcarWhatsAppWindow.closed){
     try{
-      // Navigate the existing window to the new URL (changes the chat in WhatsApp Web)
-      dmcarWhatsAppWindow.location.href=url;
       dmcarWhatsAppWindow.focus();
-      return;
+      return true;
     }catch(e){
-      // Cross-origin error or window unreachable - fall through to opening a new one
       dmcarWhatsAppWindow=null;
     }
   }
-  // Open new window with named target - if user has another web.whatsapp tab open this might still go there
   dmcarWhatsAppWindow=window.open(url,'dmcar_whatsapp');
+  return false;
+}
+
+// Copy message + phone to clipboard, show instructions
+function whatsAppCopyAndOpen(phone,msg,leadName){
+  // Copy a combined block: phone first line, then message
+  var clipText='Tel: '+phone+'\n\n'+msg;
+  copyToClipboard(clipText,'mensaje y telefono');
+  // Open WhatsApp tab (or focus existing)
+  var hadWindow=openWhatsAppHome();
+  // Show clear instructions
+  setTimeout(function(){
+    showToast('\u2713 Mensaje copiado. Busca el contacto en WhatsApp y pega (Cmd+V).');
+  },300);
 }
 
 function openWhatsAppForLead(){
@@ -3638,15 +3944,14 @@ function openWhatsAppForLead(){
     country:n('le-country').value.trim().toUpperCase()
   };
   var msg=buildWelcomeMessage(temp);
-  openWhatsAppNewMessage(phone,msg);
+  whatsAppCopyAndOpen(phone,msg,temp.name);
 }
 
 function quickWhatsApp(id){
   var l=leads.find(function(x){return String(x.id)===String(id);});
   if(!l||!l.phone){alert('Falta el telefono');return;}
-  var phone=l.phone.replace(/[^0-9+]/g,'');
   var msg=buildWelcomeMessage(l);
-  openWhatsAppNewMessage(phone,msg);
+  whatsAppCopyAndOpen(l.phone,msg,leadCleanName(l));
 }
 
 // Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
