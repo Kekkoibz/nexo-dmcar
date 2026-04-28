@@ -916,7 +916,8 @@ En que te puedo ayudar hoy?</div></div>
       <button class="btn bp" onclick="saveLead()" style="flex:1">&#128190; Guardar</button>
       <button class="btn bs" onclick="syncLeadToGoogle()" id="le-google-btn" style="font-size:12px">&#128241; Sync con Google</button>
       <button class="btn bs" onclick="exportLeadVcard()" style="font-size:12px">&#128196; vCard (.vcf)</button>
-      <button class="btn bs" onclick="openWhatsAppForLead()" style="font-size:12px">&#128172; WhatsApp</button>
+      <button class="btn bs" onclick="openWhatsAppForLead()" style="font-size:12px">&#128172; WhatsApp Web</button>
+      <button class="btn bs" onclick="copyWelcomeMessage()" style="font-size:12px">&#128203; Copiar mensaje</button>
     </div>
   </div>
 </div>
@@ -3124,7 +3125,7 @@ function renderLeadsTable(filtered){
     return '<tr'+(leadSel.has(l.id)?' style="background:rgba(37,99,235,.07)"':'')+'>'+
       '<td style="text-align:center"><input type="checkbox" class="lchk" data-id="'+l.id+'" onchange="leadsToggleOne(\''+l.id+'\',this)"'+checked+'></td>'+
       '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
-      '<td><strong>'+esc(l.name||'--')+'</strong>'+(l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+'</td>'+
+      '<td><strong>'+esc(leadDisplayName(l))+'</strong>'+(l.city?'<br><span style="font-size:10px;color:var(--t3)">'+esc(l.city)+'</span>':'')+'</td>'+
       '<td style="font-size:12px">'+esc(l.company||'--')+'</td>'+
       '<td style="font-size:12px;color:var(--t2)">'+esc(l.country||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
@@ -3137,7 +3138,8 @@ function renderLeadsTable(filtered){
       '<td style="font-size:10px;color:var(--t3)">'+fmtD(l.createdAt||'')+'</td>'+
       '<td><div class="fc g4">'+
         '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar">&#9998;</button>'+
-        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp">&#128172;</button>'+
+        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp Web">&#128172;</button>'+
+        '<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje">&#128203;</button>'+
         '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google">&#128241;</button>'+
         '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar">x</button>'+
       '</div></td>'+
@@ -3229,7 +3231,7 @@ function leadsBulkSync(){
       }
       var l=selected[i];
       pushLeadToGoogle(l,token,function(ok,err){
-        if(ok){l.googleResourceName=ok.resourceName;l.googleSyncedAt=new Date().toISOString();done++;}
+        if(ok){l.googleResourceName=ok.resourceName;l.googleEtag=ok.etag;l.googleSyncedAt=new Date().toISOString();done++;}
         else{errors++;console.warn('Sync fail '+l.name+':',err);}
         // Slight delay to respect rate limits
         setTimeout(function(){next(i+1);},150);
@@ -3492,6 +3494,55 @@ function quickWhatsApp(id){
   window.open('https://wa.me/'+phone.replace('+','')+'?text='+encodeURIComponent(msg),'_blank');
 }
 
+// Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
+function copyWelcomeMessage(){
+  var temp={
+    name:n('le-name').value.trim(),
+    country:n('le-country').value.trim().toUpperCase()
+  };
+  if(!temp.name){alert('Falta el nombre del Lead');return;}
+  var msg=buildWelcomeMessage(temp);
+  copyToClipboard(msg,'mensaje');
+}
+
+function quickCopyMessage(id){
+  var l=leads.find(function(x){return String(x.id)===String(id);});
+  if(!l) return;
+  var msg=buildWelcomeMessage(l);
+  copyToClipboard(msg,'mensaje');
+}
+
+// Generic copy-to-clipboard helper
+function copyToClipboard(text,label){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      showToast('\u2713 '+(label||'Texto')+' copiado al portapapeles');
+    }).catch(function(){
+      fallbackCopy(text,label);
+    });
+  } else {
+    fallbackCopy(text,label);
+  }
+}
+
+function fallbackCopy(text,label){
+  var ta=document.createElement('textarea');
+  ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');showToast('\u2713 '+(label||'Texto')+' copiado');}
+  catch(e){alert('No se pudo copiar:\n\n'+text);}
+  document.body.removeChild(ta);
+}
+
+// Lightweight toast notification (no alert)
+function showToast(msg){
+  var t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,.25);transition:opacity .3s';
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';setTimeout(function(){t.remove();},300);},2500);
+}
+
 // vCard export
 function buildVcard(l){
   var displayName=leadDisplayName(l);
@@ -3586,8 +3637,7 @@ function syncLeadToGoogle(){
   getGoogleToken(function(token){
     pushLeadToGoogle(l,token,function(ok,err){
       if(ok){
-        l.googleResourceName=ok.resourceName;
-        l.googleSyncedAt=new Date().toISOString();
+        l.googleResourceName=ok.resourceName;l.googleEtag=ok.etag;l.googleSyncedAt=new Date().toISOString();
         SS('leads',leads);
         n('le-google-status').innerHTML='<span style="color:var(--green)">&#10003; Sincronizado con Google Contacts</span>';
       } else {
@@ -3603,8 +3653,7 @@ function quickGoogleSync(id){
   getGoogleToken(function(token){
     pushLeadToGoogle(l,token,function(ok,err){
       if(ok){
-        l.googleResourceName=ok.resourceName;
-        l.googleSyncedAt=new Date().toISOString();
+        l.googleResourceName=ok.resourceName;l.googleEtag=ok.etag;l.googleSyncedAt=new Date().toISOString();
         SS('leads',leads);
         alert('\u2713 '+(l.name||'Lead')+' sincronizado con Google Contacts');
       } else {
@@ -3621,45 +3670,71 @@ function pushLeadToGoogle(l,token,cb){
   var first=nameParts[0]||'';
   var last=nameParts.slice(1).join(' ')||'';
 
-  var person={
-    names:[{givenName:first,familyName:last,displayName:displayName,unstructuredName:displayName}]
-  };
-  if(l.company) person.organizations=[{name:l.company}];
-  if(l.phone) person.phoneNumbers=[{value:l.phone,type:'mobile'}];
-  if(l.email) person.emailAddresses=[{value:l.email}];
-  if(l.city||l.country) person.addresses=[{city:l.city||'',countryCode:l.country||'',type:'work'}];
-  var noteParts=[];
-  if(l.type) noteParts.push('Tipo: '+l.type);
-  if(l.vtype) noteParts.push('Vehiculos: '+l.vtype);
-  if(l.volume) noteParts.push('Volumen: '+l.volume+'/mes');
-  if(l.source) noteParts.push('Origen: '+l.source);
-  if(l.notes) noteParts.push(l.notes);
-  if(noteParts.length) person.biographies=[{value:noteParts.join('\n'),contentType:'TEXT_PLAIN'}];
-  person.userDefined=[{key:'NEXO_LEAD_ID',value:String(l.id)}];
-
-  // If already synced, do an UPDATE; else CREATE
-  var url,method;
-  if(l.googleResourceName){
-    url='https://people.googleapis.com/v1/'+l.googleResourceName+':updateContact?updatePersonFields=names,organizations,phoneNumbers,emailAddresses,addresses,biographies,userDefined';
-    method='PATCH';
-    person.etag=l.googleEtag||undefined;
-  } else {
-    url='https://people.googleapis.com/v1/people:createContact';
-    method='POST';
+  function buildPerson(currentEtag){
+    var person={
+      names:[{givenName:first,familyName:last,displayName:displayName,unstructuredName:displayName}]
+    };
+    if(l.company) person.organizations=[{name:l.company}];
+    if(l.phone) person.phoneNumbers=[{value:l.phone,type:'mobile'}];
+    if(l.email) person.emailAddresses=[{value:l.email}];
+    if(l.city||l.country) person.addresses=[{city:l.city||'',countryCode:l.country||'',type:'work'}];
+    var noteParts=[];
+    if(l.category) noteParts.push('Categoria: '+l.category);
+    if(l.type) noteParts.push('Tipo: '+l.type);
+    if(l.vtype) noteParts.push('Vehiculos: '+l.vtype);
+    if(l.volume) noteParts.push('Volumen: '+l.volume+'/mes');
+    if(l.source) noteParts.push('Origen: '+l.source);
+    if(l.notes) noteParts.push(l.notes);
+    if(noteParts.length) person.biographies=[{value:noteParts.join('\n'),contentType:'TEXT_PLAIN'}];
+    person.userDefined=[{key:'NEXO_LEAD_ID',value:String(l.id)}];
+    if(currentEtag) person.etag=currentEtag;
+    return person;
   }
 
-  fetch(url,{
-    method:method,
-    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
-    body:JSON.stringify(person)
-  }).then(function(r){return r.json().then(function(data){return {status:r.status,data:data};});})
-  .then(function(res){
-    if(res.status>=200&&res.status<300){
-      cb({resourceName:res.data.resourceName,etag:res.data.etag},null);
-    } else {
-      cb(null,(res.data&&res.data.error&&res.data.error.message)||('HTTP '+res.status));
-    }
-  }).catch(function(e){cb(null,e.message);});
+  function doRequest(url,method,bodyObj){
+    return fetch(url,{
+      method:method,
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify(bodyObj)
+    }).then(function(r){return r.json().then(function(data){return {status:r.status,data:data};});});
+  }
+
+  // CREATE flow (new contact)
+  if(!l.googleResourceName){
+    doRequest('https://people.googleapis.com/v1/people:createContact','POST',buildPerson(null))
+      .then(function(res){
+        if(res.status>=200&&res.status<300) cb({resourceName:res.data.resourceName,etag:res.data.etag},null);
+        else cb(null,(res.data&&res.data.error&&res.data.error.message)||('HTTP '+res.status));
+      }).catch(function(e){cb(null,e.message);});
+    return;
+  }
+
+  // UPDATE flow: fetch current etag first, then PATCH
+  var getUrl='https://people.googleapis.com/v1/'+l.googleResourceName+'?personFields=metadata,names';
+  fetch(getUrl,{headers:{'Authorization':'Bearer '+token}})
+    .then(function(r){return r.json().then(function(data){return {status:r.status,data:data};});})
+    .then(function(res){
+      if(res.status===404||(res.data&&res.data.error&&res.data.error.code===404)){
+        // Contact was deleted in Google — recreate it
+        doRequest('https://people.googleapis.com/v1/people:createContact','POST',buildPerson(null))
+          .then(function(res2){
+            if(res2.status>=200&&res2.status<300) cb({resourceName:res2.data.resourceName,etag:res2.data.etag},null);
+            else cb(null,(res2.data&&res2.data.error&&res2.data.error.message)||('HTTP '+res2.status));
+          }).catch(function(e){cb(null,e.message);});
+        return;
+      }
+      if(res.status<200||res.status>=300){
+        cb(null,(res.data&&res.data.error&&res.data.error.message)||('HTTP '+res.status));
+        return;
+      }
+      var etag=res.data.etag;
+      var updateUrl='https://people.googleapis.com/v1/'+l.googleResourceName+':updateContact?updatePersonFields=names,organizations,phoneNumbers,emailAddresses,addresses,biographies,userDefined';
+      doRequest(updateUrl,'PATCH',buildPerson(etag))
+        .then(function(res2){
+          if(res2.status>=200&&res2.status<300) cb({resourceName:res2.data.resourceName,etag:res2.data.etag},null);
+          else cb(null,(res2.data&&res2.data.error&&res2.data.error.message)||('HTTP '+res2.status));
+        }).catch(function(e){cb(null,e.message);});
+    }).catch(function(e){cb(null,e.message);});
 }
 
 
