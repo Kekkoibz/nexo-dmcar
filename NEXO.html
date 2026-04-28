@@ -468,6 +468,7 @@ En que te puedo ayudar hoy?</div></div>
             <label for="restore-file" class="fb" style="cursor:pointer">&#128229; Importar backup JSON</label>
             <input type="file" id="restore-file" accept=".json,application/json" style="display:none" onchange="importAll(this)">
             <button class="btn bs" onclick="cleanStockTransmission()" style="font-size:12px">&#9881; Limpiar M/T en electricos/hibridos</button>
+            <button class="btn bs" onclick="cleanStockGhosts()" style="font-size:12px">&#128465; Eliminar filas vacias / "No Stock"</button>
           </div>
           <div id="backup-msg" style="font-size:11px;margin-bottom:10px;min-height:14px"></div>
           <button class="btn bd" onclick="clrAll()">Borrar todos los datos</button>
@@ -1440,6 +1441,29 @@ function cleanStockTransmission(){
   SS('stock',stock);
   fStk();
   alert('Corregidos '+fixed+' vehiculos electricos/hibridos: M/T eliminado de la version.');
+}
+
+// Remove "ghost" rows (entries without brand, without model, or with junk version like "No Stock", "Total", etc.)
+function cleanStockGhosts(){
+  var junkRe=/^(No\s+Stock|Total|Grand\s+Total|TOTAL|Sin\s+stock)$/i;
+  var before=stock.length;
+  stock=stock.filter(function(item){
+    var brand=String(item.brand||'').trim();
+    var model=String(item.model||'').trim();
+    var version=String(item.version||'').trim();
+    // Remove if no brand AND no model
+    if(!brand&&!model) return false;
+    // Remove if version is junk like "No Stock", "Total", etc.
+    if(junkRe.test(version)) return false;
+    // Remove if model is junk
+    if(junkRe.test(model)) return false;
+    return true;
+  });
+  var removed=before-stock.length;
+  if(!removed){alert('No se encontraron filas vacias o con datos basura.');return;}
+  SS('stock',stock);
+  fStk();
+  alert('Eliminadas '+removed+' filas con datos vacios o basura ("No Stock", "Total", etc.)');
 }
 
 function saveManual(){
