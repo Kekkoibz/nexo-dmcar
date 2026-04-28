@@ -276,6 +276,7 @@ En que te puedo ayudar hoy?</div></div>
         <div class="fc g8">
           <button class="btn bs" onclick="exportStock()" style="font-size:11px">&#11123; CSV</button>
           <button class="btn bs" onclick="openM('m-import')" style="font-size:11px">&#128206; Importar</button>
+          <button class="btn bg" id="btn-undo-import" onclick="undoLastImport()" style="font-size:11px;display:none">&#8617; Deshacer import</button>
           <button class="btn bp" onclick="openM('m-sadd')">+ Nueva</button>
         </div>
       </div>
@@ -1079,7 +1080,7 @@ function renderDash(){
 }
 
 // -- STOCK VIVO -----------------------------------------------
-var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. Transmision: AT8=AUT,eDCS6=AUT,MAN=M/T,sin indicar=M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA"}]}]}';
+var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. TRANSMISION: AT8=AUT, eDCS6=AUT, DSG=DSG (no anadas AUT), S-TRONIC=S-TRONIC (no anadas AUT), Steptronic=Steptronic (no anadas AUT), DCT=DCT (no anadas AUT), X-TRONIC=X-TRONIC (no anadas AUT), MAN=M/T. IMPORTANTE: si el vehiculo es ELECTRICO (Full Electric, BEV, EV, electric) o HIBRIDO (Hybrid, HEV, PHEV, plug-in), siempre es AUTOMATICO -> usa AUT (NUNCA M/T para electricos/hibridos). Si no se indica transmision y no es electrico/hibrido -> M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA"}]}]}';
 
 function renderStk(){updBF();fStk();}
 
@@ -1108,6 +1109,17 @@ function fStk(){
     if(y2<9999&&yr>y2) return false;
     return true;
   });
+  // Show/hide "Deshacer import" button based on whether there is a recent batch
+  var undoBtn=n('btn-undo-import');
+  if(undoBtn){
+    var lastBatch=LS('lastImportBatch','');
+    var hasItems=lastBatch&&stock.some(function(s){return s.importBatch===lastBatch;});
+    undoBtn.style.display=hasItems?'':'none';
+    if(hasItems){
+      var n_=stock.filter(function(s){return s.importBatch===lastBatch;}).length;
+      undoBtn.innerHTML='&#8617; Deshacer ('+n_+')';
+    }
+  }
   renderStkTbl();
 }
 
@@ -1384,8 +1396,23 @@ function addStkItem(item){
   item.pickup=item.pickup||'--';
   item.status=item.status||'Stock';
   item.vehicles=item.vehicles||[];
+  // Tag with current import batch (set at start of an import run) so we can undo later
+  if(window._currentImportBatch) item.importBatch=window._currentImportBatch;
   stock.push(item);stkCnt++;
   SS('stock',stock);SS('stkCnt',stkCnt);
+}
+
+function undoLastImport(){
+  var batch=LS('lastImportBatch','');
+  if(!batch){alert('No hay importacion reciente para deshacer');return;}
+  var toRemove=stock.filter(function(s){return s.importBatch===batch;});
+  if(!toRemove.length){alert('No se encontraron vehiculos del ultimo import (puede que ya hayas borrado algunos manualmente)');return;}
+  if(!confirm('Eliminar los '+toRemove.length+' vehiculo'+(toRemove.length!==1?'s':'')+' importados en el ultimo lote?')) return;
+  stock=stock.filter(function(s){return s.importBatch!==batch;});
+  SS('stock',stock);
+  SS('lastImportBatch','');  // clear so undo can't be repeated
+  fStk();renderDash();
+  alert(toRemove.length+' vehiculo'+(toRemove.length!==1?'s':'')+' eliminados.');
 }
 
 function saveManual(){
@@ -1809,6 +1836,10 @@ function iHandleResp(resp,manualSup){
     var vehicles=parsed.vehicles||[];
     if(!vehicles.length){n('i-status').textContent='No se detectaron vehiculos';n('i-btn').disabled=false;return;}
 
+    // Tag this batch with a unique ID so user can undo it later
+    var batchId='b'+Date.now();
+    window._currentImportBatch=batchId;
+
     // Set supplier
     vehicles.forEach(function(v){v.supplier=manualSup||v.supplier||detSup;});
 
@@ -1819,6 +1850,8 @@ function iHandleResp(resp,manualSup){
     function finishImport(){
       var added=0;
       vehicles.forEach(function(v){addStkItem(v);added++;});
+      window._currentImportBatch=null;
+      SS('lastImportBatch',batchId);  // remember for undo
       var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
       n('i-status').textContent=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
       setTimeout(function(){
@@ -2442,6 +2475,14 @@ function buildSmartTitle(brand,model,version){
   if(commercial.test(v)){
     // strip trailing " AUT" / " AUTO" if present
     v=v.replace(/\s+AUT(O)?\s*$/i,'').trim();
+  }
+  // Electric/Hybrid auto-correction: if version mentions FULL ELECTRIC, BEV, EV, PHEV, HEV, Hybrid, etc.
+  // and the version says M/T, that's wrong (electrics/hybrids are always automatic). Replace with AUT.
+  var isElectric=/(FULL\s+ELECTRIC|\bBEV\b|\bEV\b|\bELETTRICA\b|\bELETRICO\b|\bELECTRICO\b|PLUG-?IN|\bPHEV\b|\bHEV\b|\bHYBRID\b|\bHIBRIDO\b|\bIBRIDA\b)/i;
+  if(isElectric.test(v)){
+    // Strip M/T (manual) which is wrong for EVs/hybrids
+    v=v.replace(/\bM\/T\b/gi,'').replace(/\s+/g,' ').trim();
+    // Some electrics use "Single-Speed" / "1-Speed" — keep those as-is.
   }
   return ((brand||'')+' '+(model||'')+' '+v).replace(/\s+/g,' ').trim();
 }
