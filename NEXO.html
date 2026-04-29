@@ -579,7 +579,7 @@ En que te puedo ayudar hoy?</div></div>
         </div>
         <div class="card">
           <div class="ct">&#9729; Sincronizacion Cloud (Firebase)</div>
-          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sincroniza tus Leads en tiempo real entre todos tus dispositivos. Login con Google una sola vez por dispositivo.</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sincroniza tus Leads y Etiquetas en tiempo real entre todos tus dispositivos. Login con Google una sola vez por dispositivo.</div>
           <div class="fb-cfg-card" style="margin-bottom:0">
             <div class="fb-cfg-row">
               <div class="fb-cfg-status">
@@ -1075,7 +1075,7 @@ function getKey(){return localStorage.getItem('nx5_key')||'';}
 // ===========================================================================
 // Multi-device sync via Firestore. Strategy: dual-write (localStorage + cloud).
 // Login persistente, offline-first, no rompe niente si Firebase falla.
-// Sync activo: SOLO 'leads' por ahora. Roadmap: savedLabels, stock, tareas.
+// Sync activo: 'leads' + 'savedLabels'. Roadmap: stock, tareas.
 // ===========================================================================
 var FIREBASE_CONFIG={
   apiKey:"AIzaSyBmke0opBppQFp7YWysV8ZUXPSKotBwND8",
@@ -1087,7 +1087,7 @@ var FIREBASE_CONFIG={
 };
 
 // Keys que se sincronizan en la nube. Otros datos quedan solo locales.
-var FB_SYNC_KEYS=['leads'];
+var FB_SYNC_KEYS=['leads','savedLabels'];
 
 var NX_FB={
   app:null, auth:null, db:null,
@@ -1130,9 +1130,13 @@ var NX_FB={
       this.currentUser=user;
       console.log('[NX_FB] Login:',user.email);
       this.setBanner('syncing','Sincronizando con la nube...');
-      // Descarga leads del cloud y luego activa listener real-time
-      this.syncLeadsDown().then(function(){
+      // Descarga leads + savedLabels del cloud, luego activa listeners real-time
+      Promise.all([
+        this.syncLeadsDown(),
+        this.syncLabelsDown()
+      ]).then(function(){
         self.startLeadsListener();
+        self.startLabelsListener();
         self.processQueue();
         self.setBanner('online','Sincronizado como '+user.email);
         self.lastSync=new Date();
@@ -1182,21 +1186,29 @@ var NX_FB={
     var self=this;
     this.pendingWrites++;
     this.setBanner('syncing','Guardando en la nube...');
+    var promise;
     if(k==='leads'){
-      this.syncLeadsUp(v).then(function(){
-        self.pendingWrites--;
-        if(self.pendingWrites<=0){
-          self.pendingWrites=0;
-          self.setBanner('online','Sincronizado como '+self.currentUser.email);
-          self.lastSync=new Date();
-        }
-      }).catch(function(err){
-        self.pendingWrites--;
-        console.error('[NX_FB] Write error:',err);
-        self.queueWrite(k,v);
-        self.setBanner('error','Error guardando — reintentando...');
-      });
+      promise=this.syncLeadsUp(v);
+    }else if(k==='savedLabels'){
+      promise=this.syncLabelsUp(v);
+    }else{
+      this.pendingWrites--;
+      return;
     }
+    promise.then(function(){
+      self.pendingWrites--;
+      if(self.pendingWrites<=0){
+        self.pendingWrites=0;
+        self.setBanner('online','Sincronizado como '+self.currentUser.email);
+        self.lastSync=new Date();
+        if(typeof renderConfig==='function')renderConfig();
+      }
+    }).catch(function(err){
+      self.pendingWrites--;
+      console.error('[NX_FB] Write error ('+k+'):',err);
+      self.queueWrite(k,v);
+      self.setBanner('error','Error guardando — reintentando...');
+    });
   },
   
   // Sube TODOS los leads como documento único (simple, leads <1000)
@@ -1273,6 +1285,88 @@ var NX_FB={
     });
   },
   
+  // ===== SAVED LABELS SYNC =====
+  // Path: users/{uid}/data/savedLabels
+  // savedLabels es un array plano de strings (etiquetas normalizadas)
+  syncLabelsUp:function(labelsArr){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    return ref.set({
+      items:labelsArr||[],
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      device:navigator.userAgent.substring(0,80)
+    });
+  },
+  
+  // Descarga savedLabels del cloud. MERGE no overwrite: union local+cloud
+  // Razon: si el usuario crea etichetta X en PC1 y Y en PC2 mientras offline, queremos ambas
+  syncLabelsDown:function(){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    var self=this;
+    return ref.get().then(function(snap){
+      if(snap.exists){
+        var data=snap.data();
+        if(data&&data.items){
+          var cloudLabels=data.items;
+          // MERGE: union de cloud + local (sin duplicados)
+          var merged={};
+          (savedLabels||[]).forEach(function(t){merged[t]=1;});
+          cloudLabels.forEach(function(t){merged[t]=1;});
+          var mergedArr=Object.keys(merged).sort();
+          var localStr=JSON.stringify((savedLabels||[]).slice().sort());
+          var mergedStr=JSON.stringify(mergedArr);
+          if(localStr!==mergedStr){
+            savedLabels.length=0;
+            for(var i=0;i<mergedArr.length;i++)savedLabels.push(mergedArr[i]);
+            try{localStorage.setItem('nx5_savedLabels',JSON.stringify(mergedArr));}catch(e){}
+            console.log('[NX_FB] Etiquetas mergeadas: '+mergedArr.length+' total ('+cloudLabels.length+' cloud + '+(savedLabels.length-cloudLabels.length)+' nuevas locales)');
+            // Si el cloud tenia menos, sube el merge
+            if(cloudLabels.length<mergedArr.length){
+              return self.syncLabelsUp(mergedArr);
+            }
+          }
+        }
+      }else{
+        // Cloud vacío → sube las locales
+        if(savedLabels&&savedLabels.length){
+          console.log('[NX_FB] Cloud vacío para etiquetas, subiendo '+savedLabels.length);
+          return self.syncLabelsUp(savedLabels);
+        }
+      }
+    });
+  },
+  
+  // Listener real-time para savedLabels
+  startLabelsListener:function(){
+    if(!this.currentUser)return;
+    if(this.unsubscribers.savedLabels){this.unsubscribers.savedLabels();}
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    var self=this;
+    this.unsubscribers.savedLabels=ref.onSnapshot(function(snap){
+      if(!snap.exists)return;
+      if(snap.metadata.hasPendingWrites)return;
+      var data=snap.data();
+      if(!data||!data.items)return;
+      var cloudLabels=data.items;
+      var localStr=JSON.stringify((savedLabels||[]).slice().sort());
+      var cloudStr=JSON.stringify(cloudLabels.slice().sort());
+      if(localStr!==cloudStr){
+        savedLabels.length=0;
+        for(var i=0;i<cloudLabels.length;i++)savedLabels.push(cloudLabels[i]);
+        try{localStorage.setItem('nx5_savedLabels',JSON.stringify(cloudLabels));}catch(e){}
+        // Si el picker está abierto, refresca el grid
+        if(typeof renderLabelsPicker==='function'){
+          var picker=document.getElementById('m-labels-picker');
+          if(picker&&picker.classList.contains('on'))renderLabelsPicker();
+        }
+        console.log('[NX_FB] Etiquetas remotas: '+cloudLabels.length);
+      }
+    },function(err){
+      console.error('[NX_FB] Labels listener error:',err);
+    });
+  },
+  
   stopAllListeners:function(){
     for(var k in this.unsubscribers){
       try{this.unsubscribers[k]();}catch(e){}
@@ -1297,15 +1391,20 @@ var NX_FB={
       if(!queue.length)return;
       console.log('[NX_FB] Procesando cola pendiente: '+queue.length+' items');
       var self=this;
-      // Re-sube los leads actuales (el último estado del localStorage gana)
+      var promises=[];
+      // Re-sube los datos actuales (último estado del localStorage gana)
       if(typeof leads!=='undefined'&&leads){
-        this.syncLeadsUp(leads).then(function(){
-          localStorage.removeItem('nx5_fb_queue');
-          console.log('[NX_FB] Cola procesada OK');
-        }).catch(function(err){
-          console.error('[NX_FB] Queue process error:',err);
-        });
+        promises.push(this.syncLeadsUp(leads));
       }
+      if(typeof savedLabels!=='undefined'&&savedLabels){
+        promises.push(this.syncLabelsUp(savedLabels));
+      }
+      Promise.all(promises).then(function(){
+        localStorage.removeItem('nx5_fb_queue');
+        console.log('[NX_FB] Cola procesada OK');
+      }).catch(function(err){
+        console.error('[NX_FB] Queue process error:',err);
+      });
     }catch(e){}
   },
   
@@ -4685,7 +4784,9 @@ function updateFirebaseConfigUI(){
     txt.innerHTML='<b>Conectado</b> &middot; '+esc(NX_FB.currentUser.email);
     if(loginBtn)loginBtn.style.display='none';
     if(logoutBtn)logoutBtn.style.display='inline-block';
-    var info='Sync activo: <b>Leads</b> ('+(window.leads?window.leads.length:0)+' registros)';
+    var leadsCount=(typeof leads!=='undefined'&&leads)?leads.length:0;
+    var labelsCount=(typeof savedLabels!=='undefined'&&savedLabels)?savedLabels.length:0;
+    var info='Sync activo: <b>Leads</b> ('+leadsCount+') &middot; <b>Etiquetas</b> ('+labelsCount+')';
     if(NX_FB.lastSync){
       info+=' &middot; Ultima sync: '+NX_FB.lastSync.toLocaleTimeString('es-ES');
     }
