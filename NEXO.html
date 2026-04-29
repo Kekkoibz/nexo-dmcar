@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NEXO — DMCAR GROUP</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- Firebase SDK v10 compat (ES5 compatible) -->
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
@@ -188,34 +184,9 @@ input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
   .g2,.g3,.contg{grid-template-columns:1fr}
   #content{padding:12px}
 }
-/* Firebase Sync Banner */
-#fb-banner{position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 14px;font-size:12px;font-weight:500;display:none;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .2s}
-#fb-banner.on{display:flex}
-#fb-banner.offline{background:#fef3c7;color:#92400e;border-bottom:1px solid #fbbf24}
-#fb-banner.online{background:#d1fae5;color:#065f46;border-bottom:1px solid #10b981}
-#fb-banner.syncing{background:#dbeafe;color:#1e3a8a;border-bottom:1px solid #3b82f6}
-#fb-banner.error{background:#fee2e2;color:#991b1b;border-bottom:1px solid #ef4444}
-#fb-banner .fb-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-#fb-banner.online .fb-dot{background:#10b981;animation:fbpulse 2s infinite}
-#fb-banner.offline .fb-dot{background:#f59e0b}
-#fb-banner.syncing .fb-dot{background:#3b82f6;animation:fbpulse .8s infinite}
-#fb-banner.error .fb-dot{background:#ef4444}
-@keyframes fbpulse{0%,100%{opacity:1}50%{opacity:.4}}
-body.fb-banner-on #app{padding-top:30px}
-.fb-cfg-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
-.fb-cfg-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.fb-cfg-status{display:flex;align-items:center;gap:8px;font-size:13px}
-.fb-status-dot{width:10px;height:10px;border-radius:50%}
-.fb-status-dot.green{background:#10b981}
-.fb-status-dot.gray{background:#94a3b8}
-.fb-status-dot.red{background:#ef4444}
 </style>
 </head>
 <body>
-<div id="fb-banner" onclick="NX_FB.bannerClick()">
-  <span class="fb-dot"></span>
-  <span id="fb-banner-text">Inicializando...</span>
-</div>
 <div id="app">
 
 <!-- SIDEBAR -->
@@ -484,12 +455,8 @@ En que te puedo ayudar hoy?</div></div>
           <div><label style="font-size:10px;color:var(--t3)">Origen</label>
             <select id="lf-source" onchange="renderLeads()">
               <option value="">Todos</option>
-              <option value="Instagram">Instagram</option>
-              <option value="Facebook">Facebook</option>
-              <option value="Web">Web DMCAR</option>
-              <option value="WhatsApp">WhatsApp</option>
-              <option value="Email">Email</option>
-              <option value="Referral">Referral</option>
+              <option value="Social Network">Social Network</option>
+              <option value="Web DMCAR">Web DMCAR</option>
               <option value="Otro">Otro</option>
             </select>
           </div>
@@ -576,23 +543,6 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Guardada solo en este navegador.</div>
           <div class="fc g8"><button class="btn bp" onclick="saveKey()">Guardar</button><button class="btn bd" onclick="delKey()">Eliminar</button></div>
           <div id="key-msg" style="margin-top:8px;font-size:11px"></div>
-        </div>
-        <div class="card">
-          <div class="ct">&#9729; Sincronizacion Cloud (Firebase)</div>
-          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sincroniza tus Leads y Etiquetas en tiempo real entre todos tus dispositivos. Login con Google una sola vez por dispositivo.</div>
-          <div class="fb-cfg-card" style="margin-bottom:0">
-            <div class="fb-cfg-row">
-              <div class="fb-cfg-status">
-                <span class="fb-status-dot" id="fb-cfg-dot"></span>
-                <span id="fb-cfg-status-text">Cargando...</span>
-              </div>
-              <div class="fc g8">
-                <button class="btn bp" id="fb-cfg-login-btn" onclick="NX_FB.login()">&#128274; Iniciar sesion con Google</button>
-                <button class="btn bd" id="fb-cfg-logout-btn" onclick="NX_FB.logout()" style="display:none">Cerrar sesion</button>
-              </div>
-            </div>
-            <div id="fb-cfg-detail" style="font-size:10px;color:var(--t3);margin-top:8px"></div>
-          </div>
         </div>
         <div class="card">
           <div class="ct">Datos</div>
@@ -876,7 +826,7 @@ En que te puedo ayudar hoy?</div></div>
     <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Copia el texto del WhatsApp, email, IG o FB con los datos del formulario. NEXO extrae los campos automaticamente.</div>
     <textarea id="lp-text" rows="10" placeholder="Ej:&#10;company_name: Elite cars&#10;city: Ostuni&#10;sei_un_operatore_del_settore_automotive: Si, commerciante&#10;che_tipo_di_veicoli_cerchi: Usato&#10;email: elitecars@blu.it&#10;hai_esperienza_con_import/export: SI&#10;full_name: Antonello Giannotti&#10;phone_number: +393343114631&#10;quanti_veicoli_acquisti_abitualmente_al_mese: 3-5"></textarea>
     <div class="g2 mb10" style="margin-top:10px">
-      <div><label>Origen</label><select id="lp-source"><option value="WhatsApp">WhatsApp</option><option value="Email">Email</option><option value="Web">Web DMCAR</option><option value="Instagram">Instagram</option><option value="Facebook">Facebook</option><option value="Otro">Otro</option></select></div>
+      <div><label>Origen</label><select id="lp-source"><option value="Social Network">Social Network</option><option value="Web DMCAR">Web DMCAR</option><option value="Otro">Otro</option></select></div>
       <div><label>Status inicial</label><select id="lp-status"><option value="Nuevo" selected>Nuevo</option><option value="Contattato">Contattato</option></select></div>
     </div>
     <div id="lp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin-bottom:8px"></div>
@@ -959,12 +909,8 @@ En que te puedo ayudar hoy?</div></div>
       <div><label>Origen</label>
         <select id="le-source">
           <option value="">--</option>
-          <option value="WhatsApp">WhatsApp</option>
-          <option value="Email">Email</option>
-          <option value="Web">Web DMCAR</option>
-          <option value="Instagram">Instagram</option>
-          <option value="Facebook">Facebook</option>
-          <option value="Referral">Referral</option>
+          <option value="Social Network">Social Network</option>
+          <option value="Web DMCAR">Web DMCAR</option>
           <option value="Otro">Otro</option>
         </select>
       </div>
@@ -1067,368 +1013,8 @@ window.onerror = function(msg, src, line, col, err) {
 
 // -- STORAGE --------------------------------------------------
 function LS(k,d){try{var v=localStorage.getItem('nx5_'+k);return v!==null?JSON.parse(v):d;}catch(e){return d;}}
-function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}if(typeof NX_FB!=='undefined'&&NX_FB&&NX_FB.onLocalSave)NX_FB.onLocalSave(k,v);}
+function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}}
 function getKey(){return localStorage.getItem('nx5_key')||'';}
-
-// ===========================================================================
-// FIREBASE INTEGRATION (NX_FB)
-// ===========================================================================
-// Multi-device sync via Firestore. Strategy: dual-write (localStorage + cloud).
-// Login persistente, offline-first, no rompe niente si Firebase falla.
-// Sync activo: 'leads' + 'savedLabels'. Roadmap: stock, tareas.
-// ===========================================================================
-var FIREBASE_CONFIG={
-  apiKey:"AIzaSyBmke0opBppQFp7YWysV8ZUXPSKotBwND8",
-  authDomain:"nexo-dmcar-d782e.firebaseapp.com",
-  projectId:"nexo-dmcar-d782e",
-  storageBucket:"nexo-dmcar-d782e.firebasestorage.app",
-  messagingSenderId:"642250180456",
-  appId:"1:642250180456:web:6bddc72a072814c360f8dd"
-};
-
-// Keys que se sincronizan en la nube. Otros datos quedan solo locales.
-var FB_SYNC_KEYS=['leads','savedLabels'];
-
-var NX_FB={
-  app:null, auth:null, db:null,
-  currentUser:null,
-  ready:false,
-  syncing:false,
-  lastSync:null,
-  unsubscribers:{},
-  pendingWrites:0,
-  
-  init:function(){
-    try{
-      if(typeof firebase==='undefined'){
-        console.warn('[NX_FB] Firebase SDK no cargado');
-        this.setBanner('error','Firebase no disponible');
-        return;
-      }
-      this.app=firebase.initializeApp(FIREBASE_CONFIG);
-      this.auth=firebase.auth();
-      this.db=firebase.firestore();
-      // Persistencia local de Firestore (offline support)
-      this.db.enablePersistence({synchronizeTabs:true}).catch(function(err){
-        console.warn('[NX_FB] Persistencia offline no disponible:',err.code);
-      });
-      this.ready=true;
-      var self=this;
-      this.auth.onAuthStateChanged(function(user){
-        self.onAuthChange(user);
-      });
-      console.log('[NX_FB] Inicializado');
-    }catch(e){
-      console.error('[NX_FB] Error init:',e);
-      this.setBanner('error','Error inicializando Firebase');
-    }
-  },
-  
-  onAuthChange:function(user){
-    var self=this;
-    if(user){
-      this.currentUser=user;
-      console.log('[NX_FB] Login:',user.email);
-      this.setBanner('syncing','Sincronizando con la nube...');
-      // Descarga leads + savedLabels del cloud, luego activa listeners real-time
-      Promise.all([
-        this.syncLeadsDown(),
-        this.syncLabelsDown()
-      ]).then(function(){
-        self.startLeadsListener();
-        self.startLabelsListener();
-        self.processQueue();
-        self.setBanner('online','Sincronizado como '+user.email);
-        self.lastSync=new Date();
-        if(typeof renderConfig==='function')renderConfig();
-      }).catch(function(err){
-        console.error('[NX_FB] Sync error:',err);
-        self.setBanner('error','Error de sincronización');
-      });
-    }else{
-      this.currentUser=null;
-      this.stopAllListeners();
-      this.setBanner('offline','Modo offline — Inicia sesión para sync multi-dispositivo');
-      if(typeof renderConfig==='function')renderConfig();
-    }
-  },
-  
-  login:function(){
-    if(!this.ready){alert('Firebase no está listo. Recarga la página.');return;}
-    var provider=new firebase.auth.GoogleAuthProvider();
-    var self=this;
-    this.auth.signInWithPopup(provider).then(function(result){
-      console.log('[NX_FB] Login OK:',result.user.email);
-    }).catch(function(err){
-      console.error('[NX_FB] Login error:',err);
-      if(err.code!=='auth/popup-closed-by-user'){
-        alert('Error de login: '+err.message);
-      }
-    });
-  },
-  
-  logout:function(){
-    if(!this.ready)return;
-    if(!confirm('¿Cerrar sesión? Los datos locales se mantienen, pero no habrá sync.'))return;
-    var self=this;
-    this.auth.signOut().then(function(){
-      console.log('[NX_FB] Logout OK');
-    }).catch(function(err){
-      console.error('[NX_FB] Logout error:',err);
-    });
-  },
-  
-  // Llamado desde SS() cada vez que se guarda algo en localStorage
-  onLocalSave:function(k,v){
-    if(!this.ready||!this.currentUser)return;
-    if(FB_SYNC_KEYS.indexOf(k)<0)return;
-    // Sync up: sube a Firestore
-    var self=this;
-    this.pendingWrites++;
-    this.setBanner('syncing','Guardando en la nube...');
-    var promise;
-    if(k==='leads'){
-      promise=this.syncLeadsUp(v);
-    }else if(k==='savedLabels'){
-      promise=this.syncLabelsUp(v);
-    }else{
-      this.pendingWrites--;
-      return;
-    }
-    promise.then(function(){
-      self.pendingWrites--;
-      if(self.pendingWrites<=0){
-        self.pendingWrites=0;
-        self.setBanner('online','Sincronizado como '+self.currentUser.email);
-        self.lastSync=new Date();
-        if(typeof renderConfig==='function')renderConfig();
-      }
-    }).catch(function(err){
-      self.pendingWrites--;
-      console.error('[NX_FB] Write error ('+k+'):',err);
-      self.queueWrite(k,v);
-      self.setBanner('error','Error guardando — reintentando...');
-    });
-  },
-  
-  // Sube TODOS los leads como documento único (simple, leads <1000)
-  // Path: users/{uid}/data/leads
-  syncLeadsUp:function(leadsArr){
-    if(!this.currentUser)return Promise.reject('No user');
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
-    return ref.set({
-      items:leadsArr||[],
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
-      device:navigator.userAgent.substring(0,80)
-    });
-  },
-  
-  // Descarga leads del cloud y mergea con local (cloud wins en conflicto)
-  syncLeadsDown:function(){
-    if(!this.currentUser)return Promise.reject('No user');
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
-    var self=this;
-    return ref.get().then(function(snap){
-      if(snap.exists){
-        var data=snap.data();
-        if(data&&data.items){
-          // Cloud tiene datos → sobrescribe local
-          var cloudLeads=data.items;
-          // Solo actualiza si hay diferencia (evita re-render innecesario)
-          var localStr=JSON.stringify(leads||[]);
-          var cloudStr=JSON.stringify(cloudLeads);
-          if(localStr!==cloudStr){
-            leads.length=0;
-            for(var i=0;i<cloudLeads.length;i++)leads.push(cloudLeads[i]);
-            // Save local SIN trigger sync up (evita loop)
-            try{localStorage.setItem('nx5_leads',JSON.stringify(cloudLeads));}catch(e){}
-            if(typeof renderLeads==='function')renderLeads();
-            if(typeof renderDash==='function')renderDash();
-            console.log('[NX_FB] Descargados '+cloudLeads.length+' leads del cloud');
-          }
-        }
-      }else{
-        // Cloud vacío → primera vez, sube los locales
-        if(leads&&leads.length){
-          console.log('[NX_FB] Cloud vacío, subiendo '+leads.length+' leads locales');
-          return self.syncLeadsUp(leads);
-        }
-      }
-    });
-  },
-  
-  // Listener real-time: cambios en otro dispositivo aparecen aquí
-  startLeadsListener:function(){
-    if(!this.currentUser)return;
-    if(this.unsubscribers.leads){this.unsubscribers.leads();}
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
-    var self=this;
-    this.unsubscribers.leads=ref.onSnapshot(function(snap){
-      if(!snap.exists)return;
-      // Ignora cambios que vienen del propio dispositivo (acabamos de escribir)
-      if(snap.metadata.hasPendingWrites)return;
-      var data=snap.data();
-      if(!data||!data.items)return;
-      var cloudLeads=data.items;
-      var localStr=JSON.stringify(leads||[]);
-      var cloudStr=JSON.stringify(cloudLeads);
-      if(localStr!==cloudStr){
-        leads.length=0;
-        for(var i=0;i<cloudLeads.length;i++)leads.push(cloudLeads[i]);
-        try{localStorage.setItem('nx5_leads',JSON.stringify(cloudLeads));}catch(e){}
-        if(typeof renderLeads==='function')renderLeads();
-        if(typeof renderDash==='function')renderDash();
-        console.log('[NX_FB] Cambio remoto detectado: '+cloudLeads.length+' leads');
-      }
-    },function(err){
-      console.error('[NX_FB] Listener error:',err);
-    });
-  },
-  
-  // ===== SAVED LABELS SYNC =====
-  // Path: users/{uid}/data/savedLabels
-  // savedLabels es un array plano de strings (etiquetas normalizadas)
-  syncLabelsUp:function(labelsArr){
-    if(!this.currentUser)return Promise.reject('No user');
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
-    return ref.set({
-      items:labelsArr||[],
-      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
-      device:navigator.userAgent.substring(0,80)
-    });
-  },
-  
-  // Descarga savedLabels del cloud. MERGE no overwrite: union local+cloud
-  // Razon: si el usuario crea etichetta X en PC1 y Y en PC2 mientras offline, queremos ambas
-  syncLabelsDown:function(){
-    if(!this.currentUser)return Promise.reject('No user');
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
-    var self=this;
-    return ref.get().then(function(snap){
-      if(snap.exists){
-        var data=snap.data();
-        if(data&&data.items){
-          var cloudLabels=data.items;
-          // MERGE: union de cloud + local (sin duplicados)
-          var merged={};
-          (savedLabels||[]).forEach(function(t){merged[t]=1;});
-          cloudLabels.forEach(function(t){merged[t]=1;});
-          var mergedArr=Object.keys(merged).sort();
-          var localStr=JSON.stringify((savedLabels||[]).slice().sort());
-          var mergedStr=JSON.stringify(mergedArr);
-          if(localStr!==mergedStr){
-            savedLabels.length=0;
-            for(var i=0;i<mergedArr.length;i++)savedLabels.push(mergedArr[i]);
-            try{localStorage.setItem('nx5_savedLabels',JSON.stringify(mergedArr));}catch(e){}
-            console.log('[NX_FB] Etiquetas mergeadas: '+mergedArr.length+' total ('+cloudLabels.length+' cloud + '+(savedLabels.length-cloudLabels.length)+' nuevas locales)');
-            // Si el cloud tenia menos, sube el merge
-            if(cloudLabels.length<mergedArr.length){
-              return self.syncLabelsUp(mergedArr);
-            }
-          }
-        }
-      }else{
-        // Cloud vacío → sube las locales
-        if(savedLabels&&savedLabels.length){
-          console.log('[NX_FB] Cloud vacío para etiquetas, subiendo '+savedLabels.length);
-          return self.syncLabelsUp(savedLabels);
-        }
-      }
-    });
-  },
-  
-  // Listener real-time para savedLabels
-  startLabelsListener:function(){
-    if(!this.currentUser)return;
-    if(this.unsubscribers.savedLabels){this.unsubscribers.savedLabels();}
-    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
-    var self=this;
-    this.unsubscribers.savedLabels=ref.onSnapshot(function(snap){
-      if(!snap.exists)return;
-      if(snap.metadata.hasPendingWrites)return;
-      var data=snap.data();
-      if(!data||!data.items)return;
-      var cloudLabels=data.items;
-      var localStr=JSON.stringify((savedLabels||[]).slice().sort());
-      var cloudStr=JSON.stringify(cloudLabels.slice().sort());
-      if(localStr!==cloudStr){
-        savedLabels.length=0;
-        for(var i=0;i<cloudLabels.length;i++)savedLabels.push(cloudLabels[i]);
-        try{localStorage.setItem('nx5_savedLabels',JSON.stringify(cloudLabels));}catch(e){}
-        // Si el picker está abierto, refresca el grid
-        if(typeof renderLabelsPicker==='function'){
-          var picker=document.getElementById('m-labels-picker');
-          if(picker&&picker.classList.contains('on'))renderLabelsPicker();
-        }
-        console.log('[NX_FB] Etiquetas remotas: '+cloudLabels.length);
-      }
-    },function(err){
-      console.error('[NX_FB] Labels listener error:',err);
-    });
-  },
-  
-  stopAllListeners:function(){
-    for(var k in this.unsubscribers){
-      try{this.unsubscribers[k]();}catch(e){}
-    }
-    this.unsubscribers={};
-  },
-  
-  // Cola de escrituras pendientes (cuando hay error de red)
-  queueWrite:function(k,v){
-    try{
-      var queue=JSON.parse(localStorage.getItem('nx5_fb_queue')||'[]');
-      queue.push({key:k,ts:Date.now()});
-      // Solo guarda referencia, valor está ya en localStorage
-      if(queue.length>50)queue=queue.slice(-50);
-      localStorage.setItem('nx5_fb_queue',JSON.stringify(queue));
-    }catch(e){}
-  },
-  
-  processQueue:function(){
-    try{
-      var queue=JSON.parse(localStorage.getItem('nx5_fb_queue')||'[]');
-      if(!queue.length)return;
-      console.log('[NX_FB] Procesando cola pendiente: '+queue.length+' items');
-      var self=this;
-      var promises=[];
-      // Re-sube los datos actuales (último estado del localStorage gana)
-      if(typeof leads!=='undefined'&&leads){
-        promises.push(this.syncLeadsUp(leads));
-      }
-      if(typeof savedLabels!=='undefined'&&savedLabels){
-        promises.push(this.syncLabelsUp(savedLabels));
-      }
-      Promise.all(promises).then(function(){
-        localStorage.removeItem('nx5_fb_queue');
-        console.log('[NX_FB] Cola procesada OK');
-      }).catch(function(err){
-        console.error('[NX_FB] Queue process error:',err);
-      });
-    }catch(e){}
-  },
-  
-  setBanner:function(state,text){
-    var b=document.getElementById('fb-banner');
-    var t=document.getElementById('fb-banner-text');
-    if(!b||!t)return;
-    b.className='on '+state;
-    t.textContent=text;
-    document.body.classList.add('fb-banner-on');
-  },
-  
-  bannerClick:function(){
-    if(!this.currentUser){
-      this.login();
-    }else{
-      // Si está logueado, abre Configuración
-      if(typeof go==='function')go('config');
-    }
-  }
-};
-// ===========================================================================
-// END NX_FB
-// ===========================================================================
 
 // -- STATE ----------------------------------------------------
 var stock=LS('stock',[]);
@@ -1446,6 +1032,33 @@ var tasks=LS('tasks',[
 ]);
 var leads=LS('leads',[]);
 var offerHist=LS('offerHist',[]);
+
+// MIGRACION ORIGEN (v3): consolidate old sources into Social Network / Web DMCAR / Otro
+// Instagram, Facebook, WhatsApp -> Social Network
+// Email, Web -> Web DMCAR (form on website arrives via email)
+// Referral -> Otro
+(function migrateLeadOrigens(){
+  if(!leads||!leads.length)return;
+  var SOURCE_MAP={
+    'Instagram':'Social Network',
+    'Facebook':'Social Network',
+    'WhatsApp':'Social Network',
+    'Email':'Web DMCAR',
+    'Web':'Web DMCAR',
+    'Referral':'Otro'
+  };
+  var migrated=0;
+  leads.forEach(function(l){
+    if(l.source&&SOURCE_MAP[l.source]){
+      l.source=SOURCE_MAP[l.source];
+      migrated++;
+    }
+  });
+  if(migrated>0){
+    SS('leads',leads);
+    console.log('[NEXO] Migrated '+migrated+' lead source(s) to new format');
+  }
+})();
 
 // LABELS (etichette) for Leads — categorized into groups
 // Default suggested labels that NEXO seeds the system with on first use
@@ -4329,11 +3942,10 @@ function openWhatsAppHome(){
   return false;
 }
 
-// Copy message + phone to clipboard, show instructions
+// Copy welcome message to clipboard, then open WhatsApp Web
 function whatsAppCopyAndOpen(phone,msg,leadName){
-  // Copy a combined block: phone first line, then message
-  var clipText='Tel: '+phone+'\n\n'+msg;
-  copyToClipboard(clipText,'mensaje y telefono');
+  // Copy ONLY the welcome message (no phone prefix)
+  copyToClipboard(msg,'mensaje');
   // Open WhatsApp tab (or focus existing)
   var hadWindow=openWhatsAppHome();
   // Show clear instructions
@@ -4762,42 +4374,6 @@ function renderConfig(){
   n('cfg-o').textContent=offerHist.length;
   var k=getKey();if(k) n('api-key-in').value=k;
   updateGoogleConfigUI();
-  updateFirebaseConfigUI();
-}
-
-function updateFirebaseConfigUI(){
-  var dot=n('fb-cfg-dot');
-  var txt=n('fb-cfg-status-text');
-  var detail=n('fb-cfg-detail');
-  var loginBtn=n('fb-cfg-login-btn');
-  var logoutBtn=n('fb-cfg-logout-btn');
-  if(!dot||!txt)return;
-  if(!NX_FB.ready){
-    dot.className='fb-status-dot gray';
-    txt.textContent='Inicializando Firebase...';
-    if(loginBtn)loginBtn.style.display='none';
-    if(logoutBtn)logoutBtn.style.display='none';
-    return;
-  }
-  if(NX_FB.currentUser){
-    dot.className='fb-status-dot green';
-    txt.innerHTML='<b>Conectado</b> &middot; '+esc(NX_FB.currentUser.email);
-    if(loginBtn)loginBtn.style.display='none';
-    if(logoutBtn)logoutBtn.style.display='inline-block';
-    var leadsCount=(typeof leads!=='undefined'&&leads)?leads.length:0;
-    var labelsCount=(typeof savedLabels!=='undefined'&&savedLabels)?savedLabels.length:0;
-    var info='Sync activo: <b>Leads</b> ('+leadsCount+') &middot; <b>Etiquetas</b> ('+labelsCount+')';
-    if(NX_FB.lastSync){
-      info+=' &middot; Ultima sync: '+NX_FB.lastSync.toLocaleTimeString('es-ES');
-    }
-    if(detail)detail.innerHTML=info;
-  }else{
-    dot.className='fb-status-dot gray';
-    txt.textContent='No conectado &mdash; trabajando offline';
-    if(loginBtn)loginBtn.style.display='inline-block';
-    if(logoutBtn)logoutBtn.style.display='none';
-    if(detail)detail.innerHTML='Inicia sesion para activar sync multi-dispositivo. Tus datos locales se mantienen siempre.';
-  }
 }
 
 function saveKey(){
@@ -4931,8 +4507,6 @@ document.querySelectorAll('.ovl').forEach(function(el){
   document.getElementById('btn-eq-close').addEventListener('click',function(){closeM('m-equip');});
   document.getElementById('btn-eq-cancel').addEventListener('click',function(){closeM('m-equip');});
   document.getElementById('btn-eq-save').addEventListener('click',saveEquip);
-  // Firebase init (después del resto, no bloquea)
-  setTimeout(function(){NX_FB.init();},500);
 })();
 
 </script>
