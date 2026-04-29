@@ -9,8 +9,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<!-- Microsoft MSAL.js for Office 365 / Outlook integration -->
-<script src="https://alcdn.msauth.net/browser/2.38.4/js/msal-browser.min.js"></script>
+<!-- Microsoft MSAL.js for Office 365 / Outlook integration (jsDelivr CDN with fallback) -->
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.4/lib/msal-browser.min.js"></script>
+<script>if(typeof msal==='undefined'){document.write('<script src="https://alcdn.msauth.net/browser/2.38.4/js/msal-browser.min.js"><\/script>');}</script>
 <style>
 :root{
   --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
@@ -1433,10 +1434,15 @@ var NX_MS={
   
   init:function(){
     try{
+      console.log('[NX_MS] init() called. typeof msal:',typeof msal);
       if(typeof msal==='undefined'){
-        console.warn('[NX_MS] MSAL.js no cargado');
+        console.error('[NX_MS] MSAL.js no cargado - librería no disponible');
+        var dot=n('ms-cfg-dot');var txt=n('ms-cfg-status-text');
+        if(dot)dot.className='fb-status-dot red';
+        if(txt)txt.innerHTML='<span style="color:var(--red)">Error: MSAL.js no cargada (verifica tu conexion)</span>';
         return;
       }
+      console.log('[NX_MS] Creating MSAL PublicClientApplication...');
       this.msalInstance=new msal.PublicClientApplication({
         auth:{
           clientId:MS_CONFIG.clientId,
@@ -1449,19 +1455,29 @@ var NX_MS={
         }
       });
       var self=this;
+      console.log('[NX_MS] Calling initialize()...');
       this.msalInstance.initialize().then(function(){
+        console.log('[NX_MS] Initialize OK');
         self.ready=true;
         var accounts=self.msalInstance.getAllAccounts();
         if(accounts&&accounts.length>0){
           self.account=accounts[0];
           console.log('[NX_MS] Sesion restaurada:',self.account.username);
+        }else{
+          console.log('[NX_MS] No hay sesion previa');
         }
         if(typeof updateMicrosoftConfigUI==='function')updateMicrosoftConfigUI();
       }).catch(function(err){
-        console.error('[NX_MS] Init error:',err);
+        console.error('[NX_MS] Initialize error:',err);
+        var dot=n('ms-cfg-dot');var txt=n('ms-cfg-status-text');
+        if(dot)dot.className='fb-status-dot red';
+        if(txt)txt.innerHTML='<span style="color:var(--red)">Error init: '+(err.message||err)+'</span>';
       });
     }catch(e){
-      console.error('[NX_MS] Error init:',e);
+      console.error('[NX_MS] Error init catch:',e);
+      var dot=n('ms-cfg-dot');var txt=n('ms-cfg-status-text');
+      if(dot)dot.className='fb-status-dot red';
+      if(txt)txt.innerHTML='<span style="color:var(--red)">Error: '+e.message+'</span>';
     }
   },
   
