@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NEXO — DMCAR GROUP</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK v10 compat (ES5 compatible) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<!-- Microsoft MSAL.js for Office 365 / Outlook integration -->
+<script src="https://alcdn.msauth.net/browser/2.38.4/js/msal-browser.min.js"></script>
 <style>
 :root{
   --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
@@ -184,9 +190,34 @@ input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
   .g2,.g3,.contg{grid-template-columns:1fr}
   #content{padding:12px}
 }
+/* Firebase Sync Banner */
+#fb-banner{position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 14px;font-size:12px;font-weight:500;display:none;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .2s}
+#fb-banner.on{display:flex}
+#fb-banner.offline{background:#fef3c7;color:#92400e;border-bottom:1px solid #fbbf24}
+#fb-banner.online{background:#d1fae5;color:#065f46;border-bottom:1px solid #10b981}
+#fb-banner.syncing{background:#dbeafe;color:#1e3a8a;border-bottom:1px solid #3b82f6}
+#fb-banner.error{background:#fee2e2;color:#991b1b;border-bottom:1px solid #ef4444}
+#fb-banner .fb-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+#fb-banner.online .fb-dot{background:#10b981;animation:fbpulse 2s infinite}
+#fb-banner.offline .fb-dot{background:#f59e0b}
+#fb-banner.syncing .fb-dot{background:#3b82f6;animation:fbpulse .8s infinite}
+#fb-banner.error .fb-dot{background:#ef4444}
+@keyframes fbpulse{0%,100%{opacity:1}50%{opacity:.4}}
+body.fb-banner-on #app{padding-top:30px}
+.fb-cfg-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+.fb-cfg-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.fb-cfg-status{display:flex;align-items:center;gap:8px;font-size:13px}
+.fb-status-dot{width:10px;height:10px;border-radius:50%}
+.fb-status-dot.green{background:#10b981}
+.fb-status-dot.gray{background:#94a3b8}
+.fb-status-dot.red{background:#ef4444}
 </style>
 </head>
 <body>
+<div id="fb-banner" onclick="NX_FB.bannerClick()">
+  <span class="fb-dot"></span>
+  <span id="fb-banner-text">Inicializando...</span>
+</div>
 <div id="app">
 
 <!-- SIDEBAR -->
@@ -543,6 +574,40 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Guardada solo en este navegador.</div>
           <div class="fc g8"><button class="btn bp" onclick="saveKey()">Guardar</button><button class="btn bd" onclick="delKey()">Eliminar</button></div>
           <div id="key-msg" style="margin-top:8px;font-size:11px"></div>
+        </div>
+        <div class="card">
+          <div class="ct">&#9729; Sincronizacion Cloud (Firebase)</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sincroniza tus Leads y Etiquetas en tiempo real entre todos tus dispositivos. Login con Google una sola vez por dispositivo.</div>
+          <div class="fb-cfg-card" style="margin-bottom:0">
+            <div class="fb-cfg-row">
+              <div class="fb-cfg-status">
+                <span class="fb-status-dot" id="fb-cfg-dot"></span>
+                <span id="fb-cfg-status-text">Cargando...</span>
+              </div>
+              <div class="fc g8">
+                <button class="btn bp" id="fb-cfg-login-btn" onclick="NX_FB.login()">&#128274; Iniciar sesion con Google</button>
+                <button class="btn bd" id="fb-cfg-logout-btn" onclick="NX_FB.logout()" style="display:none">Cerrar sesion</button>
+              </div>
+            </div>
+            <div id="fb-cfg-detail" style="font-size:10px;color:var(--t3);margin-top:8px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">&#128231; Microsoft 365 Email (Outlook)</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Envia emails de bienvenida desde info@dmcargroup.com directamente desde NEXO. Las emails se guardan automaticamente en Enviados de Outlook.</div>
+          <div class="fb-cfg-card" style="margin-bottom:0">
+            <div class="fb-cfg-row">
+              <div class="fb-cfg-status">
+                <span class="fb-status-dot" id="ms-cfg-dot"></span>
+                <span id="ms-cfg-status-text">Cargando...</span>
+              </div>
+              <div class="fc g8">
+                <button class="btn bp" id="ms-cfg-login-btn" onclick="NX_MS.login()">&#128274; Iniciar sesion Microsoft</button>
+                <button class="btn bd" id="ms-cfg-logout-btn" onclick="NX_MS.logout()" style="display:none">Cerrar sesion</button>
+              </div>
+            </div>
+            <div id="ms-cfg-detail" style="font-size:10px;color:var(--t3);margin-top:8px"></div>
+          </div>
         </div>
         <div class="card">
           <div class="ct">Datos</div>
@@ -939,6 +1004,26 @@ En que te puedo ayudar hoy?</div></div>
       <button class="btn bs" onclick="exportLeadVcard()" style="font-size:12px">&#128196; vCard (.vcf)</button>
       <button class="btn bs" onclick="openWhatsAppForLead()" style="font-size:12px">&#128172; WhatsApp Web</button>
       <button class="btn bs" onclick="copyWelcomeMessage()" style="font-size:12px">&#128203; Copiar mensaje</button>
+      <button class="btn bs" onclick="sendWelcomeEmail()" style="font-size:12px">&#128231; Email bienvenida</button>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL PREVIEW MODAL -->
+<div class="ovl" id="m-email-preview">
+  <div class="modal" style="max-width:680px">
+    <div class="fbet mb14"><div class="mt">&#128231; Enviar email de bienvenida</div><button class="btn bg" onclick="closeM('m-email-preview')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Revisa el email antes de enviar. Se enviara desde <strong>info@dmcargroup.com</strong> y quedara guardado en Enviados de Outlook.</div>
+    <div class="g2 mb10">
+      <div><label>Para</label><input type="email" id="me-to" placeholder="cliente@email.com"></div>
+      <div><label>Idioma plantilla</label><input type="text" id="me-lang" readonly style="background:var(--bg4)"></div>
+    </div>
+    <div class="mb10"><label>Asunto</label><input type="text" id="me-subject"></div>
+    <div class="mb10"><label>Mensaje</label><textarea id="me-body" rows="10"></textarea></div>
+    <div id="me-status" style="font-size:11px;color:var(--acc);min-height:16px;margin-bottom:10px"></div>
+    <div class="fc g8" style="flex-wrap:wrap">
+      <button class="btn bp" id="me-send-btn" onclick="confirmSendEmail()" style="flex:1">&#128231; Enviar ahora</button>
+      <button class="btn bg" onclick="closeM('m-email-preview')" style="font-size:12px">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1013,8 +1098,617 @@ window.onerror = function(msg, src, line, col, err) {
 
 // -- STORAGE --------------------------------------------------
 function LS(k,d){try{var v=localStorage.getItem('nx5_'+k);return v!==null?JSON.parse(v):d;}catch(e){return d;}}
-function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}}
+function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}if(typeof NX_FB!=='undefined'&&NX_FB&&NX_FB.onLocalSave)NX_FB.onLocalSave(k,v);}
 function getKey(){return localStorage.getItem('nx5_key')||'';}
+
+// ===========================================================================
+// FIREBASE INTEGRATION (NX_FB)
+// ===========================================================================
+// Multi-device sync via Firestore. Strategy: dual-write (localStorage + cloud).
+// Sync activo: leads + savedLabels
+// ===========================================================================
+var FIREBASE_CONFIG={
+  apiKey:"AIzaSyBmke0opBppQFp7YWysV8ZUXPSKotBwND8",
+  authDomain:"nexo-dmcar-d782e.firebaseapp.com",
+  projectId:"nexo-dmcar-d782e",
+  storageBucket:"nexo-dmcar-d782e.firebasestorage.app",
+  messagingSenderId:"642250180456",
+  appId:"1:642250180456:web:6bddc72a072814c360f8dd"
+};
+
+var FB_SYNC_KEYS=['leads','savedLabels'];
+
+var NX_FB={
+  app:null, auth:null, db:null,
+  currentUser:null,
+  ready:false,
+  syncing:false,
+  lastSync:null,
+  unsubscribers:{},
+  pendingWrites:0,
+  
+  init:function(){
+    try{
+      if(typeof firebase==='undefined'){
+        console.warn('[NX_FB] Firebase SDK no cargado');
+        this.setBanner('error','Firebase no disponible');
+        return;
+      }
+      this.app=firebase.initializeApp(FIREBASE_CONFIG);
+      this.auth=firebase.auth();
+      this.db=firebase.firestore();
+      this.db.enablePersistence({synchronizeTabs:true}).catch(function(err){
+        console.warn('[NX_FB] Persistencia offline no disponible:',err.code);
+      });
+      this.ready=true;
+      var self=this;
+      this.auth.onAuthStateChanged(function(user){
+        self.onAuthChange(user);
+      });
+      console.log('[NX_FB] Inicializado');
+    }catch(e){
+      console.error('[NX_FB] Error init:',e);
+      this.setBanner('error','Error inicializando Firebase');
+    }
+  },
+  
+  onAuthChange:function(user){
+    var self=this;
+    if(user){
+      this.currentUser=user;
+      console.log('[NX_FB] Login:',user.email);
+      this.setBanner('syncing','Sincronizando con la nube...');
+      Promise.all([this.syncLeadsDown(),this.syncLabelsDown()]).then(function(){
+        self.startLeadsListener();
+        self.startLabelsListener();
+        self.processQueue();
+        self.setBanner('online','Sincronizado como '+user.email);
+        self.lastSync=new Date();
+        if(typeof renderConfig==='function')renderConfig();
+      }).catch(function(err){
+        console.error('[NX_FB] Sync error:',err);
+        self.setBanner('error','Error de sincronización');
+      });
+    }else{
+      this.currentUser=null;
+      this.stopAllListeners();
+      this.setBanner('offline','Modo offline — Inicia sesión para sync multi-dispositivo');
+      if(typeof renderConfig==='function')renderConfig();
+    }
+  },
+  
+  login:function(){
+    if(!this.ready){alert('Firebase no está listo. Recarga la página.');return;}
+    var provider=new firebase.auth.GoogleAuthProvider();
+    this.auth.signInWithPopup(provider).then(function(result){
+      console.log('[NX_FB] Login OK:',result.user.email);
+    }).catch(function(err){
+      console.error('[NX_FB] Login error:',err);
+      if(err.code!=='auth/popup-closed-by-user'){
+        alert('Error de login: '+err.message);
+      }
+    });
+  },
+  
+  logout:function(){
+    if(!this.ready)return;
+    if(!confirm('¿Cerrar sesión? Los datos locales se mantienen, pero no habrá sync.'))return;
+    this.auth.signOut().then(function(){
+      console.log('[NX_FB] Logout OK');
+    }).catch(function(err){
+      console.error('[NX_FB] Logout error:',err);
+    });
+  },
+  
+  onLocalSave:function(k,v){
+    if(!this.ready||!this.currentUser)return;
+    if(FB_SYNC_KEYS.indexOf(k)<0)return;
+    var self=this;
+    this.pendingWrites++;
+    this.setBanner('syncing','Guardando en la nube...');
+    var promise;
+    if(k==='leads')promise=this.syncLeadsUp(v);
+    else if(k==='savedLabels')promise=this.syncLabelsUp(v);
+    else return;
+    promise.then(function(){
+      self.pendingWrites--;
+      if(self.pendingWrites<=0){
+        self.pendingWrites=0;
+        self.setBanner('online','Sincronizado como '+self.currentUser.email);
+        self.lastSync=new Date();
+      }
+    }).catch(function(err){
+      self.pendingWrites--;
+      console.error('[NX_FB] Write error:',err);
+      self.queueWrite(k);
+      self.setBanner('error','Error guardando — reintentando...');
+    });
+  },
+  
+  // === LEADS SYNC ===
+  syncLeadsUp:function(leadsArr){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
+    return ref.set({
+      items:leadsArr||[],
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      device:navigator.userAgent.substring(0,80)
+    });
+  },
+  
+  syncLeadsDown:function(){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
+    var self=this;
+    return ref.get().then(function(snap){
+      if(snap.exists){
+        var data=snap.data();
+        if(data&&data.items){
+          var cloudLeads=data.items;
+          var localStr=JSON.stringify(leads||[]);
+          var cloudStr=JSON.stringify(cloudLeads);
+          if(localStr!==cloudStr){
+            leads.length=0;
+            for(var i=0;i<cloudLeads.length;i++)leads.push(cloudLeads[i]);
+            try{localStorage.setItem('nx5_leads',JSON.stringify(cloudLeads));}catch(e){}
+            if(typeof renderLeads==='function')renderLeads();
+            if(typeof renderDash==='function')renderDash();
+            console.log('[NX_FB] Descargados '+cloudLeads.length+' leads del cloud');
+          }
+        }
+      }else{
+        if(leads&&leads.length){
+          console.log('[NX_FB] Cloud vacío, subiendo '+leads.length+' leads locales');
+          return self.syncLeadsUp(leads);
+        }
+      }
+    });
+  },
+  
+  startLeadsListener:function(){
+    if(!this.currentUser)return;
+    if(this.unsubscribers.leads){this.unsubscribers.leads();}
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('leads');
+    this.unsubscribers.leads=ref.onSnapshot(function(snap){
+      if(!snap.exists)return;
+      if(snap.metadata.hasPendingWrites)return;
+      var data=snap.data();
+      if(!data||!data.items)return;
+      var cloudLeads=data.items;
+      var localStr=JSON.stringify(leads||[]);
+      var cloudStr=JSON.stringify(cloudLeads);
+      if(localStr!==cloudStr){
+        leads.length=0;
+        for(var i=0;i<cloudLeads.length;i++)leads.push(cloudLeads[i]);
+        try{localStorage.setItem('nx5_leads',JSON.stringify(cloudLeads));}catch(e){}
+        if(typeof renderLeads==='function')renderLeads();
+        if(typeof renderDash==='function')renderDash();
+        console.log('[NX_FB] Cambio remoto leads detectado: '+cloudLeads.length+' leads');
+      }
+    },function(err){
+      console.error('[NX_FB] Listener leads error:',err);
+    });
+  },
+  
+  // === LABELS SYNC ===
+  syncLabelsUp:function(labelsArr){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    return ref.set({
+      items:labelsArr||[],
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      device:navigator.userAgent.substring(0,80)
+    });
+  },
+  
+  // Intelligent merge: union local+cloud (no overwrite)
+  syncLabelsDown:function(){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    var self=this;
+    return ref.get().then(function(snap){
+      if(snap.exists){
+        var data=snap.data();
+        if(data&&data.items){
+          var cloudLabels=data.items;
+          var merged={};
+          (savedLabels||[]).forEach(function(t){merged[t]=1;});
+          cloudLabels.forEach(function(t){merged[t]=1;});
+          var mergedArr=Object.keys(merged).sort();
+          var localStr=JSON.stringify((savedLabels||[]).slice().sort());
+          var mergedStr=JSON.stringify(mergedArr);
+          if(localStr!==mergedStr){
+            savedLabels=mergedArr;
+            try{localStorage.setItem('nx5_savedLabels',JSON.stringify(savedLabels));}catch(e){}
+            console.log('[NX_FB] Etiquetas merged: '+savedLabels.length+' total');
+            return self.syncLabelsUp(savedLabels);
+          }
+        }
+      }else{
+        if(savedLabels&&savedLabels.length){
+          return self.syncLabelsUp(savedLabels);
+        }
+      }
+    });
+  },
+  
+  startLabelsListener:function(){
+    if(!this.currentUser)return;
+    if(this.unsubscribers.savedLabels){this.unsubscribers.savedLabels();}
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc('savedLabels');
+    this.unsubscribers.savedLabels=ref.onSnapshot(function(snap){
+      if(!snap.exists)return;
+      if(snap.metadata.hasPendingWrites)return;
+      var data=snap.data();
+      if(!data||!data.items)return;
+      var cloudLabels=data.items;
+      var merged={};
+      (savedLabels||[]).forEach(function(t){merged[t]=1;});
+      cloudLabels.forEach(function(t){merged[t]=1;});
+      var mergedArr=Object.keys(merged).sort();
+      var localStr=JSON.stringify((savedLabels||[]).slice().sort());
+      var mergedStr=JSON.stringify(mergedArr);
+      if(localStr!==mergedStr){
+        savedLabels=mergedArr;
+        try{localStorage.setItem('nx5_savedLabels',JSON.stringify(savedLabels));}catch(e){}
+        console.log('[NX_FB] Cambio remoto labels detectado: '+savedLabels.length+' total');
+      }
+    },function(err){
+      console.error('[NX_FB] Listener labels error:',err);
+    });
+  },
+  
+  stopAllListeners:function(){
+    for(var k in this.unsubscribers){
+      try{this.unsubscribers[k]();}catch(e){}
+    }
+    this.unsubscribers={};
+  },
+  
+  queueWrite:function(k){
+    try{
+      var queue=JSON.parse(localStorage.getItem('nx5_fb_queue')||'[]');
+      queue.push({key:k,ts:Date.now()});
+      if(queue.length>50)queue=queue.slice(-50);
+      localStorage.setItem('nx5_fb_queue',JSON.stringify(queue));
+    }catch(e){}
+  },
+  
+  processQueue:function(){
+    try{
+      var queue=JSON.parse(localStorage.getItem('nx5_fb_queue')||'[]');
+      if(!queue.length)return;
+      console.log('[NX_FB] Procesando cola pendiente: '+queue.length+' items');
+      var self=this;
+      var promises=[];
+      if(typeof leads!=='undefined'&&leads)promises.push(this.syncLeadsUp(leads));
+      if(typeof savedLabels!=='undefined'&&savedLabels)promises.push(this.syncLabelsUp(savedLabels));
+      Promise.all(promises).then(function(){
+        localStorage.removeItem('nx5_fb_queue');
+        console.log('[NX_FB] Cola procesada OK');
+      }).catch(function(err){
+        console.error('[NX_FB] Queue process error:',err);
+      });
+    }catch(e){}
+  },
+  
+  setBanner:function(state,text){
+    var b=document.getElementById('fb-banner');
+    var t=document.getElementById('fb-banner-text');
+    if(!b||!t)return;
+    b.className='on '+state;
+    t.textContent=text;
+    document.body.classList.add('fb-banner-on');
+  },
+  
+  bannerClick:function(){
+    if(!this.currentUser){
+      this.login();
+    }else{
+      if(typeof go==='function')go('config');
+    }
+  }
+};
+// ===========================================================================
+// END NX_FB
+// ===========================================================================
+
+// ===========================================================================
+// MICROSOFT GRAPH EMAIL INTEGRATION (NX_MS)
+// ===========================================================================
+// Send welcome emails from info@dmcargroup.com via Microsoft 365 / Outlook.
+// Uses MSAL.js for OAuth2, then Microsoft Graph API to send the email.
+// ===========================================================================
+var MS_CONFIG={
+  clientId:"41d7c377-3e26-4803-be85-10f9316ec6b6",
+  tenantId:"89b298de-7441-4b94-9ae7-32859f10de92",
+  redirectUri:"https://kekkoibz.github.io/nexo-dmcar/NEXO.html",
+  scopes:["Mail.Send","User.Read"]
+};
+
+var NX_MS={
+  msalInstance:null,
+  account:null,
+  ready:false,
+  
+  init:function(){
+    try{
+      if(typeof msal==='undefined'){
+        console.warn('[NX_MS] MSAL.js no cargado');
+        return;
+      }
+      this.msalInstance=new msal.PublicClientApplication({
+        auth:{
+          clientId:MS_CONFIG.clientId,
+          authority:'https://login.microsoftonline.com/'+MS_CONFIG.tenantId,
+          redirectUri:MS_CONFIG.redirectUri
+        },
+        cache:{
+          cacheLocation:'localStorage',
+          storeAuthStateInCookie:false
+        }
+      });
+      var self=this;
+      this.msalInstance.initialize().then(function(){
+        self.ready=true;
+        var accounts=self.msalInstance.getAllAccounts();
+        if(accounts&&accounts.length>0){
+          self.account=accounts[0];
+          console.log('[NX_MS] Sesion restaurada:',self.account.username);
+        }
+        if(typeof updateMicrosoftConfigUI==='function')updateMicrosoftConfigUI();
+      }).catch(function(err){
+        console.error('[NX_MS] Init error:',err);
+      });
+    }catch(e){
+      console.error('[NX_MS] Error init:',e);
+    }
+  },
+  
+  login:function(){
+    if(!this.ready||!this.msalInstance){
+      alert('Microsoft Auth no esta listo. Recarga la pagina.');
+      return;
+    }
+    var self=this;
+    this.msalInstance.loginPopup({
+      scopes:MS_CONFIG.scopes,
+      prompt:'select_account'
+    }).then(function(response){
+      self.account=response.account;
+      console.log('[NX_MS] Login OK:',response.account.username);
+      if(typeof updateMicrosoftConfigUI==='function')updateMicrosoftConfigUI();
+      if(typeof showToast==='function')showToast('\u2713 Conectado como '+response.account.username);
+    }).catch(function(err){
+      console.error('[NX_MS] Login error:',err);
+      if(err.errorCode!=='user_cancelled'){
+        alert('Error de login Microsoft: '+(err.errorMessage||err.message||err));
+      }
+    });
+  },
+  
+  logout:function(){
+    if(!this.ready||!this.account)return;
+    if(!confirm('Cerrar sesion Microsoft?'))return;
+    var self=this;
+    this.msalInstance.logoutPopup({
+      account:this.account
+    }).then(function(){
+      self.account=null;
+      if(typeof updateMicrosoftConfigUI==='function')updateMicrosoftConfigUI();
+      if(typeof showToast==='function')showToast('Sesion Microsoft cerrada');
+    }).catch(function(err){
+      console.error('[NX_MS] Logout error:',err);
+    });
+  },
+  
+  getToken:function(cb){
+    if(!this.ready||!this.account){
+      cb(null,'No hay sesion Microsoft. Inicia sesion primero.');
+      return;
+    }
+    var self=this;
+    this.msalInstance.acquireTokenSilent({
+      scopes:MS_CONFIG.scopes,
+      account:this.account
+    }).then(function(response){
+      cb(response.accessToken,null);
+    }).catch(function(err){
+      console.warn('[NX_MS] Silent token failed, trying popup:',err.errorCode);
+      self.msalInstance.acquireTokenPopup({
+        scopes:MS_CONFIG.scopes,
+        account:self.account
+      }).then(function(response){
+        cb(response.accessToken,null);
+      }).catch(function(err2){
+        cb(null,err2.errorMessage||err2.message||'Token error');
+      });
+    });
+  },
+  
+  sendEmail:function(to,subject,body,cb){
+    this.getToken(function(token,err){
+      if(err){cb(false,err);return;}
+      var emailPayload={
+        message:{
+          subject:subject,
+          body:{contentType:'Text',content:body},
+          toRecipients:[{emailAddress:{address:to}}]
+        },
+        saveToSentItems:true
+      };
+      fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+        method:'POST',
+        headers:{
+          'Authorization':'Bearer '+token,
+          'Content-Type':'application/json'
+        },
+        body:JSON.stringify(emailPayload)
+      }).then(function(r){
+        if(r.status===202){
+          cb(true,null);
+        }else{
+          return r.json().then(function(data){
+            cb(false,(data.error&&data.error.message)||('HTTP '+r.status));
+          }).catch(function(){cb(false,'HTTP '+r.status);});
+        }
+      }).catch(function(e){cb(false,e.message);});
+    });
+  }
+};
+
+function updateMicrosoftConfigUI(){
+  var dot=n('ms-cfg-dot');
+  var txt=n('ms-cfg-status-text');
+  var detail=n('ms-cfg-detail');
+  var loginBtn=n('ms-cfg-login-btn');
+  var logoutBtn=n('ms-cfg-logout-btn');
+  if(!dot||!txt)return;
+  if(!NX_MS.ready){
+    dot.className='fb-status-dot gray';
+    txt.textContent='Inicializando Microsoft...';
+    if(loginBtn)loginBtn.style.display='none';
+    if(logoutBtn)logoutBtn.style.display='none';
+    return;
+  }
+  if(NX_MS.account){
+    dot.className='fb-status-dot green';
+    txt.innerHTML='<b>Conectado</b> &middot; '+esc(NX_MS.account.username);
+    if(loginBtn)loginBtn.style.display='none';
+    if(logoutBtn)logoutBtn.style.display='inline-block';
+    if(detail)detail.innerHTML='Email listo desde '+esc(NX_MS.account.username);
+  }else{
+    dot.className='fb-status-dot gray';
+    txt.textContent='No conectado';
+    if(loginBtn)loginBtn.style.display='inline-block';
+    if(logoutBtn)logoutBtn.style.display='none';
+    if(detail)detail.innerHTML='Inicia sesion con info@dmcargroup.com para enviar emails desde NEXO.';
+  }
+}
+
+// ===========================================================================
+// === EMAIL TEMPLATES (multilingua) ===
+function buildEmailSubject(lang){
+  var subjects={
+    'it':'DMCAR GROUP - Benvenuto',
+    'es':'DMCAR GROUP - Bienvenida',
+    'en':'DMCAR GROUP - Welcome',
+    'fr':'DMCAR GROUP - Bienvenue',
+    'de':'DMCAR GROUP - Willkommen',
+    'pt':'DMCAR GROUP - Bem-vindo'
+  };
+  return subjects[lang]||subjects.en;
+}
+
+function buildEmailBody(l){
+  var msg=buildWelcomeMessage(l);
+  var country=(l.country||'').toUpperCase();
+  var lang=langForCountry(country);
+  var signatures={
+    'it':'\\n\\nCordiali saluti,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com',
+    'es':'\\n\\nUn saludo cordial,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com',
+    'en':'\\n\\nKind regards,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com',
+    'fr':'\\n\\nCordialement,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com',
+    'de':'\\n\\nMit freundlichen Gruessen,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com',
+    'pt':'\\n\\nCom os melhores cumprimentos,\\nFrancesco Dell\\u2019Agli\\nDMCAR GROUP SRO\\n+39 342 962 4234 | +34 630 754 659\\ninfo@dmcargroup.com | www.dmcargroup.com'
+  };
+  var sig=(signatures[lang]||signatures.en).replace(/\\\\n/g,'\n').replace(/\\\\u2019/g,'\u2019');
+  return msg+sig;
+}
+
+function sendWelcomeEmail(){
+  var id=n('le-id').value;
+  var l=id?leads.find(function(x){return String(x.id)===String(id);}):null;
+  if(!l){
+    l={
+      name:n('le-name').value.trim(),
+      company:n('le-company').value.trim(),
+      country:n('le-country').value.trim().toUpperCase(),
+      email:n('le-email').value.trim()
+    };
+  }
+  if(!l.name){alert('Falta el nombre del Lead');return;}
+  if(!l.email){alert('Falta el email del Lead');return;}
+  if(!NX_MS.ready||!NX_MS.account){
+    if(confirm('Necesitas iniciar sesion con Microsoft primero. Abrir Configuracion?')){
+      go('config');
+    }
+    return;
+  }
+  var country=(l.country||'').toUpperCase();
+  var lang=langForCountry(country);
+  var langNames={'it':'Italiano','es':'Espanol','en':'English','fr':'Francais','de':'Deutsch','pt':'Portugues'};
+  n('me-to').value=l.email;
+  n('me-lang').value=langNames[lang]||'English';
+  n('me-subject').value=buildEmailSubject(lang);
+  n('me-body').value=buildEmailBody(l);
+  n('me-status').textContent='';
+  n('me-send-btn').disabled=false;
+  n('me-send-btn').setAttribute('data-lead-id',l.id||'');
+  openM('m-email-preview');
+}
+
+function confirmSendEmail(){
+  var to=n('me-to').value.trim();
+  var subject=n('me-subject').value.trim();
+  var body=n('me-body').value;
+  if(!to){n('me-status').innerHTML='<span style="color:var(--red)">Falta el destinatario</span>';return;}
+  if(!subject){n('me-status').innerHTML='<span style="color:var(--red)">Falta el asunto</span>';return;}
+  if(!body){n('me-status').innerHTML='<span style="color:var(--red)">El mensaje esta vacio</span>';return;}
+  var btn=n('me-send-btn');
+  var leadId=btn.getAttribute('data-lead-id');
+  btn.disabled=true;
+  n('me-status').innerHTML='<span style="color:var(--acc)">Enviando email...</span>';
+  NX_MS.sendEmail(to,subject,body,function(ok,err){
+    if(ok){
+      n('me-status').innerHTML='<span style="color:var(--green)">\u2713 Email enviado correctamente. Guardado en Enviados de Outlook.</span>';
+      if(leadId){
+        var idx=leads.findIndex(function(x){return String(x.id)===String(leadId);});
+        if(idx>=0){
+          leads[idx].emailSentAt=new Date().toISOString();
+          if(leads[idx].status==='Nuevo')leads[idx].status='Contattato';
+          leads[idx].updatedAt=new Date().toISOString();
+          SS('leads',leads);
+          if(typeof renderLeads==='function')renderLeads();
+        }
+      }
+      setTimeout(function(){
+        closeM('m-email-preview');
+        showToast('\u2713 Email enviado a '+to);
+      },1500);
+    }else{
+      btn.disabled=false;
+      n('me-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err||'desconocido')+'</span>';
+    }
+  });
+}
+
+function quickSendEmail(id){
+  var l=leads.find(function(x){return String(x.id)===String(id);});
+  if(!l){alert('Lead no encontrado');return;}
+  if(!l.email){alert('El Lead no tiene email');return;}
+  if(!NX_MS.ready||!NX_MS.account){
+    if(confirm('Necesitas iniciar sesion con Microsoft primero. Abrir Configuracion?')){
+      go('config');
+    }
+    return;
+  }
+  var country=(l.country||'').toUpperCase();
+  var lang=langForCountry(country);
+  var langNames={'it':'Italiano','es':'Espanol','en':'English','fr':'Francais','de':'Deutsch','pt':'Portugues'};
+  n('me-to').value=l.email;
+  n('me-lang').value=langNames[lang]||'English';
+  n('me-subject').value=buildEmailSubject(lang);
+  n('me-body').value=buildEmailBody(l);
+  n('me-status').textContent='';
+  n('me-send-btn').disabled=false;
+  n('me-send-btn').setAttribute('data-lead-id',l.id);
+  openM('m-email-preview');
+}
+
+// END NX_MS
+// ===========================================================================
+
 
 // -- STATE ----------------------------------------------------
 var stock=LS('stock',[]);
@@ -1034,9 +1728,6 @@ var leads=LS('leads',[]);
 var offerHist=LS('offerHist',[]);
 
 // MIGRACION ORIGEN (v3): consolidate old sources into Social Network / Web DMCAR / Otro
-// Instagram, Facebook, WhatsApp -> Social Network
-// Email, Web -> Web DMCAR (form on website arrives via email)
-// Referral -> Otro
 (function migrateLeadOrigens(){
   if(!leads||!leads.length)return;
   var SOURCE_MAP={
@@ -3293,6 +3984,7 @@ function renderLeadsTable(filtered){
         '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar '+esc(leadCleanName(l))+'">&#9998;</button>'+
         '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp a '+esc(leadCleanName(l))+'">&#128172;</button>'+
         '<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje para '+esc(leadCleanName(l))+'">&#128203;</button>'+
+        '<button class="btn bs" onclick="quickSendEmail(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Email a '+esc(leadCleanName(l))+'">&#128231;</button>'+
         '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google: '+esc(leadCleanName(l))+'">&#128241;</button>'+
         '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar '+esc(leadCleanName(l))+'">x</button>'+
       '</div></td>'+
@@ -4374,6 +5066,41 @@ function renderConfig(){
   n('cfg-o').textContent=offerHist.length;
   var k=getKey();if(k) n('api-key-in').value=k;
   updateGoogleConfigUI();
+  updateFirebaseConfigUI();
+  updateMicrosoftConfigUI();
+}
+
+function updateFirebaseConfigUI(){
+  var dot=n('fb-cfg-dot');
+  var txt=n('fb-cfg-status-text');
+  var detail=n('fb-cfg-detail');
+  var loginBtn=n('fb-cfg-login-btn');
+  var logoutBtn=n('fb-cfg-logout-btn');
+  if(!dot||!txt)return;
+  if(!NX_FB.ready){
+    dot.className='fb-status-dot gray';
+    txt.textContent='Inicializando Firebase...';
+    if(loginBtn)loginBtn.style.display='none';
+    if(logoutBtn)logoutBtn.style.display='none';
+    return;
+  }
+  if(NX_FB.currentUser){
+    dot.className='fb-status-dot green';
+    txt.innerHTML='<b>Conectado</b> &middot; '+esc(NX_FB.currentUser.email);
+    if(loginBtn)loginBtn.style.display='none';
+    if(logoutBtn)logoutBtn.style.display='inline-block';
+    var info='Sync activo: <b>Leads</b> ('+(window.leads?window.leads.length:0)+') &middot; <b>Etiquetas</b> ('+(window.savedLabels?window.savedLabels.length:0)+')';
+    if(NX_FB.lastSync){
+      info+=' &middot; Ultima sync: '+NX_FB.lastSync.toLocaleTimeString('es-ES');
+    }
+    if(detail)detail.innerHTML=info;
+  }else{
+    dot.className='fb-status-dot gray';
+    txt.textContent='No conectado &mdash; trabajando offline';
+    if(loginBtn)loginBtn.style.display='inline-block';
+    if(logoutBtn)logoutBtn.style.display='none';
+    if(detail)detail.innerHTML='Inicia sesion para activar sync multi-dispositivo. Tus datos locales se mantienen siempre.';
+  }
 }
 
 function saveKey(){
@@ -4507,6 +5234,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
   document.getElementById('btn-eq-close').addEventListener('click',function(){closeM('m-equip');});
   document.getElementById('btn-eq-cancel').addEventListener('click',function(){closeM('m-equip');});
   document.getElementById('btn-eq-save').addEventListener('click',saveEquip);
+  // Firebase init (después del resto, no bloquea)
+  setTimeout(function(){NX_FB.init();},500);
+  // Microsoft Graph init
+  setTimeout(function(){NX_MS.init();},800);
 })();
 
 </script>
