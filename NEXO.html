@@ -1121,7 +1121,7 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
-    <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
+    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsApp()" title="Abrir WhatsApp con este n\u00famero" style="padding:0 12px;background:#25d366;color:#fff;border-color:#25d366;font-size:14px;flex-shrink:0">&#128172;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
@@ -4622,6 +4622,25 @@ function openNewContact(){
   n('m-contact').removeAttribute('data-edit-id');
   if(typeof renderContactLabelsDisplay==='function')renderContactLabelsDisplay();
   openM('m-contact');
+}
+
+// Apre WhatsApp (Web/desktop/mobile) con il numero del contatto
+// Usa wa.me che funziona universalmente con WhatsApp normale + Business
+function contactOpenWhatsApp(){
+  var raw=(n('cn-phone')&&n('cn-phone').value||'').trim();
+  if(!raw){
+    alert('Introduce un n\u00famero de tel\u00e9fono primero.');
+    return;
+  }
+  // Normalizza: tieni solo cifre e + iniziale, poi rimuovi anche +
+  var clean=raw.replace(/[^0-9+]/g,'');
+  if(clean.charAt(0)==='+')clean=clean.slice(1);
+  if(!clean||clean.length<6){
+    alert('N\u00famero no v\u00e1lido: '+raw);
+    return;
+  }
+  var url='https://wa.me/'+clean;
+  window.open(url,'_blank','noopener');
 }
 
 function editContact(id){
