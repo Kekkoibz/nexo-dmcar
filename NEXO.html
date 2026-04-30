@@ -659,6 +659,14 @@ En que te puedo ayudar hoy?</div></div>
               </div>
             </div>
             <div id="ms-cfg-detail" style="font-size:10px;color:var(--t3);margin-top:8px"></div>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+              <div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px">&#9993;&#65039; Bandeja de respuestas B2B</div>
+              <div style="font-size:10px;color:var(--t3);margin-bottom:8px;line-height:1.4">Las respuestas de tus contactos B2B aparecer&aacute;n aqu&iacute; autom&aacute;ticamente (revisi&oacute;n cada 30s).</div>
+              <div class="fc g8" style="flex-wrap:wrap">
+                <button class="btn bp" onclick="inboxOpen()" style="font-size:11px">&#9993;&#65039; Abrir bandeja <span id="cfg-inbox-cnt" style="margin-left:6px;background:rgba(255,255,255,.2);padding:1px 6px;border-radius:8px;font-size:10px;display:none">0</span></button>
+                <button class="btn bs" onclick="if(typeof NX_INBOX!=='undefined'){NX_INBOX.fetchInbox().then(function(){if(typeof showToast==='function')showToast('\u2713 Bandeja actualizada');});}" style="font-size:11px">&#128260; Refrescar ahora</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -2116,14 +2124,27 @@ var NX_INBOX={
   refreshBadge:function(){
     try{
       var unread=this.getUnreadCount();
+      // Sidebar badge
       var el=document.getElementById('cnt-inbox');
-      if(!el)return;
-      if(unread>0){
-        el.textContent=unread>99?'99+':String(unread);
-        el.style.display='';
-      }else{
-        el.style.display='none';
+      if(el){
+        if(unread>0){
+          el.textContent=unread>99?'99+':String(unread);
+          el.style.display='';
+        }else{
+          el.style.display='none';
+        }
       }
+      // Config page badge (within button)
+      var elCfg=document.getElementById('cfg-inbox-cnt');
+      if(elCfg){
+        if(unread>0){
+          elCfg.textContent=unread>99?'99+':String(unread);
+          elCfg.style.display='';
+        }else{
+          elCfg.style.display='none';
+        }
+      }
+      console.log('[NX_INBOX] badge refresh — unread:'+unread+' total:'+this.emails.length+(el?'':' (sidebar el missing)'));
     }catch(e){console.warn('[NX_INBOX] refreshBadge error:',e);}
   },
   getUnreadCount:function(){
