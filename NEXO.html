@@ -241,6 +241,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico">&#9646;</span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
     <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico">&#9633;</span>Generador Ofertas</div>
     <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico">&#9711;</span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
+    <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico">&#127981;</span>Providers<span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
     <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico">&#9650;</span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico">&#9634;</span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
@@ -506,6 +507,77 @@ En que te puedo ayudar hoy?</div></div>
       </div>
       <div id="cont-kanban-view" style="display:none">
         <div id="cont-kanban-cols" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start"></div>
+      </div>
+    </div>
+
+    <!-- PROVIDERS -->
+    <div class="view" id="view-providers">
+      <div class="fbet mb14">
+        <div><div class="st">&#127981; Providers</div><div class="ss">Concesionarios, brokers, subastas y proveedores de stock</div></div>
+        <div class="fc g8">
+          <button class="btn bp" onclick="provView('cards')" id="pv-cards" style="font-size:11px">&#128196; Cards</button>
+          <button class="btn bs" onclick="provView('list')" id="pv-list" style="font-size:11px">&#128203; Lista</button>
+          <button class="btn bs" onclick="provView('kanban')" id="pv-kanban" style="font-size:11px">&#128301; Kanban</button>
+          <button class="btn bs" onclick="openProvLabelsManagerStandalone()" style="font-size:11px">&#127991; Etiquetas</button>
+          <button class="btn bp" onclick="openNewProvider()">+ Provider</button>
+        </div>
+      </div>
+      <!-- Filters row -->
+      <div class="card mb10" style="padding:10px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+          <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="f-prov-q" placeholder="Nombre, empresa, email, marca..." oninput="renderProv()"></div>
+          <div><label style="font-size:10px;color:var(--t3)">Pais</label>
+            <select id="f-prov-country" onchange="renderProv()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Tipo</label>
+            <select id="f-prov-ptype" onchange="renderProv()">
+              <option value="">Todos</option>
+              <option value="Concesionario">Concesionario</option>
+              <option value="Broker">Broker</option>
+              <option value="Privado">Privado</option>
+              <option value="Subasta">Subasta</option>
+              <option value="Importador">Importador</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Marca principal</label><input type="text" id="f-prov-brand" placeholder="BMW, Audi..." oninput="renderProv()"></div>
+          <div><label style="font-size:10px;color:var(--t3)">Estado</label>
+            <select id="f-prov-tag" onchange="renderProv()">
+              <option value="">Todos</option>
+              <option value="activo">Activo</option>
+              <option value="esporadico">Espor&aacute;dico</option>
+              <option value="inactivo">Inactivo</option>
+              <option value="bloqueado">Bloqueado</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <!-- Labels filter row -->
+      <div class="card mb10" style="padding:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:10px;color:var(--t3);margin:0">Etiquetas:</label>
+        <div id="pf-labels-display" style="flex:1;min-height:24px;padding:3px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openProvLabelsFilter()">
+          <span id="pf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>
+        </div>
+        <button class="btn bg" onclick="clearProvLabelsFilter()" id="pf-labels-clear" style="font-size:10px;padding:4px 8px;display:none">X Quitar</button>
+        <span id="prov-info" style="font-size:11px;color:var(--t3);margin-left:auto"></span>
+      </div>
+      <div id="prov-cards-view" class="contg"></div>
+      <div id="prov-list-view" class="card" style="padding:0;display:none">
+        <div class="tbl">
+          <table>
+            <thead><tr>
+              <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tipo</th><th>Marcas</th><th>Tel</th><th>Email</th>
+              <th>Pago</th><th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
+              <th style="width:140px">Acciones</th>
+            </tr></thead>
+            <tbody id="prov-list-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="prov-kanban-view" style="display:none">
+        <div id="prov-kanban-cols" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:start"></div>
       </div>
     </div>
 
@@ -1181,6 +1253,26 @@ En que te puedo ayudar hoy?</div></div>
       <button class="btn bg" onclick="closeM('m-labels-manager')" style="font-size:12px">Cancelar</button>
       <button class="btn bp" onclick="saveLabelsToContact()" id="lm-save-btn" style="font-size:12px">Guardar asignacion</button>
     </div>
+  </div>
+</div>
+
+<!-- PROVIDER -->
+<div class="ovl" id="m-provider">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">&#127981; Nuevo / Editar Provider</div><button class="btn bg" onclick="closeM('m-provider')" style="padding:5px 10px">X</button></div>
+    <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans M\u00fcller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW M\u00fcller GmbH"></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option>Comercial</option><option>Director</option><option>Stock manager</option><option>Otro</option></select></div></div>
+    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
+    <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
+    <div class="g2 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div></div>
+    <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openProvLabelsManagerForProvider()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="pv-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openProvLabelsManagerForProvider()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="pv-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="pv-labels"></div>
+    <div class="mb14"><label>Notas</label><textarea id="pv-notes" rows="3" placeholder="Stock disponible, precios, condiciones especiales..."></textarea></div>
+    <!-- Related tasks (visible only when editing existing provider) -->
+    <div id="pv-tasks-section" style="display:none;margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:var(--t2);display:flex;align-items:center;justify-content:space-between"><span>&#128203; Tareas relacionadas</span><button class="btn bs" onclick="addManualTaskForProvider()" style="font-size:10px;padding:2px 8px">+ Tarea</button></label>
+      <div id="pv-tasks-list" style="margin-top:6px;max-height:140px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px"></div>
+    </div>
+    <button class="btn bp" style="width:100%" onclick="saveProv()">Guardar</button>
   </div>
 </div>
 
@@ -2217,6 +2309,13 @@ var tasks=LS('tasks',[
 ]);
 var leads=LS('leads',[]);
 var offerHist=LS('offerHist',[]);
+// PROVIDERS module state (separate from contacts B2B)
+var providers=LS('providers',[]);
+var provCnt=LS('provCnt',1);
+var provLabels=LS('provLabels',[]); // {name,color}
+var provLabelsFilter=new Set();
+var provCurrentView='cards';
+var provCurrentEditId=null; // for labels manager modal
 
 // MIGRACION ORIGEN (v3): consolidate old sources into Social Network / Web DMCAR / Otro
 (function migrateLeadOrigens(){
@@ -2307,7 +2406,7 @@ function fmtPickup(loc){
 }
 
 // -- NAV ------------------------------------------------------
-var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',leads:'Leads',tareas:'Tareas',config:'Configuracion'};
+var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',tareas:'Tareas',config:'Configuracion'};
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
@@ -2320,6 +2419,7 @@ function go(v){
   if(v==='dashboard') renderDash();
   if(v==='stock') renderStk();
   if(v==='contactos') renderCont();
+  if(v==='providers') renderProv();
   if(v==='tareas') renderTareas();
   if(v==='leads') renderLeads();
   if(v==='config') renderConfig();
@@ -6444,6 +6544,461 @@ function quickActionsHtml(phone,size){
     +' <span onclick="event.stopPropagation();openWhatsAppPersonalByPhone(\''+safePhone+'\')" title="WhatsApp Personal (app)" style="background:#25d366;'+btnBase+'">P</span>'
     +' <span onclick="event.stopPropagation();openTelByPhone(\''+safePhone+'\')" title="Llamar" style="background:#3b82f6;'+btnBase+'">\ud83d\udcde</span>';
 }
+
+// ===========================================================================
+// PROVIDERS MODULE — gestione fornitori (separato da Contactos B2B)
+// ===========================================================================
+
+// -- HELPERS PROVIDERS ----------------------------------------------------
+var PROV_TAG_LABEL={activo:'Activo',esporadico:'Espor\u00e1dico',inactivo:'Inactivo',bloqueado:'Bloqueado'};
+var PROV_TAG_ORDER=['activo','esporadico','inactivo','bloqueado'];
+var PROV_TAG_DESC={
+  activo:'Compras frecuentes y relaci\u00f3n abierta',
+  esporadico:'Compras ocasionales',
+  inactivo:'Sin compras recientes',
+  bloqueado:'Pausado / no operar'
+};
+function provTagClass(t){
+  return {activo:'t-hot',esporadico:'t-pend',inactivo:'t-pend',bloqueado:'t-urg'}[t]||'t-pend';
+}
+
+// -- VIEW SWITCHING (cards/list/kanban) -----------------------------------
+function provView(v){
+  provCurrentView=v;
+  ['cards','list','kanban'].forEach(function(k){
+    var btn=n('pv-'+k);
+    if(btn){btn.classList.remove('bp');btn.classList.add('bs');}
+    var view=n('prov-'+k+'-view');
+    if(view)view.style.display='none';
+  });
+  var btnAct=n('pv-'+v);
+  if(btnAct){btnAct.classList.remove('bs');btnAct.classList.add('bp');}
+  var viewAct=n('prov-'+v+'-view');
+  if(viewAct)viewAct.style.display='';
+  renderProv();
+}
+
+// -- RENDER ---------------------------------------------------------------
+function renderProv(){
+  var q=(n('f-prov-q')&&n('f-prov-q').value||'').toLowerCase();
+  var ctryFilter=n('f-prov-country')&&n('f-prov-country').value||'';
+  var typeFilter=n('f-prov-ptype')&&n('f-prov-ptype').value||'';
+  var brandFilter=(n('f-prov-brand')&&n('f-prov-brand').value||'').toLowerCase();
+  var tagFilter=n('f-prov-tag')&&n('f-prov-tag').value||'';
+
+  // Populate country dropdown dynamically
+  if(n('f-prov-country')){
+    var curr=n('f-prov-country').value;
+    var all={};
+    providers.forEach(function(p){if(p.country)all[p.country]=true;});
+    var arr=Object.keys(all).sort();
+    var html='<option value="">Todos</option>';
+    arr.forEach(function(co){html+='<option value="'+esc(co)+'"'+(co===curr?' selected':'')+'>'+esc(co)+'</option>';});
+    n('f-prov-country').innerHTML=html;
+  }
+
+  var list=providers.filter(function(p){
+    if(q&&!((p.name||'').toLowerCase().indexOf(q)>=0||(p.company||'').toLowerCase().indexOf(q)>=0||(p.email||'').toLowerCase().indexOf(q)>=0||(p.brands||'').toLowerCase().indexOf(q)>=0)) return false;
+    if(ctryFilter&&(p.country||'')!==ctryFilter) return false;
+    if(typeFilter&&(p.providerType||'')!==typeFilter) return false;
+    if(brandFilter&&(p.brands||'').toLowerCase().indexOf(brandFilter)<0) return false;
+    if(tagFilter&&(p.tag||'activo')!==tagFilter) return false;
+    if(provLabelsFilter.size>0){
+      var labs=new Set(p.labels||[]);
+      var ok=true;
+      provLabelsFilter.forEach(function(t){if(!labs.has(t))ok=false;});
+      if(!ok) return false;
+    }
+    return true;
+  });
+
+  if(n('prov-info'))n('prov-info').textContent=list.length+' de '+providers.length+' providers';
+
+  // Update sidebar counter (active providers)
+  var activeCount=providers.filter(function(p){return (p.tag||'activo')==='activo';}).length;
+  var cnt=n('cnt-providers');
+  if(cnt){
+    if(activeCount>0){cnt.textContent=activeCount;cnt.style.display='';}
+    else{cnt.style.display='none';}
+  }
+
+  // Type badge color helper
+  function ptBadge(pt){
+    if(!pt) return '';
+    var col={'Concesionario':{bg:'#dbeafe',fg:'#1e40af'},'Broker':{bg:'#fef3c7',fg:'#92400e'},'Privado':{bg:'#f3e8ff',fg:'#6b21a8'},'Subasta':{bg:'#fee2e2',fg:'#991b1b'},'Importador':{bg:'#dcfce7',fg:'#166534'},'Otro':{bg:'var(--bg3)',fg:'var(--t2)'}}[pt]||{bg:'var(--bg3)',fg:'var(--t2)'};
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(pt)+'</span>';
+  }
+
+  // Cards view
+  var gridEl=n('prov-cards-view');
+  if(gridEl){
+    gridEl.innerHTML=list.map(function(p){
+      var labelsHtml='';
+      if(p.labels&&p.labels.length){
+        labelsHtml='<div class="fc g4 mb10" style="flex-wrap:wrap">'+p.labels.slice(0,5).map(function(t){
+          var col=provLabelColor(t);
+          return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
+        }).join('')+'</div>';
+      }
+      return '<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((p.name||p.company||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(p.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(p.company||'')+'</div></div></div><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></div>'+
+      '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
+        (p.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(p.country)+'</span>':'')+
+        (p.providerType?ptBadge(p.providerType):'')+
+        (p.brands?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#128663; '+esc(p.brands.slice(0,40))+'</span>':'')+
+      '</div>'+
+      labelsHtml+
+      (p.payment?'<div style="font-size:11px;color:var(--t3);margin-bottom:6px">&#128181; '+esc(p.payment)+'</div>':'')+
+      (p.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(p.notes)+'</div>':'')+
+      '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(p.phone||'')+'</span><span>'+fmtD(p.lastContact||'')+'</span></div>'+
+      (p.phone?'<div class="fc g6 mt8">'+quickActionsHtml(p.phone,'md')+'</div>':'')+
+      '<div class="fc g4 mt8" style="justify-content:flex-end"><button class="btn bs" onclick="editProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="delProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div>'+
+      '</div>';
+    }).join('')||'<div style="color:var(--t3);text-align:center;padding:30px">Sin providers</div>';
+  }
+  // List view
+  var listEl=n('prov-list-body');
+  if(listEl){
+    listEl.innerHTML=list.map(function(p){
+      var lblsh='--';
+      if(p.labels&&p.labels.length){
+        lblsh=p.labels.slice(0,3).map(function(t){
+          var col=provLabelColor(t);
+          return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 6px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
+        }).join(' ');
+        if(p.labels.length>3)lblsh+=' <span style="font-size:9px;color:var(--t4)">+'+(p.labels.length-3)+'</span>';
+      }
+      return '<tr>'+
+        '<td><strong>'+esc(p.name||'')+'</strong></td>'+
+        '<td>'+esc(p.company||'')+'</td>'+
+        '<td>'+esc(p.country||'')+'</td>'+
+        '<td>'+(p.providerType?ptBadge(p.providerType):'--')+'</td>'+
+        '<td style="font-size:11px">'+esc((p.brands||'').slice(0,40))+'</td>'+
+        '<td style="font-family:monospace;font-size:11px">'+esc(p.phone||'')+'</td>'+
+        '<td style="font-size:11px">'+esc(p.email||'')+'</td>'+
+        '<td style="font-size:11px">'+esc(p.payment||'--')+'</td>'+
+        '<td style="max-width:140px;line-height:1.6">'+lblsh+'</td>'+
+        '<td><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></td>'+
+        '<td style="font-size:10px;color:var(--t3)">'+fmtD(p.lastContact||'')+'</td>'+
+        '<td><div class="fc g4">'+
+          '<button class="btn bs" onclick="editProvider(\''+p.id+'\')" style="padding:2px 7px;font-size:10px">&#9998;</button>'+
+          '<button class="btn bd" onclick="delProvider(\''+p.id+'\')" style="padding:2px 7px;font-size:10px">x</button>'+
+        '</div></td>'+
+      '</tr>';
+    }).join('');
+  }
+  // Kanban view
+  var kanCols=n('prov-kanban-cols');
+  if(kanCols){
+    kanCols.style.gridTemplateColumns='repeat(4,1fr)';
+    kanCols.innerHTML=PROV_TAG_ORDER.map(function(tg){
+      var inCol=list.filter(function(p){return (p.tag||'activo')===tg;});
+      var cls=provTagClass(tg);
+      return '<div ondragover="event.preventDefault();this.style.background=\'var(--bg3)\'" ondragleave="this.style.background=\'var(--bg2)\'" ondrop="provKanbanDrop(event,\''+tg+'\');this.style.background=\'var(--bg2)\'" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:200px">'+
+        '<div class="fbet mb6"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--t2);letter-spacing:.05em">'+esc(PROV_TAG_LABEL[tg]||tg)+'</div><span class="tag '+cls+'">'+inCol.length+'</span></div>'+
+        '<div style="font-size:9px;color:var(--t4);margin-bottom:8px;line-height:1.3">'+esc(PROV_TAG_DESC[tg]||'')+'</div>'+
+        inCol.map(function(p){
+          return '<div draggable="true" ondragstart="provKanbanDrag(event,\''+p.id+'\')" onclick="editProvider(\''+p.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab;position:relative">'+
+            '<div style="font-size:12px;font-weight:600">'+esc(p.name||'')+'</div>'+
+            '<div style="font-size:10px;color:var(--t3)">'+esc(p.company||'')+'</div>'+
+            '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(p.country||'')+(p.providerType?' \u00B7 '+esc(p.providerType):'')+'</div>'+
+            (p.brands?'<div style="font-size:9px;color:var(--acc);margin-top:3px">&#128663; '+esc(p.brands.slice(0,30))+'</div>':'')+
+            (p.phone?'<div class="fc g4" style="margin-top:6px">'+quickActionsHtml(p.phone,'sm')+'</div>':'')+
+            '</div>';
+        }).join('')+
+      '</div>';
+    }).join('');
+  }
+  // Update labels filter display
+  if(n('pf-labels-display'))renderProvLabelsFilterDisplay();
+}
+
+// Drag & drop kanban
+function provKanbanDrag(e,id){e.dataTransfer.setData('text/plain',id);}
+function provKanbanDrop(e,newTag){
+  e.preventDefault();
+  var id=e.dataTransfer.getData('text/plain');
+  var idx=providers.findIndex(function(p){return String(p.id)===String(id);});
+  if(idx<0)return;
+  providers[idx].tag=newTag;
+  providers[idx].updatedAt=new Date().toISOString();
+  SS('providers',providers);
+  renderProv();
+  if(typeof showToast==='function')showToast('\u2713 Movido a '+(PROV_TAG_LABEL[newTag]||newTag));
+}
+
+// -- CRUD ----------------------------------------------------------------
+function openNewProvider(){
+  n('pv-name').value='';
+  n('pv-co').value='';
+  n('pv-country').value='';
+  n('pv-role').value='Comercial';
+  n('pv-phone').value='';
+  n('pv-email').value='';
+  n('pv-ptype').value='';
+  n('pv-tag').value='activo';
+  n('pv-brands').value='';
+  n('pv-payment').value='';
+  n('pv-notes').value='';
+  n('pv-labels').value='';
+  n('m-provider').removeAttribute('data-edit-id');
+  if(n('pv-tasks-section'))n('pv-tasks-section').style.display='none';
+  renderProvLabelsDisplay();
+  openM('m-provider');
+}
+
+function editProvider(id){
+  var p=providers.find(function(x){return String(x.id)===String(id);});
+  if(!p)return;
+  n('pv-name').value=p.name||'';
+  n('pv-co').value=p.company||'';
+  n('pv-country').value=p.country||'';
+  n('pv-role').value=p.role||'Comercial';
+  n('pv-phone').value=p.phone||'';
+  n('pv-email').value=p.email||'';
+  n('pv-ptype').value=p.providerType||'';
+  n('pv-tag').value=p.tag||'activo';
+  n('pv-brands').value=p.brands||'';
+  n('pv-payment').value=p.payment||'';
+  n('pv-notes').value=p.notes||'';
+  n('pv-labels').value=(p.labels||[]).join(',');
+  n('m-provider').setAttribute('data-edit-id',p.id);
+  // Show related tasks
+  if(n('pv-tasks-section')){
+    n('pv-tasks-section').style.display='';
+    renderProvTasksList(p);
+  }
+  renderProvLabelsDisplay();
+  openM('m-provider');
+}
+
+function saveProv(){
+  var name=n('pv-name').value.trim();
+  var company=n('pv-co').value.trim();
+  if(!name&&!company){alert('Introduce al menos nombre o empresa.');return;}
+  var editId=n('m-provider').getAttribute('data-edit-id');
+  var labelsStr=n('pv-labels').value.trim();
+  var labels=labelsStr?labelsStr.split(',').map(function(s){return s.trim();}).filter(Boolean):[];
+  var record={
+    name:name,
+    company:company,
+    country:n('pv-country').value.trim(),
+    role:n('pv-role').value.trim(),
+    phone:n('pv-phone').value.trim(),
+    email:n('pv-email').value.trim().toLowerCase(),
+    providerType:n('pv-ptype').value.trim(),
+    tag:n('pv-tag').value.trim()||'activo',
+    brands:n('pv-brands').value.trim(),
+    payment:n('pv-payment').value.trim(),
+    notes:n('pv-notes').value.trim(),
+    labels:labels,
+    updatedAt:new Date().toISOString()
+  };
+  if(editId){
+    var idx=providers.findIndex(function(p){return String(p.id)===String(editId);});
+    if(idx>=0){
+      record.id=providers[idx].id;
+      record.createdAt=providers[idx].createdAt;
+      record.lastContact=providers[idx].lastContact;
+      providers[idx]=record;
+    }
+  }else{
+    record.id='prov_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    record.createdAt=new Date().toISOString();
+    record.lastContact=new Date().toISOString().slice(0,10);
+    providers.push(record);
+    provCnt++;
+    SS('provCnt',provCnt);
+  }
+  SS('providers',providers);
+  closeM('m-provider');
+  renderProv();
+  if(typeof showToast==='function')showToast('\u2713 Provider guardado');
+}
+
+function delProvider(id){
+  var p=providers.find(function(x){return String(x.id)===String(id);});
+  if(!p)return;
+  if(!confirm('Eliminar provider "'+(p.name||p.company)+'"?'))return;
+  providers=providers.filter(function(x){return String(x.id)!==String(id);});
+  SS('providers',providers);
+  renderProv();
+  if(typeof showToast==='function')showToast('\u2713 Provider eliminado');
+}
+
+// -- WHATSAPP / TEL FROM MODAL --------------------------------------------
+function providerOpenWhatsAppBusiness(){
+  var raw=(n('pv-phone')&&n('pv-phone').value||'').trim();
+  if(!raw){alert('Introduce un n\u00famero primero.');return;}
+  openWhatsAppBusinessByPhone(raw);
+}
+function providerOpenWhatsAppPersonal(){
+  var raw=(n('pv-phone')&&n('pv-phone').value||'').trim();
+  if(!raw){alert('Introduce un n\u00famero primero.');return;}
+  openWhatsAppPersonalByPhone(raw);
+}
+function providerOpenTel(){
+  var raw=(n('pv-phone')&&n('pv-phone').value||'').trim();
+  if(!raw){alert('Introduce un n\u00famero primero.');return;}
+  openTelByPhone(raw);
+}
+
+// -- LABELS PROVIDER (gestione separata da B2B) ---------------------------
+function provLabelColor(name){
+  var found=provLabels.find(function(l){return l.name===name;});
+  if(found&&found.color){
+    var c=found.color;
+    var bg=c+'33'; // alpha
+    return {bg:c,fg:'#fff'};
+  }
+  // Hash a color
+  var hash=0;
+  for(var i=0;i<name.length;i++)hash=name.charCodeAt(i)+((hash<<5)-hash);
+  var palette=[{bg:'#3b82f6',fg:'#fff'},{bg:'#10b981',fg:'#fff'},{bg:'#f59e0b',fg:'#fff'},{bg:'#ef4444',fg:'#fff'},{bg:'#8b5cf6',fg:'#fff'},{bg:'#ec4899',fg:'#fff'},{bg:'#06b6d4',fg:'#fff'}];
+  return palette[Math.abs(hash)%palette.length];
+}
+
+function renderProvLabelsDisplay(){
+  var disp=n('pv-labels-display');
+  var empty=n('pv-labels-empty');
+  if(!disp)return;
+  var raw=n('pv-labels').value;
+  var labels=raw?raw.split(',').map(function(s){return s.trim();}).filter(Boolean):[];
+  if(!labels.length){
+    disp.innerHTML='<span style="color:var(--t3);font-size:11px;padding:0 6px" id="pv-labels-empty">Click para asignar etiquetas...</span>';
+    return;
+  }
+  disp.innerHTML=labels.map(function(t){
+    var col=provLabelColor(t);
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">'+esc(t)+'</span>';
+  }).join('');
+}
+
+function renderProvLabelsFilterDisplay(){
+  var disp=n('pf-labels-display');
+  var empty=n('pf-labels-empty');
+  var clearBtn=n('pf-labels-clear');
+  if(!disp)return;
+  if(!provLabelsFilter.size){
+    disp.innerHTML='<span id="pf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>';
+    if(clearBtn)clearBtn.style.display='none';
+    return;
+  }
+  disp.innerHTML=Array.from(provLabelsFilter).map(function(t){
+    var col=provLabelColor(t);
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">'+esc(t)+'</span>';
+  }).join('');
+  if(clearBtn)clearBtn.style.display='';
+}
+
+function clearProvLabelsFilter(){
+  provLabelsFilter=new Set();
+  renderProv();
+}
+
+// Apre il labels manager esistente, riusato in modalita' "provider"
+// Se gia' c'e' openLabelsManagerStandalone usato per contacts, ne facciamo una versione provider che mostra solo provLabels
+function openProvLabelsManagerStandalone(){
+  // Per semplicita', mostro un piccolo prompt per gestire le label provider
+  // Future: modal completa come per contacts
+  var current=provLabels.map(function(l){return l.name;}).join(', ');
+  var input=prompt('Etiquetas providers (separadas por coma):',current);
+  if(input===null)return;
+  var arr=input.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  // Mantieni colori esistenti, aggiungi nuove
+  var newLabels=arr.map(function(name){
+    var ex=provLabels.find(function(l){return l.name===name;});
+    return ex||{name:name,color:''};
+  });
+  provLabels=newLabels;
+  SS('provLabels',provLabels);
+  // Rimuovi label cancellate dai providers
+  var validNames=new Set(arr);
+  providers.forEach(function(p){
+    if(p.labels)p.labels=p.labels.filter(function(t){return validNames.has(t);});
+  });
+  SS('providers',providers);
+  renderProv();
+  if(typeof showToast==='function')showToast('\u2713 Etiquetas guardadas');
+}
+
+// Apre filtro etichette per i providers
+function openProvLabelsFilter(){
+  if(!provLabels.length){
+    alert('No hay etiquetas. Crea algunas con "Etiquetas" en la barra superior.');
+    return;
+  }
+  var sel=Array.from(provLabelsFilter);
+  var input=prompt('Filtra por etiquetas (separadas por coma).\nDisponibles: '+provLabels.map(function(l){return l.name;}).join(', '),sel.join(', '));
+  if(input===null)return;
+  provLabelsFilter=new Set(input.split(',').map(function(s){return s.trim();}).filter(Boolean));
+  renderProv();
+}
+
+// Apre il manager di etichette in modalita' assegnazione su singolo provider
+function openProvLabelsManagerForProvider(){
+  if(!provLabels.length){
+    if(confirm('No hay etiquetas todav\u00eda. \u00bfCrear una ahora?')){
+      openProvLabelsManagerStandalone();
+    }
+    return;
+  }
+  var current=(n('pv-labels').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var input=prompt('Etiquetas asignadas (separadas por coma).\nDisponibles: '+provLabels.map(function(l){return l.name;}).join(', '),current.join(', '));
+  if(input===null)return;
+  var newLabels=input.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  // Filtra solo etichette esistenti
+  var validNames=new Set(provLabels.map(function(l){return l.name;}));
+  newLabels=newLabels.filter(function(t){return validNames.has(t);});
+  n('pv-labels').value=newLabels.join(',');
+  renderProvLabelsDisplay();
+}
+
+// -- TAREAS RELACIONADAS (riusa logica tasks esistente) -------------------
+function renderProvTasksList(provider){
+  var list=n('pv-tasks-list');
+  if(!list)return;
+  var related=tasks.filter(function(t){return!t.done&&t.providerId&&String(t.providerId)===String(provider.id);});
+  if(!related.length){
+    list.innerHTML='<div style="color:var(--t3);font-size:11px;padding:8px;text-align:center">Sin tareas pendientes</div>';
+    return;
+  }
+  list.innerHTML=related.map(function(t){
+    return '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:4px;font-size:11px">'+
+      '<div class="fbet"><div><span class="pdot p'+(t.priority||'media')[0]+'"></span> <strong>'+esc(t.title||'')+'</strong></div><span style="font-size:10px;color:var(--t3)">'+fmtD(t.dueDate||'')+'</span></div>'+
+      '</div>';
+  }).join('');
+}
+function addManualTaskForProvider(){
+  var editId=n('m-provider').getAttribute('data-edit-id');
+  if(!editId){alert('Guarda primero el provider.');return;}
+  var p=providers.find(function(x){return String(x.id)===String(editId);});
+  if(!p)return;
+  var title=prompt('T\u00edtulo de la tarea:');
+  if(!title)return;
+  var due=prompt('Fecha (YYYY-MM-DD), vac\u00edo = hoy+3d:');
+  if(!due){
+    var d=new Date();d.setDate(d.getDate()+3);
+    due=d.toISOString().slice(0,10);
+  }
+  var newTask={
+    id:'tsk_'+Date.now(),
+    title:title,
+    company:p.company||'',
+    contact:p.name||'',
+    providerId:p.id,
+    dueDate:due,
+    priority:'media',
+    done:false,
+    createdAt:new Date().toISOString()
+  };
+  tasks.push(newTask);
+  SS('tasks',tasks);
+  renderProvTasksList(p);
+  if(typeof showToast==='function')showToast('\u2713 Tarea creada');
+}
+
+// END PROVIDERS MODULE
+// ===========================================================================
 
 // -- MODALS ---------------------------------------------------
 function openM(id){
