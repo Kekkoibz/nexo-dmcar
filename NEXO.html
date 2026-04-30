@@ -1280,17 +1280,62 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
     <div class="g2 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div></div>
+    <!-- DATOS FISCALES (collassabile, chiusa di default) -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
+      <div onclick="provToggleFiscal()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
+        <div style="font-size:12px;font-weight:600;color:var(--t2)">&#128188; Datos fiscales <span style="font-size:10px;color:var(--t3);font-weight:400">(opcional &mdash; necesario para contabilidad)</span></div>
+        <span id="pv-fiscal-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
+      </div>
+      <div id="pv-fiscal-collapse" style="display:none;padding:0 12px 12px 12px">
+        <div class="g2 mb10">
+          <div><label>Persona jur&iacute;dica</label>
+            <select id="pv-legal-form">
+              <option value="">--</option>
+              <option value="S.L.">S.L. (Espa&ntilde;a)</option>
+              <option value="S.A.">S.A. (Espa&ntilde;a)</option>
+              <option value="Aut&oacute;nomo">Aut&oacute;nomo (Espa&ntilde;a)</option>
+              <option value="S.r.l.">S.r.l. (Italia)</option>
+              <option value="S.p.A.">S.p.A. (Italia)</option>
+              <option value="S.n.c.">S.n.c. (Italia)</option>
+              <option value="Ditta individuale">Ditta individuale (Italia)</option>
+              <option value="GmbH">GmbH (Alemania/Austria)</option>
+              <option value="AG">AG (Alemania/Suiza)</option>
+              <option value="UG">UG (Alemania)</option>
+              <option value="SAS">SAS (Francia)</option>
+              <option value="SARL">SARL (Francia)</option>
+              <option value="EURL">EURL (Francia)</option>
+              <option value="BV">BV (Pa&iacute;ses Bajos)</option>
+              <option value="Ltd">Ltd (Reino Unido)</option>
+              <option value="LLC">LLC</option>
+              <option value="Privado">Persona f&iacute;sica / Privado</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div><label>Raz&oacute;n social</label><input type="text" id="pv-legal-name" placeholder="Denominaci&oacute;n legal completa"></div>
+        </div>
+        <div class="g2 mb10">
+          <div><label>VAT / CIF / NIF</label><input type="text" id="pv-vat" placeholder="ES B12345678 / IT12345678901 / ..."></div>
+          <div><label>IBAN</label><input type="text" id="pv-iban" placeholder="ES12 3456 ..." style="font-family:monospace;font-size:11px"></div>
+        </div>
+        <div class="mb10"><label>Direcci&oacute;n</label><input type="text" id="pv-address" placeholder="Calle / V&iacute;a / Stra&szlig;e..."></div>
+        <div class="g3 mb10" style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px">
+          <div><label>CP</label><input type="text" id="pv-cp" placeholder="28001"></div>
+          <div><label>Ciudad</label><input type="text" id="pv-city" placeholder="Madrid"></div>
+          <div><label>Provincia</label><input type="text" id="pv-province" placeholder="MAD"></div>
+        </div>
+        <div class="g2 mb10">
+          <div><label>Pa&iacute;s fiscal</label><input type="text" id="pv-fiscal-country" placeholder="Espa&ntilde;a"></div>
+          <div><label>SDI / C&oacute;digo destinatario <span style="font-size:9px;color:var(--t3)">(Italia)</span></label><input type="text" id="pv-sdi" placeholder="0000000 (7 caracteres)"></div>
+        </div>
+        <div class="mb6"><label>PEC <span style="font-size:9px;color:var(--t3)">(Posta elettronica certificata - Italia)</span></label><input type="email" id="pv-pec" placeholder="empresa@pec.empresa.it"></div>
+      </div>
+    </div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openProvLabelsManagerForProvider()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="pv-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openProvLabelsManagerForProvider()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="pv-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="pv-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="pv-notes" rows="3" placeholder="Stock disponible, precios, condiciones especiales..."></textarea></div>
     <!-- Related tasks (visible only when editing existing provider) -->
     <div id="pv-tasks-section" style="display:none;margin-bottom:14px">
       <label style="font-size:11px;font-weight:600;color:var(--t2);display:flex;align-items:center;justify-content:space-between"><span>&#128203; Tareas relacionadas</span><button class="btn bs" onclick="addManualTaskForProvider()" style="font-size:10px;padding:2px 8px">+ Tarea</button></label>
       <div id="pv-tasks-list" style="margin-top:6px;max-height:140px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px"></div>
-    </div>
-    <!-- Action button: process emails to Stock Vivo (visible only when editing existing provider) -->
-    <div id="pv-stock-section" style="display:none;margin-bottom:10px">
-      <button type="button" class="btn bs" onclick="provOpenSendToStock()" style="width:100%;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:#059669;font-weight:600">&#128229; Enviar a Stock Vivo</button>
-      <div style="font-size:10px;color:var(--t3);margin-top:4px;text-align:center">Procesa los emails de este provider y a&ntilde;ade veh&iacute;culos al stock</div>
     </div>
     <button class="btn bp" style="width:100%" onclick="saveProv()">Guardar</button>
   </div>
@@ -6885,6 +6930,7 @@ function provInboxRenderList(){
         +'<div class="fc g8" style="flex-wrap:wrap">'
           +(isRead?'':'<button class="btn bs" onclick="provInboxMarkOneRead(\''+esc(it.id)+'\')" style="font-size:10px;padding:4px 8px">\u2713 Marcar le\u00eddo</button>')
           +(provider?'<button class="btn bs" onclick="provInboxGoToProvider(\''+provider.id+'\')" style="font-size:10px;padding:4px 8px">\u2192 Ir al Provider</button>':'')
+          +(provider?'<button class="btn bs" onclick="provInboxProcessOneToStock(\''+esc(it.id)+'\',\''+provider.id+'\')" title="Extraer veh\u00edculos de este email y a\u00f1adir al Stock" style="font-size:10px;padding:4px 8px;background:#10b981;color:#fff;border-color:#10b981;font-weight:600">\ud83d\udce5 \u2192 Stock Vivo</button>':'')
         +'</div>'
       +'</div>'
     +'</div>';
@@ -6997,7 +7043,7 @@ function renderProv(){
       (p.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(p.notes)+'</div>':'')+
       '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(p.phone||'')+'</span><span>'+fmtD(p.lastContact||'')+'</span></div>'+
       (p.phone?'<div class="fc g6 mt8">'+quickActionsHtml(p.phone,'md')+'</div>':'')+
-      '<div class="fc g4 mt8" style="justify-content:flex-end"><button class="btn bs" onclick="editProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="delProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div>'+
+      '<div class="fc g4 mt8" style="justify-content:space-between"><button class="btn bs" onclick="provOpenSendToStockById(\''+p.id+'\')" title="Procesar emails de este provider y a&ntilde;adir veh&iacute;culos al Stock Vivo" style="padding:3px 10px;font-size:10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:#059669;font-weight:600">&#128229; Procesar</button><div class="fc g4"><button class="btn bs" onclick="event.stopPropagation();editProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="event.stopPropagation();delProvider(\''+p.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div></div>'+
       '</div>';
     }).join('')||'<div style="color:var(--t3);text-align:center;padding:30px">Sin providers</div>';
   }
@@ -7026,6 +7072,7 @@ function renderProv(){
         '<td><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></td>'+
         '<td style="font-size:10px;color:var(--t3)">'+fmtD(p.lastContact||'')+'</td>'+
         '<td><div class="fc g4">'+
+          '<button class="btn bs" onclick="provOpenSendToStockById(\''+p.id+'\')" title="Procesar emails &rarr; Stock Vivo" style="padding:2px 7px;font-size:10px;background:#10b981;color:#fff;border-color:#10b981">&#128229;</button>'+
           '<button class="btn bs" onclick="editProvider(\''+p.id+'\')" style="padding:2px 7px;font-size:10px">&#9998;</button>'+
           '<button class="btn bd" onclick="delProvider(\''+p.id+'\')" style="padding:2px 7px;font-size:10px">x</button>'+
         '</div></td>'+
@@ -7088,7 +7135,10 @@ function openNewProvider(){
   n('pv-labels').value='';
   n('m-provider').removeAttribute('data-edit-id');
   if(n('pv-tasks-section'))n('pv-tasks-section').style.display='none';
-  if(n('pv-stock-section'))n('pv-stock-section').style.display='none';
+  // Reset campos fiscales (vacios + collapse cerrado)
+  ['pv-legal-form','pv-legal-name','pv-vat','pv-iban','pv-address','pv-cp','pv-city','pv-province','pv-fiscal-country','pv-sdi','pv-pec'].forEach(function(id){if(n(id))n(id).value='';});
+  if(n('pv-fiscal-collapse'))n('pv-fiscal-collapse').style.display='none';
+  if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML='\u25BC';
   // Reset sezione Pegar info: chiusa, textarea vuota
   if(n('pp-collapse'))n('pp-collapse').style.display='none';
   if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
@@ -7113,14 +7163,28 @@ function editProvider(id){
   n('pv-payment').value=p.payment||'';
   n('pv-notes').value=p.notes||'';
   n('pv-labels').value=(p.labels||[]).join(',');
+  // Carica campi fiscales (potrebbero essere undefined su provider vecchi)
+  if(n('pv-legal-form'))n('pv-legal-form').value=p.legalForm||'';
+  if(n('pv-legal-name'))n('pv-legal-name').value=p.legalName||'';
+  if(n('pv-vat'))n('pv-vat').value=p.vat||'';
+  if(n('pv-iban'))n('pv-iban').value=p.iban||'';
+  if(n('pv-address'))n('pv-address').value=p.address||'';
+  if(n('pv-cp'))n('pv-cp').value=p.cp||'';
+  if(n('pv-city'))n('pv-city').value=p.city||'';
+  if(n('pv-province'))n('pv-province').value=p.province||'';
+  if(n('pv-fiscal-country'))n('pv-fiscal-country').value=p.fiscalCountry||'';
+  if(n('pv-sdi'))n('pv-sdi').value=p.sdi||'';
+  if(n('pv-pec'))n('pv-pec').value=p.pec||'';
+  // Apri sezione fiscale automaticamente se ha gi\u00e0 dati
+  var hasFiscal=p.legalForm||p.vat||p.iban||p.address||p.cp||p.city||p.fiscalCountry||p.sdi||p.pec;
+  if(n('pv-fiscal-collapse'))n('pv-fiscal-collapse').style.display=hasFiscal?'':'none';
+  if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML=hasFiscal?'\u25B2':'\u25BC';
   n('m-provider').setAttribute('data-edit-id',p.id);
   // Show related tasks
   if(n('pv-tasks-section')){
     n('pv-tasks-section').style.display='';
     renderProvTasksList(p);
   }
-  // Show "Enviar a Stock Vivo" button (only in editing)
-  if(n('pv-stock-section'))n('pv-stock-section').style.display='';
   // Reset sezione Pegar info: chiusa, textarea vuota
   if(n('pp-collapse'))n('pp-collapse').style.display='none';
   if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
@@ -7150,6 +7214,18 @@ function saveProv(){
     payment:n('pv-payment').value.trim(),
     notes:n('pv-notes').value.trim(),
     labels:labels,
+    // Datos fiscales
+    legalForm:n('pv-legal-form')?n('pv-legal-form').value.trim():'',
+    legalName:n('pv-legal-name')?n('pv-legal-name').value.trim():'',
+    vat:n('pv-vat')?n('pv-vat').value.trim():'',
+    iban:n('pv-iban')?n('pv-iban').value.replace(/\s+/g,'').toUpperCase():'',
+    address:n('pv-address')?n('pv-address').value.trim():'',
+    cp:n('pv-cp')?n('pv-cp').value.trim():'',
+    city:n('pv-city')?n('pv-city').value.trim():'',
+    province:n('pv-province')?n('pv-province').value.trim():'',
+    fiscalCountry:n('pv-fiscal-country')?n('pv-fiscal-country').value.trim():'',
+    sdi:n('pv-sdi')?n('pv-sdi').value.trim().toUpperCase():'',
+    pec:n('pv-pec')?n('pv-pec').value.trim().toLowerCase():'',
     updatedAt:new Date().toISOString()
   };
   if(editId){
@@ -7432,6 +7508,20 @@ function provTogglePaste(){
   }
 }
 
+// Toggle apertura/chiusura sezione Datos fiscales nel modal Provider
+function provToggleFiscal(){
+  var box=n('pv-fiscal-collapse');
+  var icon=n('pv-fiscal-toggle-icon');
+  if(!box)return;
+  if(box.style.display==='none'){
+    box.style.display='';
+    if(icon)icon.innerHTML='\u25B2';
+  }else{
+    box.style.display='none';
+    if(icon)icon.innerHTML='\u25BC';
+  }
+}
+
 // Estrae i campi dal testo libero
 function provParseText(raw){
   var out={name:'',company:'',country:'',role:'',phone:'',email:'',providerType:'',notes:''};
@@ -7614,6 +7704,43 @@ var _provStockSelected=new Set();    // ID mail selezionate
 function provOpenSendToStock(){
   var pid=n('m-provider').getAttribute('data-edit-id');
   if(!pid){alert('Guarda primero el provider antes de procesar emails.');return;}
+  provOpenSendToStockCore(pid);
+}
+
+// Variante chiamata dalla vista (Cards/Lista/Kanban) — passa direttamente l'id
+function provOpenSendToStockById(pid){
+  if(typeof event!=='undefined'&&event.stopPropagation)event.stopPropagation();
+  provOpenSendToStockCore(pid);
+}
+
+// Chiamata da Bandeja: processa UNA singola mail di un provider direttamente
+function provInboxProcessOneToStock(mailId,providerId){
+  if(typeof event!=='undefined'&&event.stopPropagation)event.stopPropagation();
+  var p=providers.find(function(x){return String(x.id)===String(providerId);});
+  if(!p){alert('Provider no encontrado.');return;}
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){alert('Microsoft no est\u00e1 conectado.');return;}
+  if(!getKey()){alert('Configura tu API key de Anthropic en Configuracion.');return;}
+  // Set provider corrente per l'operazione
+  _provStockCurrentProvider=p;
+  // Avvia processing su questa singola mail
+  if(typeof showToast==='function')showToast('\u23f3 Procesando email \u2192 Stock Vivo...');
+  provStockProcessOne(mailId).then(function(result){
+    var msg='\u2713 ';
+    if(result.skipped){msg+='Email sin datos extra\u00edbles';}
+    else{msg+=(result.added||0)+' veh\u00edculos a\u00f1adidos, '+(result.dup||0)+' duplicados';}
+    if(typeof showToast==='function')showToast(msg);
+    // Marca read
+    try{if(typeof NX_PROV_INBOX!=='undefined'&&NX_PROV_INBOX.markRead)NX_PROV_INBOX.markRead(mailId);}catch(e){}
+    // Refresh lista
+    if(typeof provInboxRenderList==='function')provInboxRenderList();
+    if(typeof renderStock==='function')renderStock();
+    if(typeof renderProv==='function')renderProv();
+  }).catch(function(err){
+    alert('Error procesando email: '+(err.message||err));
+  });
+}
+
+function provOpenSendToStockCore(pid){
   var p=providers.find(function(x){return String(x.id)===String(pid);});
   if(!p){alert('Provider no encontrado.');return;}
   if(!p.email){alert('Este provider no tiene email configurado.');return;}
