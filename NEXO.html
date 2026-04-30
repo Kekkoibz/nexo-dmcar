@@ -519,7 +519,6 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="provView('list')" id="pv-list" style="font-size:11px">&#128203; Lista</button>
           <button class="btn bs" onclick="provView('kanban')" id="pv-kanban" style="font-size:11px">&#128301; Kanban</button>
           <button class="btn bs" onclick="openProvLabelsManagerStandalone()" style="font-size:11px">&#127991; Etiquetas</button>
-          <button class="btn bs" onclick="openM('m-prov-paste')" style="font-size:11px">&#128203; Pegar info</button>
           <button class="btn bp" onclick="openNewProvider()">+ Provider</button>
         </div>
       </div>
@@ -1032,17 +1031,6 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- PROVIDER: PEGAR INFO (firma email, biglietto, ecc.) -->
-<div class="ovl" id="m-prov-paste">
-  <div class="modal">
-    <div class="fbet mb14"><div class="mt">&#128203; Pegar info Provider</div><button class="btn bg" onclick="closeM('m-prov-paste')" style="padding:5px 10px">X</button></div>
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Copia la firma de un email, un biglietto da visita o cualquier texto con los datos del provider. NEXO extrae nombre, empresa, tel\u00e9fono, email, pa\u00eds y tipo autom\u00e1ticamente.</div>
-    <textarea id="pp-text" rows="10" placeholder="Ej:&#10;ALEJANDRO G\u00c1LVEZ L\u00d3PEZ&#10;MOBUS&#10;VENTAS REMARKETING&#10;+34672723333 - Ext. 90009&#10;alejandro.galvez@marcosautomocion.com&#10;Informaci\u00f3n LOPD/RGPD"></textarea>
-    <div id="pp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin:8px 0"></div>
-    <button class="btn bp" onclick="provExtractFromPaste()" style="width:100%">&#9889; Extraer datos y abrir formulario</button>
-  </div>
-</div>
-
 <!-- LEAD: NUEVO / EDITAR -->
 <div class="ovl" id="m-lead-edit">
   <div class="modal" style="max-width:640px">
@@ -1272,6 +1260,19 @@ En que te puedo ayudar hoy?</div></div>
 <div class="ovl" id="m-provider">
   <div class="modal">
     <div class="fbet mb14"><div class="mt">&#127981; Nuevo / Editar Provider</div><button class="btn bg" onclick="closeM('m-provider')" style="padding:5px 10px">X</button></div>
+    <!-- COLLASSABILE: Pegar info per auto-rellenar campos -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:14px">
+      <div onclick="provTogglePaste()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
+        <div style="font-size:12px;font-weight:600;color:var(--t2)">&#128203; Pegar info para auto-rellenar campos</div>
+        <span id="pp-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
+      </div>
+      <div id="pp-collapse" style="display:none;padding:0 12px 12px 12px">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">Copia la firma de un email, biglietto da visita o cualquier texto. NEXO extrae nombre, empresa, tel\u00e9fono, email, pa\u00eds y tipo autom\u00e1ticamente.</div>
+        <textarea id="pp-text" rows="6" placeholder="Ej:&#10;ALEJANDRO G\u00c1LVEZ L\u00d3PEZ&#10;MOBUS&#10;VENTAS REMARKETING&#10;+34672723333 - Ext. 90009&#10;alejandro.galvez@marcosautomocion.com" style="font-size:11px;font-family:monospace"></textarea>
+        <div id="pp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin:6px 0"></div>
+        <button type="button" class="btn bp" onclick="provExtractFromPasteInline()" style="width:100%;font-size:12px">&#9889; Procesar y rellenar campos</button>
+      </div>
+    </div>
     <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans M\u00fcller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW M\u00fcller GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option>Comercial</option><option>Director</option><option>Stock manager</option><option>Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
@@ -6754,6 +6755,11 @@ function openNewProvider(){
   n('pv-labels').value='';
   n('m-provider').removeAttribute('data-edit-id');
   if(n('pv-tasks-section'))n('pv-tasks-section').style.display='none';
+  // Reset sezione Pegar info: chiusa, textarea vuota
+  if(n('pp-collapse'))n('pp-collapse').style.display='none';
+  if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
+  if(n('pp-text'))n('pp-text').value='';
+  if(n('pp-status-msg'))n('pp-status-msg').textContent='';
   renderProvLabelsDisplay();
   openM('m-provider');
 }
@@ -6779,6 +6785,11 @@ function editProvider(id){
     n('pv-tasks-section').style.display='';
     renderProvTasksList(p);
   }
+  // Reset sezione Pegar info: chiusa, textarea vuota
+  if(n('pp-collapse'))n('pp-collapse').style.display='none';
+  if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
+  if(n('pp-text'))n('pp-text').value='';
+  if(n('pp-status-msg'))n('pp-status-msg').textContent='';
   renderProvLabelsDisplay();
   openM('m-provider');
 }
@@ -7029,7 +7040,7 @@ var PROV_TLD_TO_COUNTRY={
   'dk':'Dinamarca','se':'Suecia','no':'Noruega','fi':'Finlandia'
 };
 
-function provExtractFromPaste(){
+function provExtractFromPasteInline(){
   var raw=(n('pp-text')&&n('pp-text').value||'').trim();
   if(!raw){
     n('pp-status-msg').textContent='Pega primero el texto.';
@@ -7037,8 +7048,7 @@ function provExtractFromPaste(){
     return;
   }
   var parsed=provParseText(raw);
-  // Apri il modal Provider e pre-compila
-  openNewProvider();
+  // Riempi i campi del form (sovrascrive solo se trovato)
   if(parsed.name)n('pv-name').value=parsed.name;
   if(parsed.company)n('pv-co').value=parsed.company;
   if(parsed.country)n('pv-country').value=parsed.country;
@@ -7046,12 +7056,44 @@ function provExtractFromPaste(){
   if(parsed.phone)n('pv-phone').value=parsed.phone;
   if(parsed.email)n('pv-email').value=parsed.email;
   if(parsed.providerType)n('pv-ptype').value=parsed.providerType;
-  if(parsed.notes)n('pv-notes').value=parsed.notes;
-  // Chiudi il modal paste
-  closeM('m-prov-paste');
+  // Notas: append se gi\u00e0 presente, altrimenti scrivi
+  if(parsed.notes){
+    var current=(n('pv-notes').value||'').trim();
+    n('pv-notes').value=current?current+'\n'+parsed.notes:parsed.notes;
+  }
+  // Conta quanti campi sono stati riempiti per feedback
+  var filled=['name','company','country','phone','email','providerType'].filter(function(k){return parsed[k];}).length;
+  n('pp-status-msg').textContent='\u2713 '+filled+' campos rellenados. Verifica y guarda.';
+  n('pp-status-msg').style.color='var(--green)';
+  // Pulisci textarea per il prossimo uso
   n('pp-text').value='';
-  n('pp-status-msg').textContent='';
-  if(typeof showToast==='function')showToast('\u2713 Datos extra\u00eddos. Revisa y guarda.');
+  // Auto-collassa dopo 1.5s
+  setTimeout(function(){
+    var box=n('pp-collapse');
+    var icon=n('pp-toggle-icon');
+    if(box&&box.style.display!=='none'){
+      box.style.display='none';
+      if(icon)icon.innerHTML='\u25BC';
+    }
+    n('pp-status-msg').textContent='';
+  },1500);
+  if(typeof showToast==='function')showToast('\u2713 Datos extra\u00eddos');
+}
+
+// Toggle apertura/chiusura sezione Pegar info nel modal Provider
+function provTogglePaste(){
+  var box=n('pp-collapse');
+  var icon=n('pp-toggle-icon');
+  if(!box)return;
+  if(box.style.display==='none'){
+    box.style.display='';
+    if(icon)icon.innerHTML='\u25B2';
+    // Focus textarea
+    setTimeout(function(){if(n('pp-text'))n('pp-text').focus();},50);
+  }else{
+    box.style.display='none';
+    if(icon)icon.innerHTML='\u25BC';
+  }
 }
 
 // Estrae i campi dal testo libero
