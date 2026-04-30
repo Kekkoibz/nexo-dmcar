@@ -519,6 +519,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="provView('list')" id="pv-list" style="font-size:11px">&#128203; Lista</button>
           <button class="btn bs" onclick="provView('kanban')" id="pv-kanban" style="font-size:11px">&#128301; Kanban</button>
           <button class="btn bs" onclick="openProvLabelsManagerStandalone()" style="font-size:11px">&#127991; Etiquetas</button>
+          <button class="btn bs" onclick="openM('m-prov-paste')" style="font-size:11px">&#128203; Pegar info</button>
           <button class="btn bp" onclick="openNewProvider()">+ Provider</button>
         </div>
       </div>
@@ -1028,6 +1029,17 @@ En que te puedo ayudar hoy?</div></div>
     </div>
     <div id="lp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin-bottom:8px"></div>
     <button class="btn bp" id="lp-extract" onclick="leadExtractFromPaste()" style="width:100%">&#9889; Extraer y crear Lead</button>
+  </div>
+</div>
+
+<!-- PROVIDER: PEGAR INFO (firma email, biglietto, ecc.) -->
+<div class="ovl" id="m-prov-paste">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">&#128203; Pegar info Provider</div><button class="btn bg" onclick="closeM('m-prov-paste')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Copia la firma de un email, un biglietto da visita o cualquier texto con los datos del provider. NEXO extrae nombre, empresa, tel\u00e9fono, email, pa\u00eds y tipo autom\u00e1ticamente.</div>
+    <textarea id="pp-text" rows="10" placeholder="Ej:&#10;ALEJANDRO G\u00c1LVEZ L\u00d3PEZ&#10;MOBUS&#10;VENTAS REMARKETING&#10;+34672723333 - Ext. 90009&#10;alejandro.galvez@marcosautomocion.com&#10;Informaci\u00f3n LOPD/RGPD"></textarea>
+    <div id="pp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin:8px 0"></div>
+    <button class="btn bp" onclick="provExtractFromPaste()" style="width:100%">&#9889; Extraer datos y abrir formulario</button>
   </div>
 </div>
 
@@ -6995,6 +7007,218 @@ function addManualTaskForProvider(){
   SS('tasks',tasks);
   renderProvTasksList(p);
   if(typeof showToast==='function')showToast('\u2713 Tarea creada');
+}
+
+// -- PARSING TEXT (firma email, biglietto, ecc.) --------------------------
+// Mappa prefisso telefonico -> Pa\u00edse
+var PROV_PHONE_TO_COUNTRY={
+  '34':'Espa\u00f1a','39':'Italia','49':'Alemania','33':'Francia',
+  '32':'B\u00e9lgica','31':'Pa\u00edses Bajos','351':'Portugal','420':'Rep. Checa',
+  '48':'Polonia','40':'Rumania','359':'Bulgaria','36':'Hungr\u00eda',
+  '43':'Austria','41':'Suiza','44':'Reino Unido','353':'Irlanda',
+  '45':'Dinamarca','46':'Suecia','47':'Noruega','358':'Finlandia',
+  '386':'Eslovenia','385':'Croacia','421':'Eslovaquia','30':'Grecia',
+  '90':'Turqu\u00eda'
+};
+// Mappa TLD email -> Pa\u00edse
+var PROV_TLD_TO_COUNTRY={
+  'es':'Espa\u00f1a','it':'Italia','de':'Alemania','fr':'Francia',
+  'be':'B\u00e9lgica','nl':'Pa\u00edses Bajos','pt':'Portugal','cz':'Rep. Checa',
+  'pl':'Polonia','ro':'Rumania','bg':'Bulgaria','hu':'Hungr\u00eda',
+  'at':'Austria','ch':'Suiza','uk':'Reino Unido','co.uk':'Reino Unido',
+  'dk':'Dinamarca','se':'Suecia','no':'Noruega','fi':'Finlandia'
+};
+
+function provExtractFromPaste(){
+  var raw=(n('pp-text')&&n('pp-text').value||'').trim();
+  if(!raw){
+    n('pp-status-msg').textContent='Pega primero el texto.';
+    n('pp-status-msg').style.color='var(--red)';
+    return;
+  }
+  var parsed=provParseText(raw);
+  // Apri il modal Provider e pre-compila
+  openNewProvider();
+  if(parsed.name)n('pv-name').value=parsed.name;
+  if(parsed.company)n('pv-co').value=parsed.company;
+  if(parsed.country)n('pv-country').value=parsed.country;
+  if(parsed.role)n('pv-role').value=parsed.role;
+  if(parsed.phone)n('pv-phone').value=parsed.phone;
+  if(parsed.email)n('pv-email').value=parsed.email;
+  if(parsed.providerType)n('pv-ptype').value=parsed.providerType;
+  if(parsed.notes)n('pv-notes').value=parsed.notes;
+  // Chiudi il modal paste
+  closeM('m-prov-paste');
+  n('pp-text').value='';
+  n('pp-status-msg').textContent='';
+  if(typeof showToast==='function')showToast('\u2713 Datos extra\u00eddos. Revisa y guarda.');
+}
+
+// Estrae i campi dal testo libero
+function provParseText(raw){
+  var out={name:'',company:'',country:'',role:'',phone:'',email:'',providerType:'',notes:''};
+  // Normalizza linee
+  var lines=raw.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
+
+  // 1. EMAIL (prima cosa, pi\u00f9 affidabile)
+  var emailMatch=raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if(emailMatch)out.email=emailMatch[0].toLowerCase();
+
+  // 2. TELEFONO
+  // Cerca pattern internazionale: +XX seguito da almeno 7 cifre (con spazi/dash/punti opzionali)
+  var phoneIntl=raw.match(/\+\d{1,3}[\s\-\.]?\d[\d\s\-\.\(\)]{6,18}/);
+  if(phoneIntl){
+    out.phone=phoneIntl[0].trim().replace(/\s+(ext\.?|extensi[\u00f3o]n).*$/i,'').replace(/[\s\-\.]+$/,'').trim();
+  }else{
+    // Fallback: pattern 00XX o solo cifre
+    var phoneNat=raw.match(/(?:00\d{1,3}[\s\-\.]?)?\d[\d\s\-\.\(\)]{8,18}/);
+    if(phoneNat){
+      out.phone=phoneNat[0].trim().replace(/\s+(ext\.?|extensi[\u00f3o]n).*$/i,'').replace(/[\s\-\.]+$/,'').trim();
+    }
+  }
+
+  // 3. PAESE (prima da prefisso telefonico, fallback da TLD email)
+  if(out.phone){
+    var cleanPhone=out.phone.replace(/[^0-9+]/g,'');
+    if(cleanPhone.charAt(0)==='+')cleanPhone=cleanPhone.slice(1);
+    else if(cleanPhone.indexOf('00')===0)cleanPhone=cleanPhone.slice(2);
+    // Prova prefissi 3, 2, 1 cifre
+    for(var len=3;len>=1;len--){
+      var pref=cleanPhone.slice(0,len);
+      if(PROV_PHONE_TO_COUNTRY[pref]){out.country=PROV_PHONE_TO_COUNTRY[pref];break;}
+    }
+  }
+  if(!out.country&&out.email){
+    // Estrai TLD: dopo l'ultimo punto del dominio
+    var atIdx=out.email.indexOf('@');
+    if(atIdx>0){
+      var domain=out.email.slice(atIdx+1);
+      // Prova prima il TLD composto (es. co.uk), poi solo l'ultimo
+      var dotParts=domain.split('.');
+      if(dotParts.length>=2){
+        var lastTwo=dotParts.slice(-2).join('.');
+        var lastOne=dotParts[dotParts.length-1];
+        if(PROV_TLD_TO_COUNTRY[lastTwo])out.country=PROV_TLD_TO_COUNTRY[lastTwo];
+        else if(PROV_TLD_TO_COUNTRY[lastOne])out.country=PROV_TLD_TO_COUNTRY[lastOne];
+      }
+    }
+  }
+
+  // 4. NOME e EMPRESA
+  // Skip righe con email/telefono/URL/info legali
+  var skipRegex=/[@]|^\+\d|^00\d|http|www\.|\bext\.?\b|lopd|rgpd|privacy|whatsapp\b|^tel\b|^email\b|m[oó]vil|mobile|^fax\b/i;
+  var candidates=lines.filter(function(l){
+    if(skipRegex.test(l))return false;
+    if(l.length<2||l.length>80)return false;
+    return true;
+  });
+
+  // Heuristic ruolo (parole chiave)
+  var roleKeywords=/^(ventas|sales|director|manager|comercial|gerente|stock|remarketing|after.?sales|\u00e1rea|area|departamento|dpto|jefe|head|chief|coordinador)/i;
+
+  // Trova il nome con priorit\u00e0:
+  //   a) prima riga in formato "Nome Cognome" (2-4 parole, prima lettera maiuscola)
+  //   b) prima riga TUTTA in MAIUSCOLO
+  var nameIdx=-1;
+  // Pattern (a): "Nome Cognome" capitalizzato
+  for(var i=0;i<candidates.length;i++){
+    var l=candidates[i];
+    if(roleKeywords.test(l))continue; // Salta ruoli
+    // 2-4 parole, ognuna inizia con maiuscola (con possibili accenti)
+    var properNamePattern=/^[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+){1,3}$/;
+    if(properNamePattern.test(l)){
+      out.name=l;
+      nameIdx=i;
+      break;
+    }
+  }
+  // Pattern (b): UPPERCASE
+  if(!out.name){
+    for(var i2=0;i2<candidates.length;i2++){
+      var l2=candidates[i2];
+      if(roleKeywords.test(l2))continue;
+      var letters=l2.replace(/[^A-Za-z\u00c0-\u017f]/g,'');
+      if(!letters)continue;
+      var upper=letters.replace(/[^A-Z\u00c0-\u017d]/g,'');
+      var ratio=upper.length/letters.length;
+      if(ratio>=0.7&&letters.length>=4){
+        out.name=l2.replace(/[^\w\s\u00c0-\u017f.\-']/g,'').trim();
+        nameIdx=i2;
+        break;
+      }
+    }
+  }
+  // Fallback: prima riga "pulita"
+  if(!out.name&&candidates.length){
+    for(var i3=0;i3<candidates.length;i3++){
+      if(!roleKeywords.test(candidates[i3])){
+        out.name=candidates[i3];
+        nameIdx=i3;
+        break;
+      }
+    }
+  }
+
+  // EMPRESA: scorri dopo il nome cercando una riga non-ruolo
+  if(nameIdx>=0){
+    for(var i4=nameIdx+1;i4<candidates.length;i4++){
+      var ln=candidates[i4];
+      if(roleKeywords.test(ln)){
+        // Salva come ruolo se non gi\u00e0 trovato
+        if(!out.role)out.role=mapRole(ln);
+        continue;
+      }
+      out.company=ln;
+      break;
+    }
+  }
+
+  // 5. RUOLO (se non gi\u00e0 trovato)
+  if(!out.role){
+    for(var j=0;j<candidates.length;j++){
+      if(roleKeywords.test(candidates[j])){
+        out.role=mapRole(candidates[j]);
+        break;
+      }
+    }
+  }
+  if(!out.role)out.role='Comercial';
+
+  // 6. TIPO PROVIDER (euristica)
+  var lcraw=raw.toLowerCase();
+  if(/automoci[\u00f3o]n|concesionario|dealer|automobile|motors|auto\s|autohaus|gmbh|s\.?r\.?l\b|s\.?p\.?a\b/i.test(raw)){
+    out.providerType='Concesionario';
+  }else if(/broker/i.test(lcraw)){
+    out.providerType='Broker';
+  }else if(/subasta|auction/i.test(lcraw)){
+    out.providerType='Subasta';
+  }else if(/import|importador|importer/i.test(lcraw)){
+    out.providerType='Importador';
+  }
+
+  // 7. NOTAS: includi righe non gi\u00e0 mappate (ruolo originale, info extra)
+  var notesParts=[];
+  for(var k=0;k<lines.length;k++){
+    var lnK=lines[k];
+    if(skipRegex.test(lnK))continue;
+    if(lnK===out.name||lnK===out.company)continue;
+    if(roleKeywords.test(lnK)&&out.role)continue; // gi\u00e0 estratto
+    if(lnK.length>3&&lnK.length<60)notesParts.push(lnK);
+  }
+  if(notesParts.length){
+    out.notes=notesParts.slice(0,3).join(' \u2022 ');
+  }
+
+  return out;
+}
+
+// Mappa testo ruolo -> opzioni del select pv-role
+function mapRole(text){
+  var t=text.toLowerCase();
+  if(/director|gerente|head/.test(t))return 'Director';
+  if(/stock/.test(t))return 'Stock manager';
+  if(/comercial|ventas|sales|remarketing/.test(t))return 'Comercial';
+  return 'Otro';
 }
 
 // END PROVIDERS MODULE
