@@ -436,14 +436,42 @@ En que te puedo ayudar hoy?</div></div>
       <div class="fbet mb14">
         <div><div class="st">Contactos B2B</div><div class="ss">Clientes, proveedores y socios</div></div>
         <div class="fc g8">
+          <button class="btn bp" onclick="contView('cards')" id="cv-cards" style="font-size:11px">&#128196; Cards</button>
+          <button class="btn bs" onclick="contView('list')" id="cv-list" style="font-size:11px">&#128203; Lista</button>
+          <button class="btn bs" onclick="contView('kanban')" id="cv-kanban" style="font-size:11px">&#128301; Kanban</button>
           <select id="f-cont-co" onchange="renderCont()" style="width:auto;font-size:12px;padding:6px 10px">
             <option value="">Todas las empresas</option>
             <option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option>
           </select>
+          <input type="text" id="f-cont-q" placeholder="Buscar..." oninput="renderCont()" style="width:140px;font-size:12px;padding:6px 10px">
           <button class="btn bp" onclick="openM('m-contact')">+ Contacto</button>
         </div>
       </div>
-      <div class="contg" id="cont-grid"></div>
+      <!-- Labels filter row -->
+      <div class="card mb10" style="padding:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:10px;color:var(--t3);margin:0">Etiquetas:</label>
+        <div id="cf-labels-display" style="flex:1;min-height:24px;padding:3px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openContactsLabelsFilter()">
+          <span id="cf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>
+        </div>
+        <button class="btn bg" onclick="clearContactsLabelsFilter()" id="cf-labels-clear" style="font-size:10px;padding:4px 8px;display:none">X Quitar</button>
+      </div>
+      <div id="cont-cards-view" class="contg"></div>
+      <div id="cont-grid" style="display:none"></div>
+      <div id="cont-list-view" class="card" style="padding:0;display:none">
+        <div class="tbl">
+          <table>
+            <thead><tr>
+              <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Rol</th><th>Tel</th><th>Email</th>
+              <th>Mi Empresa</th><th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
+              <th style="width:140px">Acciones</th>
+            </tr></thead>
+            <tbody id="cont-list-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="cont-kanban-view" style="display:none">
+        <div id="cont-kanban-cols" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start"></div>
+      </div>
     </div>
 
     <!-- LEADS -->
@@ -451,8 +479,7 @@ En que te puedo ayudar hoy?</div></div>
       <div class="fbet mb14">
         <div><div class="st">Leads</div><div class="ss">Formularios web, IG, FB, WhatsApp, Email</div></div>
         <div class="fc g8">
-          <button class="btn bs" onclick="leadsViewMode('table')" id="lv-table" style="font-size:11px">&#128203; Tabla</button>
-          <button class="btn bs" onclick="leadsViewMode('kanban')" id="lv-kanban" style="font-size:11px">&#128301; Kanban</button>
+          <button class="btn bs" onclick="leadsToggleArchived()" id="lv-archived" style="font-size:11px">&#128194; Ver archivados</button>
           <button class="btn bs" onclick="openM('m-lead-paste')" style="font-size:11px">&#128203; Pegar formulario</button>
           <button class="btn bp" onclick="openLeadModal()">+ Nuevo Lead</button>
         </div>
@@ -494,14 +521,6 @@ En que te puedo ayudar hoy?</div></div>
           </div>
           <div><label style="font-size:10px;color:var(--t3)">Pais</label><input type="text" id="lf-country" placeholder="IT, ES, DE..." oninput="renderLeads()"></div>
         </div>
-        <!-- Labels filter row -->
-        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label style="font-size:10px;color:var(--t3);margin:0">Filtrar por etiquetas:</label>
-          <div id="lf-labels-display" style="flex:1;min-height:28px;padding:4px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsFilterPicker()">
-            <span id="lf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>
-          </div>
-          <button class="btn bg" onclick="clearLabelsFilter()" id="lf-labels-clear" style="font-size:10px;padding:4px 8px;display:none">X Quitar</button>
-        </div>
         <div id="leads-info" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
       </div>
 
@@ -531,7 +550,7 @@ En que te puedo ayudar hoy?</div></div>
               <th style="width:36px"><input type="checkbox" id="leads-sel-all" onchange="leadsToggleAll(this)"></th>
               <th style="width:36px"></th>
               <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tel</th><th>Email</th>
-              <th>Categoria</th><th>Etiquetas</th><th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
+              <th>Categoria</th><th>Tipo</th><th>Volumen</th><th>Origen</th><th>Status</th><th>Creado</th>
               <th style="width:130px">Acciones</th>
             </tr></thead>
             <tbody id="leads-body"></tbody>
@@ -544,10 +563,7 @@ En que te puedo ayudar hoy?</div></div>
         </div>
       </div>
 
-      <!-- KANBAN VIEW -->
-      <div id="leads-kanban-view" style="display:none">
-        <div id="leads-kanban-cols" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:start"></div>
-      </div>
+      <!-- TABLE VIEW (Kanban removed - moved to B2B) -->
     </div>
 
     <!-- TAREAS -->
@@ -1059,12 +1075,13 @@ En que te puedo ayudar hoy?</div></div>
 <!-- CONTACTO -->
 <div class="ovl" id="m-contact">
   <div class="modal">
-    <div class="fbet mb14"><div class="mt">Nuevo contacto</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
+    <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
-    <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div></div>
-    <div class="mb10"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
-    <div class="mb14"><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div>
+    <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
+    <div class="g2 mb10"><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div></div>
+    <div class="mb10"><label>Etiquetas (separadas por coma)</label><input type="text" id="cn-labels" placeholder="audi, q3, usado, urgente"></div>
+    <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
     <button class="btn bp" style="width:100%" onclick="saveCont()">Guardar</button>
   </div>
 </div>
@@ -1731,7 +1748,7 @@ function confirmSendEmail(){
   n('me-status').innerHTML='<span style="color:var(--acc)">Enviando email...</span>';
   NX_MS.sendEmail(to,subject,body,function(ok,err){
     if(ok){
-      n('me-status').innerHTML='<span style="color:var(--green)">\u2713 Email enviado correctamente. Guardado en Enviados de Outlook.</span>';
+      n('me-status').innerHTML='<span style="color:var(--green)">\u2713 Email enviado correctamente. Promoviendo a B2B...</span>';
       if(leadId){
         var idx=leads.findIndex(function(x){return String(x.id)===String(leadId);});
         if(idx>=0){
@@ -1739,18 +1756,68 @@ function confirmSendEmail(){
           if(leads[idx].status==='Nuevo')leads[idx].status='Contattato';
           leads[idx].updatedAt=new Date().toISOString();
           SS('leads',leads);
+          // Auto-promote to B2B + archive
+          promoteLeadToB2B(leadId,true);
           if(typeof renderLeads==='function')renderLeads();
         }
       }
       setTimeout(function(){
         closeM('m-email-preview');
-        showToast('\u2713 Email enviado a '+to);
+        showToast('\u2713 Email enviado a '+to+' \u00B7 Promovido a B2B');
       },1500);
     }else{
       btn.disabled=false;
       n('me-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err||'desconocido')+'</span>';
     }
   });
+}
+
+// Promote a Lead to a B2B Contact (and archive it from Leads)
+// Used both by auto (after email/whatsapp) and manual button
+function promoteLeadToB2B(leadId,silent){
+  var idx=leads.findIndex(function(x){return String(x.id)===String(leadId);});
+  if(idx<0){if(!silent)alert('Lead no encontrado');return false;}
+  var l=leads[idx];
+  // Skip if already promoted
+  if(l.archived&&l.promotedToB2B){if(!silent)alert('Lead ya promovido a B2B');return false;}
+  // Build a Contacto B2B record from the Lead
+  var contact={
+    id:Date.now()+Math.floor(Math.random()*1000),
+    name:leadCleanName(l)||l.name||'Sin nombre',
+    company:l.company||'',
+    country:l.country||'',
+    role:'Comprador',
+    myCompany:'DMCAR GROUP',
+    phone:l.phone||'',
+    email:l.email||'',
+    notes:(l.notes||'')+(l.message?'\n\nMensaje original: '+l.message:''),
+    tag:'pend',
+    labels:l.labels||[],
+    leadOriginId:l.id,
+    leadCategory:l.category||'',
+    leadSource:l.source||'',
+    lastContact:new Date().toISOString().split('T')[0],
+    createdAt:new Date().toISOString()
+  };
+  // Avoid duplicates: check if already exists by leadOriginId
+  var existing=contacts.findIndex(function(c){return String(c.leadOriginId)===String(l.id);});
+  if(existing>=0){
+    // Update existing contact
+    contacts[existing].lastContact=new Date().toISOString().split('T')[0];
+  }else{
+    contacts.push(contact);
+  }
+  SS('contacts',contacts);
+  // Archive the Lead
+  leads[idx].archived=true;
+  leads[idx].promotedToB2B=true;
+  leads[idx].promotedAt=new Date().toISOString();
+  SS('leads',leads);
+  if(typeof renderCont==='function')renderCont();
+  if(typeof renderLeads==='function')renderLeads();
+  if(typeof renderDash==='function')renderDash();
+  if(!silent)showToast('\u2713 '+contact.name+' promovido a Contactos B2B');
+  return true;
 }
 
 function quickSendEmail(id){
@@ -3925,23 +3992,216 @@ function genWordDoc(o,cb){
   });
 }
 
-// -- CONTACTOS ------------------------------------------------
+// -- CONTACTOS B2B --------------------------------------------
+var contViewCurrent='cards';
+var contLabelsFilter=new Set();
+var CONT_TAG_ORDER=['hot','urg','pend','reg','cold'];
+var CONT_TAG_LABEL={hot:'Hot',urg:'Urgent',pend:'Pending',reg:'Regular',cold:'Cold'};
+
+function contView(mode){
+  contViewCurrent=mode;
+  ['cards','list','kanban'].forEach(function(m){
+    var btn=n('cv-'+m);if(!btn)return;
+    if(m===mode){btn.classList.remove('bs');btn.classList.add('bp');}
+    else{btn.classList.remove('bp');btn.classList.add('bs');}
+  });
+  if(n('cont-cards-view'))n('cont-cards-view').style.display=(mode==='cards')?'':'none';
+  if(n('cont-list-view'))n('cont-list-view').style.display=(mode==='list')?'':'none';
+  if(n('cont-kanban-view'))n('cont-kanban-view').style.display=(mode==='kanban')?'':'none';
+  renderCont();
+}
+
 function renderCont(){
-  var filter=n('f-cont-co').value;
-  var list=filter?contacts.filter(function(c){return c.myCompany===filter;}):contacts;
-  n('cont-grid').innerHTML=list.map(function(c){
-    return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc(c.name[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company)+'</div></div></div><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+c.tag+'</span></div>'+
-    '<div class="fc g6 mb10" style="flex-wrap:wrap"><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.country)+'</span><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span><span class="pill">'+esc(c.myCompany)+'</span></div>'+
-    '<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>'+
-    '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone)+'</span><span>'+fmtD(c.lastContact)+'</span></div></div>';
-  }).join('');
-  n('ds-cont').textContent=contacts.length;
+  var filter=n('f-cont-co')?n('f-cont-co').value:'';
+  var q=(n('f-cont-q')&&n('f-cont-q').value||'').toLowerCase();
+  var list=contacts.filter(function(c){
+    if(filter&&c.myCompany!==filter) return false;
+    if(q&&!((c.name||'').toLowerCase().indexOf(q)>=0||(c.company||'').toLowerCase().indexOf(q)>=0||(c.email||'').toLowerCase().indexOf(q)>=0)) return false;
+    if(contLabelsFilter.size>0){
+      var labs=new Set(c.labels||[]);
+      var ok=true;
+      contLabelsFilter.forEach(function(t){if(!labs.has(t))ok=false;});
+      if(!ok) return false;
+    }
+    return true;
+  });
+  // Cards view
+  var gridEl=n('cont-cards-view');
+  if(gridEl){
+    gridEl.innerHTML=list.map(function(c){
+      var labelsHtml='';
+      if(c.labels&&c.labels.length){
+        labelsHtml='<div class="fc g4 mb10" style="flex-wrap:wrap">'+c.labels.slice(0,5).map(function(t){
+          var col=labelColor(t);
+          return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
+        }).join('')+'</div>';
+      }
+      return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></div>'+
+      '<div class="fc g6 mb10" style="flex-wrap:wrap"><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.country||'')+'</span><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role||'')+'</span><span class="pill">'+esc(c.myCompany||'')+'</span></div>'+
+      labelsHtml+
+      '<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes||'')+'</div>'+
+      '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone||'')+'</span><span>'+fmtD(c.lastContact||'')+'</span></div>'+
+      '<div class="fc g4 mt8" style="justify-content:flex-end"><button class="btn bs" onclick="editContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="delContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div>'+
+      '</div>';
+    }).join('')||'<div style="color:var(--t3);text-align:center;padding:30px">Sin contactos</div>';
+  }
+  // List view
+  var listEl=n('cont-list-body');
+  if(listEl){
+    listEl.innerHTML=list.map(function(c){
+      var lblsh='--';
+      if(c.labels&&c.labels.length){
+        lblsh=c.labels.slice(0,3).map(function(t){
+          var col=labelColor(t);
+          return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 6px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
+        }).join(' ');
+        if(c.labels.length>3)lblsh+=' <span style="font-size:9px;color:var(--t4)">+'+(c.labels.length-3)+'</span>';
+      }
+      return '<tr>'+
+        '<td><strong>'+esc(c.name||'')+'</strong></td>'+
+        '<td>'+esc(c.company||'')+'</td>'+
+        '<td>'+esc(c.country||'')+'</td>'+
+        '<td>'+esc(c.role||'')+'</td>'+
+        '<td style="font-family:monospace;font-size:11px">'+esc(c.phone||'')+'</td>'+
+        '<td style="font-size:11px">'+esc(c.email||'')+'</td>'+
+        '<td><span class="pill">'+esc(c.myCompany||'')+'</span></td>'+
+        '<td style="max-width:160px;line-height:1.6">'+lblsh+'</td>'+
+        '<td><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></td>'+
+        '<td style="font-size:10px;color:var(--t3)">'+fmtD(c.lastContact||'')+'</td>'+
+        '<td><div class="fc g4">'+
+          '<button class="btn bs" onclick="editContact(\''+c.id+'\')" style="padding:2px 7px;font-size:10px">&#9998;</button>'+
+          '<button class="btn bd" onclick="delContact(\''+c.id+'\')" style="padding:2px 7px;font-size:10px">x</button>'+
+        '</div></td>'+
+      '</tr>';
+    }).join('');
+  }
+  // Kanban view (by tag/estado)
+  var kanCols=n('cont-kanban-cols');
+  if(kanCols){
+    kanCols.innerHTML=CONT_TAG_ORDER.map(function(tg){
+      var inCol=list.filter(function(c){return (c.tag||'reg')===tg;});
+      return '<div ondragover="event.preventDefault()" ondrop="contKanbanDrop(event,\''+tg+'\')" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:200px">'+
+        '<div class="fbet mb8"><div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--t2)">'+esc(CONT_TAG_LABEL[tg]||tg)+'</div><span class="tag t-'+(tg==='urg'?'urg':tg==='hot'?'hot':tg==='pend'?'pend':'reg')+'">'+inCol.length+'</span></div>'+
+        inCol.map(function(c){
+          return '<div draggable="true" ondragstart="contKanbanDrag(event,\''+c.id+'\')" onclick="editContact(\''+c.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab">'+
+            '<div style="font-size:12px;font-weight:600">'+esc(c.name||'')+'</div>'+
+            '<div style="font-size:10px;color:var(--t3)">'+esc(c.company||'')+'</div>'+
+            '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(c.country||'')+' \u00B7 '+esc(c.role||'')+'</div>'+
+            '</div>';
+        }).join('')+
+      '</div>';
+    }).join('');
+  }
+  if(n('ds-cont'))n('ds-cont').textContent=contacts.length;
+  // Update labels filter display
+  if(n('cf-labels-display'))renderContactsLabelsFilterDisplay();
+}
+
+// Kanban drag-drop for B2B
+function contKanbanDrag(e,id){e.dataTransfer.setData('text/plain',id);}
+function contKanbanDrop(e,newTag){
+  e.preventDefault();
+  var id=e.dataTransfer.getData('text/plain');
+  var idx=contacts.findIndex(function(c){return String(c.id)===String(id);});
+  if(idx<0)return;
+  contacts[idx].tag=newTag;
+  contacts[idx].lastContact=new Date().toISOString().split('T')[0];
+  SS('contacts',contacts);renderCont();
+}
+
+// Edit / Delete contact
+function editContact(id){
+  var c=contacts.find(function(x){return String(x.id)===String(id);});
+  if(!c)return;
+  n('cn-name').value=c.name||'';
+  n('cn-co').value=c.company||'';
+  n('cn-country').value=c.country||'';
+  n('cn-role').value=c.role||'Comprador';
+  n('cn-myco').value=c.myCompany||'DMCAR GROUP';
+  n('cn-phone').value=c.phone||'';
+  if(n('cn-email'))n('cn-email').value=c.email||'';
+  n('cn-notes').value=c.notes||'';
+  n('cn-tag').value=c.tag||'reg';
+  if(n('cn-labels'))n('cn-labels').value=(c.labels||[]).join(', ');
+  n('m-contact').setAttribute('data-edit-id',id);
+  openM('m-contact');
+}
+function delContact(id){
+  if(!confirm('Eliminar este contacto B2B?'))return;
+  contacts=contacts.filter(function(c){return String(c.id)!==String(id);});
+  SS('contacts',contacts);renderCont();renderDash();
+}
+
+// Labels filter for contacts
+function renderContactsLabelsFilterDisplay(){
+  var el=n('cf-labels-display');var emp=n('cf-labels-empty');var clr=n('cf-labels-clear');
+  if(!el)return;
+  if(contLabelsFilter.size===0){
+    if(emp)emp.style.display='';
+    el.innerHTML='<span id="cf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>';
+    if(clr)clr.style.display='none';
+  }else{
+    var html=Array.from(contLabelsFilter).map(function(t){
+      var col=labelColor(t);
+      return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600">'+esc(t)+' <span onclick="event.stopPropagation();contLabelsFilter.delete(\''+esc(t)+'\');renderCont()" style="cursor:pointer;margin-left:3px">x</span></span>';
+    }).join('');
+    el.innerHTML=html;
+    if(clr)clr.style.display='';
+  }
+}
+function clearContactsLabelsFilter(){contLabelsFilter.clear();renderCont();}
+function openContactsLabelsFilter(){
+  // Build set of all known labels from contacts
+  var all=new Set();
+  contacts.forEach(function(c){(c.labels||[]).forEach(function(t){all.add(t);});});
+  var arr=Array.from(all).sort();
+  if(!arr.length){alert('No hay etiquetas en los contactos B2B todavia. Anade etiquetas al editar un contacto.');return;}
+  var sel=prompt('Etiquetas disponibles:\n'+arr.join(', ')+'\n\nIntroduce las etiquetas para filtrar separadas por coma:');
+  if(sel===null)return;
+  contLabelsFilter=new Set(sel.split(',').map(function(s){return normalizeLabel(s);}).filter(function(s){return s;}));
+  renderCont();
 }
 
 function saveCont(){
-  var c={id:Date.now(),name:n('cn-name').value.trim(),company:n('cn-co').value.trim(),country:n('cn-country').value.trim(),role:n('cn-role').value,myCompany:n('cn-myco').value,phone:n('cn-phone').value.trim(),notes:n('cn-notes').value.trim(),tag:n('cn-tag').value,lastContact:new Date().toISOString().split('T')[0]};
+  var editId=n('m-contact').getAttribute('data-edit-id');
+  var labels=(n('cn-labels')&&n('cn-labels').value||'').split(',').map(function(s){return normalizeLabel(s);}).filter(function(s){return s;});
+  var c={
+    name:n('cn-name').value.trim(),
+    company:n('cn-co').value.trim(),
+    country:n('cn-country').value.trim(),
+    role:n('cn-role').value,
+    myCompany:n('cn-myco').value,
+    phone:n('cn-phone').value.trim(),
+    email:n('cn-email')?n('cn-email').value.trim():'',
+    notes:n('cn-notes').value.trim(),
+    tag:n('cn-tag').value,
+    labels:labels,
+    lastContact:new Date().toISOString().split('T')[0]
+  };
   if(!c.name){alert('Nombre obligatorio');return;}
-  contacts.push(c);SS('contacts',contacts);closeM('m-contact');renderCont();renderDash();
+  if(editId){
+    // Update existing
+    var idx=contacts.findIndex(function(x){return String(x.id)===String(editId);});
+    if(idx>=0){
+      // Preserve original id and createdAt
+      c.id=contacts[idx].id;
+      c.createdAt=contacts[idx].createdAt;
+      c.leadOriginId=contacts[idx].leadOriginId;
+      contacts[idx]=Object.assign({},contacts[idx],c);
+    }
+  }else{
+    c.id=Date.now()+Math.floor(Math.random()*1000);
+    c.createdAt=new Date().toISOString();
+    contacts.push(c);
+  }
+  SS('contacts',contacts);
+  n('m-contact').removeAttribute('data-edit-id');
+  closeM('m-contact');
+  // Reset form
+  n('cn-name').value='';n('cn-co').value='';n('cn-country').value='';
+  n('cn-phone').value='';if(n('cn-email'))n('cn-email').value='';
+  n('cn-notes').value='';if(n('cn-labels'))n('cn-labels').value='';
+  renderCont();renderDash();
 }
 
 // -- LEADS ----------------------------------------------------
@@ -3963,9 +4223,9 @@ var leadsViewCurrent='table';
 var leadSel=new Set();
 
 function renderLeads(){
-  // Update sidebar/dashboard counters
-  n('cnt-leads').textContent=leads.filter(function(l){return l.status==='Nuevo';}).length;
-  if(n('ds-leads')) n('ds-leads').textContent=leads.length;
+  // Update sidebar/dashboard counters (only active leads, not archived)
+  n('cnt-leads').textContent=leads.filter(function(l){return !l.archived&&l.status==='Nuevo';}).length;
+  if(n('ds-leads')) n('ds-leads').textContent=leads.filter(function(l){return !l.archived;}).length;
 
   // Filter
   var q=(n('lf-q')&&n('lf-q').value||'').toLowerCase();
@@ -3974,38 +4234,37 @@ function renderLeads(){
   var catFilter=n('lf-category')&&n('lf-category').value||'';
   var ctFilter=(n('lf-country')&&n('lf-country').value||'').toLowerCase();
   var filtered=leads.filter(function(l){
+    // Archived filter: by default show only non-archived; toggle reverses
+    if(leadsShowArchived){if(!l.archived) return false;}
+    else{if(l.archived) return false;}
     if(q&&!((l.name||'').toLowerCase().indexOf(q)>=0||(l.company||'').toLowerCase().indexOf(q)>=0||(l.email||'').toLowerCase().indexOf(q)>=0)) return false;
     if(stFilter&&l.status!==stFilter) return false;
     if(srcFilter&&l.source!==srcFilter) return false;
     if(catFilter&&l.category!==catFilter) return false;
     if(ctFilter&&!((l.country||'').toLowerCase().indexOf(ctFilter)>=0)) return false;
-    // Labels filter: AND logic (lead must have ALL selected filter labels)
-    if(leadsLabelsFilter.size>0){
-      var leadLabels=new Set(l.labels||[]);
-      var ok=true;
-      leadsLabelsFilter.forEach(function(t){if(!leadLabels.has(t)) ok=false;});
-      if(!ok) return false;
-    }
     return true;
   });
-  if(n('leads-info')) n('leads-info').textContent=filtered.length+' de '+leads.length+' leads';
+  var totalShow=leadsShowArchived?leads.filter(function(l){return l.archived;}).length:leads.filter(function(l){return !l.archived;}).length;
+  if(n('leads-info')) n('leads-info').textContent=filtered.length+' de '+totalShow+(leadsShowArchived?' archivados':' leads activos');
 
-  if(leadsViewCurrent==='table') renderLeadsTable(filtered);
-  else renderLeadsKanban(filtered);
+  renderLeadsTable(filtered);
 }
 
-function leadsViewMode(mode){
-  leadsViewCurrent=mode;
-  n('leads-table-view').style.display=(mode==='table')?'':'none';
-  n('leads-kanban-view').style.display=(mode==='kanban')?'':'none';
-  // Visual highlight on the toggle buttons
-  ['table','kanban'].forEach(function(m){
-    var b=n('lv-'+m);if(!b) return;
-    if(m===mode){b.classList.remove('bs');b.classList.add('bp');}
-    else{b.classList.remove('bp');b.classList.add('bs');}
-  });
+// Toggle showing archived leads
+var leadsShowArchived=false;
+function leadsToggleArchived(){
+  leadsShowArchived=!leadsShowArchived;
+  var btn=n('lv-archived');
+  if(btn){
+    if(leadsShowArchived){btn.classList.remove('bs');btn.classList.add('bp');btn.innerHTML='&#128194; Ver activos';}
+    else{btn.classList.remove('bp');btn.classList.add('bs');btn.innerHTML='&#128194; Ver archivados';}
+  }
   renderLeads();
 }
+
+// Legacy support: keep these as no-op stubs (no longer used since labels/kanban moved to B2B)
+function leadsViewMode(){renderLeads();}
+function renderLeadsKanban(){}
 
 function renderLeadsTable(filtered){
   var tbody=n('leads-body');var empty=n('leads-empty');
@@ -4021,17 +4280,6 @@ function renderLeadsTable(filtered){
       var cc=LEAD_CAT_COLOR[l.category]||{bg:'var(--bg3)',fg:'var(--t2)'};
       catHtml='<span style="background:'+cc.bg+';color:'+cc.fg+';padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">'+esc(l.category)+'</span>';
     }
-    // Labels (etiquetas) badges - up to 4 visible, "+N more" if extra
-    var lblHtml='--';
-    if(l.labels&&l.labels.length){
-      var visible=l.labels.slice(0,4);
-      var extra=l.labels.length-visible.length;
-      lblHtml=visible.map(function(t){
-        var col=labelColor(t);
-        return '<span onclick="event.stopPropagation();toggleLabelsFilterTag(\''+esc(t)+'\')" style="background:'+col.bg+';color:'+col.fg+';padding:1px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;display:inline-block" title="Click para filtrar">'+esc(t)+'</span>';
-      }).join(' ');
-      if(extra>0) lblHtml+=' <span style="font-size:9px;color:var(--t4)">+'+extra+'</span>';
-    }
     return '<tr'+(leadSel.has(l.id)?' style="background:rgba(37,99,235,.07)"':'')+'>'+
       '<td style="text-align:center"><input type="checkbox" class="lchk" data-id="'+l.id+'" onchange="leadsToggleOne(\''+l.id+'\',this)"'+checked+'></td>'+
       '<td><div style="width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff">'+initials+'</div></td>'+
@@ -4044,19 +4292,20 @@ function renderLeadsTable(filtered){
       '<td style="font-size:11px;color:var(--t2);font-family:monospace">'+esc(l.phone||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t2)">'+esc(l.email||'--')+'</td>'+
       '<td>'+catHtml+'</td>'+
-      '<td style="max-width:180px;line-height:1.6">'+lblHtml+'</td>'+
       '<td style="font-size:11px"><span style="background:var(--bg3);padding:2px 7px;border-radius:6px">'+esc(l.type||'--')+'</span></td>'+
       '<td style="text-align:center;font-weight:700;color:var(--acc);font-size:12px">'+esc(l.volume||'--')+'</td>'+
       '<td style="font-size:11px;color:var(--t3)">'+esc(l.source||'--')+'</td>'+
       '<td><span class="tag '+sc+'">'+esc(l.status)+'</span></td>'+
       '<td style="font-size:10px;color:var(--t3)">'+fmtD(l.createdAt||'')+'</td>'+
       '<td><div class="fc g4">'+
+        (l.archived?'<button class="btn bp" onclick="unarchiveLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Reactivar lead">&#8634;</button>':'')+
         '<button class="btn bs" onclick="editLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Editar '+esc(leadCleanName(l))+'">&#9998;</button>'+
-        '<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp a '+esc(leadCleanName(l))+'">&#128172;</button>'+
-        '<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje para '+esc(leadCleanName(l))+'">&#128203;</button>'+
-        '<button class="btn bs" onclick="quickSendEmail(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Email a '+esc(leadCleanName(l))+'">&#128231;</button>'+
-        '<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google: '+esc(leadCleanName(l))+'">&#128241;</button>'+
-        '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar '+esc(leadCleanName(l))+'">x</button>'+
+        (l.archived?'':'<button class="btn bs" onclick="quickWhatsApp(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="WhatsApp + Promover a B2B">&#128172;</button>')+
+        (l.archived?'':'<button class="btn bs" onclick="quickCopyMessage(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Copiar mensaje">&#128203;</button>')+
+        (l.archived?'':'<button class="btn bs" onclick="quickSendEmail(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Email + Promover a B2B">&#128231;</button>')+
+        (l.archived?'':'<button class="btn bs" onclick="quickGoogleSync(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Sync Google">&#128241;</button>')+
+        (l.archived?'':'<button class="btn bp" onclick="promoteLeadToB2B(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Promover manualmente a B2B">&#9889;</button>')+
+        '<button class="btn bd" onclick="delLead(\''+l.id+'\')" style="padding:2px 7px;font-size:10px" title="Eliminar">x</button>'+
       '</div></td>'+
     '</tr>';
   }).join('');
@@ -4187,61 +4436,7 @@ function leadsBulkMoveToContacts(){
   renderDash();
 }
 
-function renderLeadsKanban(filtered){
-  var cols=n('leads-kanban-cols');
-  cols.innerHTML='';
-  var byStatus={};
-  LEAD_STATUSES.forEach(function(s){byStatus[s]=[];});
-  filtered.forEach(function(l){if(byStatus[l.status]) byStatus[l.status].push(l);});
-
-  LEAD_STATUSES.forEach(function(status){
-    var items=byStatus[status]||[];
-    var sc=LEAD_STATUS_CLASS[status]||'t-hot';
-    var col=document.createElement('div');
-    col.style.cssText='background:var(--bg3);border-radius:10px;padding:10px;min-height:120px';
-    col.setAttribute('data-status',status);
-    col.ondragover=function(e){e.preventDefault();col.style.background='var(--bg4)';};
-    col.ondragleave=function(){col.style.background='var(--bg3)';};
-    col.ondrop=function(e){
-      e.preventDefault();col.style.background='var(--bg3)';
-      var id=e.dataTransfer.getData('leadid');if(!id) return;
-      var idx=leads.findIndex(function(x){return String(x.id)===String(id);});
-      if(idx<0) return;
-      leads[idx].status=status;leads[idx].updatedAt=new Date().toISOString();
-      SS('leads',leads);renderLeads();
-    };
-    col.innerHTML='<div class="fbet" style="margin-bottom:8px;padding:0 4px"><div style="font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">'+status+'</div><span class="tag '+sc+'" style="font-size:10px">'+items.length+'</span></div>';
-    items.forEach(function(l){
-      var initials=(l.name||'?').split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase();
-      var catBadge='';
-      if(l.category){
-        var cc=LEAD_CAT_COLOR[l.category]||{bg:'var(--bg3)',fg:'var(--t2)'};
-        catBadge='<span style="background:'+cc.bg+';color:'+cc.fg+';padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.category)+'</span>';
-      }
-      var card=document.createElement('div');
-      card.draggable=true;
-      card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px;cursor:grab;transition:all .15s';
-      card.onmouseenter=function(){this.style.borderColor='var(--acc)';};
-      card.onmouseleave=function(){this.style.borderColor='var(--border)';};
-      card.ondragstart=function(e){e.dataTransfer.setData('leadid',l.id);card.style.opacity='.5';};
-      card.ondragend=function(){card.style.opacity='1';};
-      card.onclick=function(){editLead(l.id);};
-      card.innerHTML='<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px">'+
-        '<div style="width:26px;height:26px;background:linear-gradient(135deg,var(--blue),var(--v2));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0">'+initials+'</div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.name||'--')+'</div>'+
-        '<div style="font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(l.company||'')+(l.city?' &middot; '+esc(l.city):'')+(l.country?' ('+esc(l.country)+')':'')+'</div></div>'+
-        '</div>'+
-        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">'+
-          catBadge+
-          (l.volume?'<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.volume)+'/mes</span>':'')+
-          (l.vtype&&!l.category?'<span style="background:#fef9c3;color:#854d0e;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:600">'+esc(l.vtype)+'</span>':'')+
-        '</div>'+
-        '<div style="font-size:9px;color:var(--t4);margin-top:6px">'+esc(l.source||'')+(l.createdAt?' &middot; '+fmtD(l.createdAt):'')+'</div>';
-      col.appendChild(card);
-    });
-    cols.appendChild(col);
-  });
-}
+// (Old renderLeadsKanban removed - kanban view moved to B2B module)
 
 function openLeadModal(){
   // Reset all fields
@@ -4323,6 +4518,17 @@ function delLead(id){
   if(!confirm('Eliminar lead?'))return;
   leads=leads.filter(function(l){return String(l.id)!==String(id);});
   SS('leads',leads);renderLeads();renderDash();
+}
+
+// Unarchive a lead (reactivate)
+function unarchiveLead(id){
+  var idx=leads.findIndex(function(l){return String(l.id)===String(id);});
+  if(idx<0)return;
+  if(!confirm('Reactivar este lead? Volvera a la lista activa.'))return;
+  leads[idx].archived=false;
+  leads[idx].promotedToB2B=false;
+  SS('leads',leads);renderLeads();renderDash();
+  showToast('\u2713 Lead reactivado');
 }
 
 // ========== LABELS (etiquetas) ==========
@@ -4732,6 +4938,16 @@ function quickWhatsApp(id){
   if(!l||!l.phone){alert('Falta el telefono');return;}
   var msg=buildWelcomeMessage(l);
   whatsAppCopyAndOpen(l.phone,msg,leadCleanName(l));
+  // Auto-promote: mark contacted + move to B2B + archive
+  var idx=leads.findIndex(function(x){return String(x.id)===String(id);});
+  if(idx>=0){
+    leads[idx].whatsappSentAt=new Date().toISOString();
+    if(leads[idx].status==='Nuevo')leads[idx].status='Contattato';
+    leads[idx].updatedAt=new Date().toISOString();
+    SS('leads',leads);
+    promoteLeadToB2B(id,true);
+    setTimeout(function(){showToast('\u2713 WhatsApp + Promovido a B2B');},1200);
+  }
 }
 
 // Copy welcome message to clipboard (for use with WhatsApp Business on iPhone)
