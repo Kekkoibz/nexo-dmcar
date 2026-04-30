@@ -240,7 +240,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="sb-sec">Negocio</div>
     <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico">&#9646;</span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
     <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico">&#9633;</span>Generador Ofertas</div>
-    <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico">&#9711;</span>Contactos B2B</div>
+    <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico">&#9711;</span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
     <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico">&#9650;</span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico">&#9634;</span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
@@ -1189,6 +1189,26 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- BANDEJA DE RESPUESTAS B2B (NX_INBOX) -->
+<div class="ovl" id="m-inbox">
+  <div class="modal" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="fbet mb12">
+      <div>
+        <div class="mt" style="margin:0">&#9993;&#65039; Bandeja de respuestas B2B</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px" id="inbox-status">Cargando...</div>
+      </div>
+      <button class="btn bg" onclick="closeM('m-inbox')" style="padding:5px 10px">X</button>
+    </div>
+    <div class="fc g8 mb12" style="flex-wrap:wrap">
+      <button class="btn bs" onclick="inboxRefresh()" style="font-size:11px">&#128260; Refrescar ahora</button>
+      <button class="btn bs" onclick="inboxMarkAllRead()" style="font-size:11px">&#10003; Marcar todo como le&iacute;do</button>
+      <div style="flex:1"></div>
+      <span style="font-size:10px;color:var(--t3)" id="inbox-meta"></span>
+    </div>
+    <div id="inbox-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+  </div>
+</div>
 <script>
 // Global error handler - shows errors visually on mobile
 window.onerror = function(msg, src, line, col, err) {
@@ -1531,7 +1551,7 @@ var MS_CONFIG={
   clientId:"41d7c377-3e26-4803-be85-10f9316ec6b6",
   tenantId:"89b298de-7441-4b94-9ae7-32859f10de92",
   redirectUri:"https://kekkoibz.github.io/nexo-dmcar/NEXO.html",
-  scopes:["Mail.Send","User.Read"]
+  scopes:["Mail.Send","Mail.Read","User.Read"]
 };
 
 var NX_MS={
@@ -1940,6 +1960,205 @@ function quickSendEmail(id){
 // END NX_MS
 // ===========================================================================
 
+// ===========================================================================
+// NX_INBOX — Microsoft Graph email polling per notifica risposte B2B
+// Polla /me/messages ogni 30s, filtra mittenti contro lista contacts B2B,
+// mantiene stato letto/non-letto in localStorage (nx5_inbox_*).
+// ===========================================================================
+var NX_INBOX={
+  pollingId:null,
+  pollingMs:30000,
+  isPolling:false,
+  lastFetchAt:null,
+  lastError:null,
+  readIds:null,
+  knownIds:null,
+  emails:[],
+  MAX_FETCH:50,
+  KEEP_DAYS:30,
+  STORAGE_PREFIX:'inbox_',
+
+  init:function(){
+    try{
+      this.readIds=new Set(LS(this.STORAGE_PREFIX+'readIds',[]));
+      this.knownIds=new Set(LS(this.STORAGE_PREFIX+'knownIds',[]));
+      this.emails=LS(this.STORAGE_PREFIX+'cache',[]);
+    }catch(e){
+      console.warn('[NX_INBOX] init storage error:',e);
+      this.readIds=new Set();
+      this.knownIds=new Set();
+      this.emails=[];
+    }
+    this.refreshBadge();
+    var self=this;
+    var tryStart=function(retries){
+      if(retries>20){console.warn('[NX_INBOX] NX_MS not ready, polling not started');return;}
+      if(typeof NX_MS!=='undefined'&&NX_MS.ready&&NX_MS.account){
+        self.startPolling();
+      }else{
+        setTimeout(function(){tryStart(retries+1);},1500);
+      }
+    };
+    tryStart(0);
+    console.log('[NX_INBOX] init OK — known:'+this.knownIds.size+' read:'+this.readIds.size+' cache:'+this.emails.length);
+  },
+
+  saveState:function(){
+    SS(this.STORAGE_PREFIX+'readIds',Array.from(this.readIds));
+    SS(this.STORAGE_PREFIX+'knownIds',Array.from(this.knownIds));
+    SS(this.STORAGE_PREFIX+'cache',this.emails);
+  },
+
+  startPolling:function(){
+    if(this.isPolling)return;
+    this.isPolling=true;
+    var self=this;
+    console.log('[NX_INBOX] polling started ('+this.pollingMs+'ms)');
+    this.fetchInbox();
+    this.pollingId=setInterval(function(){self.fetchInbox();},this.pollingMs);
+  },
+  stopPolling:function(){
+    if(this.pollingId){clearInterval(this.pollingId);this.pollingId=null;}
+    this.isPolling=false;
+    console.log('[NX_INBOX] polling stopped');
+  },
+
+  fetchInbox:function(){
+    var self=this;
+    if(typeof NX_MS==='undefined'||!NX_MS.ready||!NX_MS.account){
+      console.warn('[NX_INBOX] fetch skipped: NX_MS not ready');
+      return Promise.resolve(null);
+    }
+    var since=new Date(Date.now()-this.KEEP_DAYS*24*3600*1000).toISOString();
+    var url='https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages'
+      +'?$top='+this.MAX_FETCH
+      +'&$orderby=receivedDateTime%20desc'
+      +'&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,conversationId,internetMessageId'
+      +'&$filter=receivedDateTime%20ge%20'+since;
+    return new Promise(function(resolve,reject){
+      NX_MS.getToken(function(token,err){
+        if(err||!token)reject(new Error(err||'no token'));
+        else resolve(token);
+      });
+    }).then(function(token){
+      return fetch(url,{headers:{'Authorization':'Bearer '+token,'Prefer':'outlook.body-content-type="text"'}});
+    }).then(function(r){
+      if(!r.ok)return r.text().then(function(t){throw new Error('Graph '+r.status+': '+t);});
+      return r.json();
+    }).then(function(data){
+      var items=(data.value||[]).map(function(m){
+        var fromAddr='';
+        var fromName='';
+        try{
+          fromAddr=(m.from&&m.from.emailAddress&&m.from.emailAddress.address||'').toLowerCase();
+          fromName=(m.from&&m.from.emailAddress&&m.from.emailAddress.name)||fromAddr;
+        }catch(e){}
+        return {
+          id:m.id,
+          internetMessageId:m.internetMessageId||'',
+          conversationId:m.conversationId||'',
+          subject:m.subject||'(sin asunto)',
+          from:fromAddr,
+          fromName:fromName,
+          receivedAt:m.receivedDateTime,
+          preview:(m.bodyPreview||'').slice(0,300),
+          outlookIsRead:!!m.isRead
+        };
+      });
+      var b2bEmails=self.getB2BEmailSet();
+      var filtered=items.filter(function(it){
+        return it.from&&b2bEmails.has(it.from);
+      });
+      var newCount=0;
+      filtered.forEach(function(it){
+        if(!self.knownIds.has(it.id)){
+          self.knownIds.add(it.id);
+          newCount++;
+        }
+      });
+      self.emails=filtered;
+      self.lastFetchAt=new Date().toISOString();
+      self.lastError=null;
+      self.saveState();
+      self.refreshBadge();
+      if(typeof inboxRenderList==='function'&&document.getElementById('m-inbox')&&document.getElementById('m-inbox').classList.contains('on')){
+        inboxRenderList();
+      }
+      if(newCount>0){
+        console.log('[NX_INBOX] '+newCount+' new B2B mail(s) — total cached: '+filtered.length);
+        var newUnread=filtered.filter(function(it){return!self.readIds.has(it.id);}).length;
+        if(newUnread>0&&typeof showToast==='function'){
+          showToast('\u2709\ufe0f '+newCount+' nueva'+(newCount!==1?'s':'')+' respuesta'+(newCount!==1?'s':'')+' B2B');
+        }
+      }
+      return filtered;
+    }).catch(function(err){
+      self.lastError=String(err.message||err);
+      console.warn('[NX_INBOX] fetch error:',self.lastError);
+      return null;
+    });
+  },
+
+  getB2BEmailSet:function(){
+    var s=new Set();
+    try{
+      if(typeof contacts==='undefined'||!Array.isArray(contacts))return s;
+      contacts.forEach(function(c){
+        if(c&&c.email){
+          var e=String(c.email).toLowerCase().trim();
+          if(e.indexOf('@')>0)s.add(e);
+        }
+      });
+    }catch(e){console.warn('[NX_INBOX] getB2BEmailSet error:',e);}
+    return s;
+  },
+
+  refreshBadge:function(){
+    try{
+      var unread=this.getUnreadCount();
+      var el=document.getElementById('cnt-inbox');
+      if(!el)return;
+      if(unread>0){
+        el.textContent=unread>99?'99+':String(unread);
+        el.style.display='';
+      }else{
+        el.style.display='none';
+      }
+    }catch(e){console.warn('[NX_INBOX] refreshBadge error:',e);}
+  },
+  getUnreadCount:function(){
+    var self=this;
+    return this.emails.filter(function(it){return!self.readIds.has(it.id);}).length;
+  },
+
+  markRead:function(id){
+    if(!this.readIds.has(id)){
+      this.readIds.add(id);
+      this.saveState();
+      this.refreshBadge();
+    }
+  },
+  markAllRead:function(){
+    var self=this;
+    this.emails.forEach(function(it){self.readIds.add(it.id);});
+    this.saveState();
+    this.refreshBadge();
+  },
+
+  matchContact:function(email){
+    if(!email)return null;
+    email=String(email).toLowerCase().trim();
+    if(typeof contacts==='undefined'||!Array.isArray(contacts))return null;
+    for(var i=0;i<contacts.length;i++){
+      if(contacts[i].email&&String(contacts[i].email).toLowerCase().trim()===email){
+        return contacts[i];
+      }
+    }
+    return null;
+  }
+};
+// END NX_INBOX
+// ===========================================================================
 
 // -- STATE ----------------------------------------------------
 var stock=LS('stock',[]);
@@ -5982,6 +6201,105 @@ function clrAll(){
   renderConfig();renderDash();alert('Datos eliminados.');
 }
 
+// -- INBOX UI (NX_INBOX) --------------------------------------
+function inboxOpen(){
+  openM('m-inbox');
+  inboxRenderList();
+  // Refresh in background
+  if(typeof NX_INBOX!=='undefined')NX_INBOX.fetchInbox();
+}
+function inboxRefresh(){
+  if(typeof NX_INBOX==='undefined')return;
+  var btnStatus=document.getElementById('inbox-status');
+  if(btnStatus)btnStatus.textContent='Buscando nuevas respuestas...';
+  NX_INBOX.fetchInbox().then(function(){inboxRenderList();});
+}
+function inboxMarkAllRead(){
+  if(typeof NX_INBOX==='undefined')return;
+  if(!NX_INBOX.emails.length)return;
+  NX_INBOX.markAllRead();
+  inboxRenderList();
+  if(typeof showToast==='function')showToast('\u2713 Todas marcadas como le\u00eddas');
+}
+function inboxRenderList(){
+  if(typeof NX_INBOX==='undefined')return;
+  var listEl=document.getElementById('inbox-list');
+  var statusEl=document.getElementById('inbox-status');
+  var metaEl=document.getElementById('inbox-meta');
+  if(!listEl)return;
+  // Status line
+  if(statusEl){
+    if(NX_INBOX.lastError){
+      statusEl.innerHTML='<span style="color:#f87171">\u26a0\ufe0f Error: '+esc(NX_INBOX.lastError.slice(0,80))+'</span>';
+    }else if(typeof NX_MS==='undefined'||!NX_MS.account){
+      statusEl.innerHTML='<span style="color:var(--orange)">\u26a0\ufe0f Microsoft no conectado \u2014 inicia sesi\u00f3n en Configuraci\u00f3n</span>';
+    }else{
+      var unread=NX_INBOX.getUnreadCount();
+      statusEl.textContent=unread+' sin leer / '+NX_INBOX.emails.length+' total';
+    }
+  }
+  if(metaEl){
+    if(NX_INBOX.lastFetchAt){
+      var d=new Date(NX_INBOX.lastFetchAt);
+      metaEl.textContent='Ultima actualizaci\u00f3n: '+d.toLocaleTimeString('es-ES');
+    }else{
+      metaEl.textContent='';
+    }
+  }
+  // Lista
+  if(!NX_INBOX.emails.length){
+    listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">'
+      +'<div style="font-size:32px;margin-bottom:10px">\u2709\ufe0f</div>'
+      +'Sin respuestas de contactos B2B en los \u00faltimos '+NX_INBOX.KEEP_DAYS+' d\u00edas.<br>'
+      +'<span style="font-size:11px">Las respuestas aparecer\u00e1n autom\u00e1ticamente cuando un contacto B2B te escriba.</span>'
+      +'</div>';
+    return;
+  }
+  // Render items
+  listEl.innerHTML=NX_INBOX.emails.map(function(it){
+    var isRead=NX_INBOX.readIds.has(it.id);
+    var contact=NX_INBOX.matchContact(it.from);
+    var contactBadge='';
+    if(contact){
+      contactBadge='<span style="background:rgba(37,99,235,.15);color:var(--acc);padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(contact.name)+(contact.company?' \u2022 '+esc(contact.company):'')+'</span>';
+    }
+    var d=new Date(it.receivedAt);
+    var dateStr=d.toLocaleDateString('es-ES',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+    var bg=isRead?'transparent':'rgba(239,68,68,.06)';
+    var dotColor=isRead?'var(--t3)':'var(--red)';
+    return '<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--border);background:'+bg+';align-items:flex-start">'
+      +'<div style="width:8px;height:8px;border-radius:50%;background:'+dotColor+';flex-shrink:0;margin-top:6px"></div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div class="fbet" style="margin-bottom:4px;gap:6px;flex-wrap:wrap">'
+          +'<div style="font-size:12px;font-weight:'+(isRead?'500':'700')+';color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">'+esc(it.fromName||it.from)+'</div>'
+          +'<div style="font-size:10px;color:var(--t3);flex-shrink:0">'+dateStr+'</div>'
+        +'</div>'
+        +(contactBadge?'<div style="margin-bottom:4px">'+contactBadge+'</div>':'<div style="margin-bottom:4px"><span style="font-size:10px;color:var(--t3)">'+esc(it.from)+'</span></div>')
+        +'<div style="font-size:12px;font-weight:'+(isRead?'400':'600')+';color:var(--t2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.subject)+'</div>'
+        +'<div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4;max-height:36px;overflow:hidden">'+esc((it.preview||'').slice(0,180))+'</div>'
+        +'<div class="fc g8" style="flex-wrap:wrap">'
+          +(isRead?'':'<button class="btn bs" onclick="inboxMarkOneRead(\''+esc(it.id)+'\')" style="font-size:10px;padding:4px 8px">\u2713 Marcar le\u00eddo</button>')
+          +(contact?'<button class="btn bs" onclick="inboxGoToContact('+contact.id+')" style="font-size:10px;padding:4px 8px">\u2192 Ir al cliente</button>':'')
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+function inboxMarkOneRead(id){
+  if(typeof NX_INBOX==='undefined')return;
+  NX_INBOX.markRead(id);
+  inboxRenderList();
+}
+function inboxGoToContact(contactId){
+  closeM('m-inbox');
+  // Vai alla sezione contactos e apri il modal del contatto
+  if(typeof go==='function')go('contactos');
+  setTimeout(function(){
+    if(typeof openContactModal==='function')openContactModal(contactId);
+    else if(typeof editContact==='function')editContact(contactId);
+  },200);
+}
+
 // -- MODALS ---------------------------------------------------
 function openM(id){
   n(id).classList.add('on');
@@ -6020,6 +6338,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
   setTimeout(function(){NX_FB.init();},500);
   // Microsoft Graph init
   setTimeout(function(){NX_MS.init();},800);
+  // NEXO Inbox (B2B reply notifications) — dopo NX_MS
+  setTimeout(function(){if(typeof NX_INBOX!=='undefined')NX_INBOX.init();},2000);
 })();
 
 </script>
