@@ -2074,9 +2074,22 @@ var NX_INBOX={
         };
       });
       var b2bEmails=self.getB2BEmailSet();
+      // LOGGING DETTAGLIATO ad ogni fetch — utile per diagnostica
+      console.log('[NX_INBOX] === FETCH ===');
+      console.log('[NX_INBOX] Graph returned '+items.length+' messages');
+      console.log('[NX_INBOX] B2B whitelist size: '+b2bEmails.size);
+      if(items.length>0&&b2bEmails.size>0){
+        // Log primi 3 mittenti vs primi 3 contatti per visualizzare possibile mismatch
+        var fromSamples=items.slice(0,5).map(function(it){return it.from+' (subj: '+it.subject.slice(0,30)+')';});
+        var b2bArr=Array.from(b2bEmails);
+        console.log('[NX_INBOX] FROM samples:',fromSamples);
+        console.log('[NX_INBOX] B2B emails (first 10):',b2bArr.slice(0,10));
+      }
       var filtered=items.filter(function(it){
-        return it.from&&b2bEmails.has(it.from);
+        var match=it.from&&b2bEmails.has(it.from);
+        return match;
       });
+      console.log('[NX_INBOX] After whitelist filter: '+filtered.length+' B2B mails');
       var newCount=0;
       filtered.forEach(function(it){
         if(!self.knownIds.has(it.id)){
