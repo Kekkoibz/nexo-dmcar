@@ -242,7 +242,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.5-4.5A2 2 0 018.4 7h7.2a2 2 0 011.9 1.5L19 13M5 13h14M5 13v4a1 1 0 001 1h1a1 1 0 001-1v-1h8v1a1 1 0 001 1h1a1 1 0 001-1v-4"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/><circle cx="17" cy="16.5" r="1" fill="currentColor"/></svg></span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
     <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 12.5h8M8 16h5" stroke-linecap="round"/><path d="M9 8l1-1.5h4L15 8h.5v1.5h-7V8z" fill="currentColor" stroke="none"/></svg></span>Generador Ofertas</div>
     <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l3-3 3 3 3-3 3 3h3M3 12v6a2 2 0 002 2h14a2 2 0 002-2v-6M9 12l3 3 3-3"/></svg></span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
-    <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
+    <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cr" id="cnt-prov-inbox" style="display:none;cursor:pointer" title="Bandeja de ofertas Provider" onclick="event.stopPropagation();provInboxOpen()">0</span><span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
     <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v8a7 7 0 0014 0V4M5 4h4v8a3 3 0 006 0V4h4M4 4h1M19 4h1"/></svg></span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M9 12l1.5 1.5L13 11M9 16l1.5 1.5L13 15" stroke-linecap="round"/></svg></span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
@@ -1287,6 +1287,11 @@ En que te puedo ayudar hoy?</div></div>
       <label style="font-size:11px;font-weight:600;color:var(--t2);display:flex;align-items:center;justify-content:space-between"><span>&#128203; Tareas relacionadas</span><button class="btn bs" onclick="addManualTaskForProvider()" style="font-size:10px;padding:2px 8px">+ Tarea</button></label>
       <div id="pv-tasks-list" style="margin-top:6px;max-height:140px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px"></div>
     </div>
+    <!-- Action button: process emails to Stock Vivo (visible only when editing existing provider) -->
+    <div id="pv-stock-section" style="display:none;margin-bottom:10px">
+      <button type="button" class="btn bs" onclick="provOpenSendToStock()" style="width:100%;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-color:#059669;font-weight:600">&#128229; Enviar a Stock Vivo</button>
+      <div style="font-size:10px;color:var(--t3);margin-top:4px;text-align:center">Procesa los emails de este provider y a&ntilde;ade veh&iacute;culos al stock</div>
+    </div>
     <button class="btn bp" style="width:100%" onclick="saveProv()">Guardar</button>
   </div>
 </div>
@@ -1322,6 +1327,51 @@ En que te puedo ayudar hoy?</div></div>
       <span style="font-size:10px;color:var(--t3)" id="inbox-meta"></span>
     </div>
     <div id="inbox-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+  </div>
+</div>
+
+<!-- BANDEJA DE OFERTAS PROVIDER (NX_PROV_INBOX) -->
+<div class="ovl" id="m-prov-inbox">
+  <div class="modal" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="fbet mb12">
+      <div>
+        <div class="mt" style="margin:0">&#128230; Bandeja de ofertas Provider</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px" id="prov-inbox-status">Cargando...</div>
+      </div>
+      <button class="btn bg" onclick="closeM('m-prov-inbox')" style="padding:5px 10px">X</button>
+    </div>
+    <div class="fc g8 mb12" style="flex-wrap:wrap">
+      <button class="btn bs" onclick="provInboxRefresh()" style="font-size:11px">&#128260; Refrescar ahora</button>
+      <button class="btn bs" onclick="provInboxMarkAllRead()" style="font-size:11px">&#10003; Marcar todo como le&iacute;do</button>
+      <div style="flex:1"></div>
+      <span style="font-size:10px;color:var(--t3)" id="prov-inbox-meta"></span>
+    </div>
+    <div id="prov-inbox-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px"></div>
+  </div>
+</div>
+
+<!-- PROVIDER -> STOCK VIVO: selezione mail da processare -->
+<div class="ovl" id="m-prov-stock">
+  <div class="modal" style="max-width:720px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="fbet mb12">
+      <div>
+        <div class="mt" style="margin:0">&#128229; Procesar emails &rarr; Stock Vivo</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px" id="ps-status">Selecciona los emails a procesar...</div>
+      </div>
+      <button class="btn bg" onclick="closeM('m-prov-stock')" style="padding:5px 10px">X</button>
+    </div>
+    <div class="fc g8 mb10" style="flex-wrap:wrap">
+      <button class="btn bs" onclick="provStockSelectAll(true)" style="font-size:11px">&#9745; Seleccionar todos</button>
+      <button class="btn bs" onclick="provStockSelectAll(false)" style="font-size:11px">&#9744; Deseleccionar</button>
+      <div style="flex:1"></div>
+      <span style="font-size:10px;color:var(--t3)" id="ps-count">0 emails seleccionados</span>
+    </div>
+    <div id="ps-list" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:4px;min-height:200px"></div>
+    <div id="ps-progress" style="display:none;margin-top:10px;padding:10px;background:var(--bg2);border-radius:8px;font-size:11px;color:var(--t2)"></div>
+    <div class="fc g8" style="margin-top:12px">
+      <button class="btn bg" onclick="closeM('m-prov-stock')" style="flex:1">Cancelar</button>
+      <button class="btn bp" id="ps-process-btn" onclick="provStockProcessSelected()" style="flex:2;background:linear-gradient(135deg,#10b981,#059669);border-color:#059669">&#9889; Procesar selecci&oacute;n</button>
+    </div>
   </div>
 </div>
 <script>
@@ -2181,22 +2231,25 @@ var NX_INBOX={
         };
       });
       var b2bEmails=self.getB2BEmailSet();
+      // ALSO: provider whitelist (smistamento dual)
+      var provEmails=(typeof NX_PROV_INBOX!=='undefined')?NX_PROV_INBOX.getProviderEmailSet():new Set();
       // LOGGING DETTAGLIATO ad ogni fetch — utile per diagnostica
       console.log('[NX_INBOX] === FETCH ===');
       console.log('[NX_INBOX] Graph returned '+items.length+' messages');
-      console.log('[NX_INBOX] B2B whitelist size: '+b2bEmails.size);
-      if(items.length>0&&b2bEmails.size>0){
-        // Log primi 3 mittenti vs primi 3 contatti per visualizzare possibile mismatch
+      console.log('[NX_INBOX] B2B whitelist size: '+b2bEmails.size+' | Provider whitelist size: '+provEmails.size);
+      if(items.length>0){
         var fromSamples=items.slice(0,5).map(function(it){return it.from+' (subj: '+it.subject.slice(0,30)+')';});
-        var b2bArr=Array.from(b2bEmails);
         console.log('[NX_INBOX] FROM samples:',fromSamples);
-        console.log('[NX_INBOX] B2B emails (first 10):',b2bArr.slice(0,10));
       }
+      // Filtra B2B
       var filtered=items.filter(function(it){
-        var match=it.from&&b2bEmails.has(it.from);
-        return match;
+        return it.from&&b2bEmails.has(it.from);
       });
-      console.log('[NX_INBOX] After whitelist filter: '+filtered.length+' B2B mails');
+      // Filtra Provider (separatamente)
+      var provFiltered=items.filter(function(it){
+        return it.from&&provEmails.has(it.from);
+      });
+      console.log('[NX_INBOX] After filter: '+filtered.length+' B2B mails | '+provFiltered.length+' Provider mails');
       var newCount=0;
       filtered.forEach(function(it){
         if(!self.knownIds.has(it.id)){
@@ -2218,6 +2271,10 @@ var NX_INBOX={
         if(newUnread>0&&typeof showToast==='function'){
           showToast('\u2709\ufe0f '+newCount+' nueva'+(newCount!==1?'s':'')+' respuesta'+(newCount!==1?'s':'')+' B2B');
         }
+      }
+      // Aggiorna anche NX_PROV_INBOX con i provider mails
+      if(typeof NX_PROV_INBOX!=='undefined'){
+        NX_PROV_INBOX.processProviderMails(provFiltered);
       }
       return filtered;
     }).catch(function(err){
@@ -2306,6 +2363,146 @@ var NX_INBOX={
   }
 };
 // END NX_INBOX
+// ===========================================================================
+
+// ===========================================================================
+// NX_PROV_INBOX — gestione mail in arrivo dai Provider
+// Riusa il polling di NX_INBOX (smistamento dual). Storage e badge separati.
+// ===========================================================================
+var NX_PROV_INBOX={
+  readIds:null,
+  knownIds:null,
+  emails:[],
+  lastFetchAt:null,
+  STORAGE_PREFIX:'provInbox_',
+
+  init:function(){
+    try{
+      this.readIds=new Set(LS(this.STORAGE_PREFIX+'readIds',[]));
+      this.knownIds=new Set(LS(this.STORAGE_PREFIX+'knownIds',[]));
+      this.emails=LS(this.STORAGE_PREFIX+'cache',[]);
+    }catch(e){
+      console.warn('[NX_PROV_INBOX] init storage error:',e);
+      this.readIds=new Set();
+      this.knownIds=new Set();
+      this.emails=[];
+    }
+    this.refreshBadge();
+    console.log('[NX_PROV_INBOX] init OK — known:'+this.knownIds.size+' read:'+this.readIds.size+' cache:'+this.emails.length);
+  },
+
+  saveState:function(){
+    SS(this.STORAGE_PREFIX+'readIds',Array.from(this.readIds));
+    SS(this.STORAGE_PREFIX+'knownIds',Array.from(this.knownIds));
+    SS(this.STORAGE_PREFIX+'cache',this.emails);
+  },
+
+  // Whitelist provider emails (lowercase)
+  getProviderEmailSet:function(){
+    var s=new Set();
+    try{
+      if(typeof providers==='undefined'||!Array.isArray(providers))return s;
+      providers.forEach(function(p){
+        if(p&&p.email){
+          var e=String(p.email).toLowerCase().trim();
+          if(e.indexOf('@')>0)s.add(e);
+        }
+      });
+    }catch(e){console.warn('[NX_PROV_INBOX] getProviderEmailSet error:',e);}
+    return s;
+  },
+
+  // Chiamata da NX_INBOX.fetchInbox dopo aver smistato le mail provider
+  processProviderMails:function(items){
+    var self=this;
+    var newCount=0;
+    items.forEach(function(it){
+      if(!self.knownIds.has(it.id)){
+        self.knownIds.add(it.id);
+        newCount++;
+      }
+    });
+    self.emails=items;
+    self.lastFetchAt=new Date().toISOString();
+    self.saveState();
+    self.refreshBadge();
+    // Re-render modal se aperto
+    if(typeof provInboxRenderList==='function'&&document.getElementById('m-prov-inbox')&&document.getElementById('m-prov-inbox').classList.contains('on')){
+      provInboxRenderList();
+    }
+    if(newCount>0){
+      console.log('[NX_PROV_INBOX] '+newCount+' new Provider mail(s) — total cached: '+items.length);
+      var newUnread=items.filter(function(it){return!self.readIds.has(it.id);}).length;
+      if(newUnread>0&&typeof showToast==='function'){
+        showToast('\ud83d\udce6 '+newCount+' nueva'+(newCount!==1?'s':'')+' oferta'+(newCount!==1?'s':'')+' de Provider');
+      }
+    }
+    // Re-render lista providers se siamo in vista
+    try{
+      var provSec=document.getElementById('view-providers');
+      if(provSec&&provSec.classList.contains('on')&&typeof renderProv==='function'){
+        renderProv();
+      }
+    }catch(e){}
+  },
+
+  refreshBadge:function(){
+    try{
+      var unread=this.getUnreadCount();
+      // Sidebar badge (provider)
+      var el=document.getElementById('cnt-prov-inbox');
+      if(el){
+        if(unread>0){
+          el.textContent=unread>99?'99+':String(unread);
+          el.style.display='';
+        }else{
+          el.style.display='none';
+        }
+      }
+      console.log('[NX_PROV_INBOX] badge refresh — unread:'+unread+' total:'+this.emails.length);
+    }catch(e){console.warn('[NX_PROV_INBOX] refreshBadge error:',e);}
+  },
+  getUnreadCount:function(){
+    var self=this;
+    return this.emails.filter(function(it){return!self.readIds.has(it.id);}).length;
+  },
+
+  markRead:function(id){
+    if(!this.readIds.has(id)){
+      this.readIds.add(id);
+      this.saveState();
+      this.refreshBadge();
+      // Re-render lista providers se siamo in vista
+      try{
+        var provSec=document.getElementById('view-providers');
+        if(provSec&&provSec.classList.contains('on')&&typeof renderProv==='function'){
+          renderProv();
+        }
+      }catch(e){}
+    }
+  },
+  markAllRead:function(){
+    var self=this;
+    this.emails.forEach(function(it){self.readIds.add(it.id);});
+    this.saveState();
+    this.refreshBadge();
+    if(typeof renderProv==='function')renderProv();
+  },
+
+  // Match: dato un'email, ritorna il provider (o null)
+  matchProvider:function(email){
+    if(!email)return null;
+    email=String(email).toLowerCase().trim();
+    if(typeof providers==='undefined'||!Array.isArray(providers))return null;
+    for(var i=0;i<providers.length;i++){
+      if(providers[i].email&&String(providers[i].email).toLowerCase().trim()===email){
+        return providers[i];
+      }
+    }
+    return null;
+  }
+};
+// END NX_PROV_INBOX
 // ===========================================================================
 
 // -- STATE ----------------------------------------------------
@@ -6560,6 +6757,140 @@ function quickActionsHtml(phone,size){
     +' <span onclick="event.stopPropagation();openTelByPhone(\''+safePhone+'\')" title="Llamar" style="background:#3b82f6;'+btnBase+'">\ud83d\udcde</span>';
 }
 
+// -- PROV INBOX UI (NX_PROV_INBOX) ----------------------------------------
+// Filtro inbox provider per email (impostato quando si clicca su badge inline)
+var provInboxFilterEmail=null;
+function provInboxOpen(){
+  provInboxFilterEmail=null;
+  openM('m-prov-inbox');
+  provInboxRenderList();
+  // Refresh in background (riusa polling esistente NX_INBOX)
+  if(typeof NX_INBOX!=='undefined'&&NX_INBOX.fetchInbox)NX_INBOX.fetchInbox();
+}
+function provInboxClearFilter(){
+  provInboxFilterEmail=null;
+  provInboxRenderList();
+}
+function provInboxOpenForProvider(providerEmail){
+  if(!providerEmail)return;
+  provInboxFilterEmail=String(providerEmail).toLowerCase().trim();
+  openM('m-prov-inbox');
+  provInboxRenderList();
+  if(typeof NX_INBOX!=='undefined'&&NX_INBOX.fetchInbox)NX_INBOX.fetchInbox();
+}
+function provInboxRefresh(){
+  if(typeof NX_INBOX==='undefined')return;
+  var statusEl=document.getElementById('prov-inbox-status');
+  if(statusEl)statusEl.textContent='Buscando nuevas ofertas...';
+  NX_INBOX.fetchInbox().then(function(){provInboxRenderList();});
+}
+function provInboxMarkAllRead(){
+  if(typeof NX_PROV_INBOX==='undefined')return;
+  if(!NX_PROV_INBOX.emails.length)return;
+  NX_PROV_INBOX.markAllRead();
+  provInboxRenderList();
+  if(typeof showToast==='function')showToast('\u2713 Todas marcadas como le\u00eddas');
+}
+function provInboxMarkOneRead(id){
+  if(typeof NX_PROV_INBOX==='undefined')return;
+  NX_PROV_INBOX.markRead(id);
+  provInboxRenderList();
+}
+function provInboxGoToProvider(providerId){
+  closeM('m-prov-inbox');
+  if(typeof go==='function')go('providers');
+  setTimeout(function(){
+    if(typeof editProvider==='function')editProvider(providerId);
+  },200);
+}
+
+// Conta mail non lette di un singolo provider (per email)
+function provInboxUnreadByEmail(email){
+  if(!email||typeof NX_PROV_INBOX==='undefined')return 0;
+  email=String(email).toLowerCase().trim();
+  return NX_PROV_INBOX.emails.filter(function(it){
+    return it.from===email&&!NX_PROV_INBOX.readIds.has(it.id);
+  }).length;
+}
+// Helper HTML badge ⚠️N (rosso) accanto al nome provider
+function provInboxBadgeHtml(providerEmail){
+  var n=provInboxUnreadByEmail(providerEmail);
+  if(!n)return '';
+  var safeEmail=String(providerEmail).replace(/'/g,'\\\'');
+  return '<span onclick="event.stopPropagation();provInboxOpenForProvider(\''+safeEmail+'\')" '
+    +'title="'+n+' oferta'+(n!==1?'s':'')+' sin leer" '
+    +'style="display:inline-flex;align-items:center;gap:3px;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:6px;cursor:pointer;vertical-align:middle">'
+    +'\u26a0\ufe0f '+n+'</span>';
+}
+
+function provInboxRenderList(){
+  if(typeof NX_PROV_INBOX==='undefined')return;
+  var listEl=document.getElementById('prov-inbox-list');
+  var statusEl=document.getElementById('prov-inbox-status');
+  var metaEl=document.getElementById('prov-inbox-meta');
+  if(!listEl)return;
+  // Apply email filter
+  var emailsToShow=NX_PROV_INBOX.emails;
+  if(provInboxFilterEmail){
+    emailsToShow=NX_PROV_INBOX.emails.filter(function(it){return it.from===provInboxFilterEmail;});
+  }
+  // Status line
+  if(statusEl){
+    if(typeof NX_MS==='undefined'||!NX_MS.account){
+      statusEl.innerHTML='<span style="color:var(--orange)">\u26a0\ufe0f Microsoft no conectado</span>';
+    }else if(provInboxFilterEmail){
+      var unreadF=emailsToShow.filter(function(it){return!NX_PROV_INBOX.readIds.has(it.id);}).length;
+      statusEl.innerHTML='Filtrado: <strong>'+esc(provInboxFilterEmail)+'</strong> \u2014 '+unreadF+' sin leer / '+emailsToShow.length+' total <button onclick="provInboxClearFilter()" style="margin-left:8px;background:var(--bg3);border:1px solid var(--border);color:var(--t2);padding:1px 7px;border-radius:6px;font-size:10px;cursor:pointer">\u2715 Quitar filtro</button>';
+    }else{
+      var unread=NX_PROV_INBOX.getUnreadCount();
+      statusEl.textContent=unread+' sin leer / '+NX_PROV_INBOX.emails.length+' total';
+    }
+  }
+  if(metaEl){
+    if(NX_PROV_INBOX.lastFetchAt){
+      var d=new Date(NX_PROV_INBOX.lastFetchAt);
+      metaEl.textContent='Ultima actualizaci\u00f3n: '+d.toLocaleTimeString('es-ES');
+    }else{
+      metaEl.textContent='';
+    }
+  }
+  if(!emailsToShow.length){
+    listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">'
+      +'<div style="font-size:32px;margin-bottom:10px">\ud83d\udce6</div>'
+      +(provInboxFilterEmail?'Sin ofertas de '+esc(provInboxFilterEmail):'Sin ofertas de Provider en los \u00faltimos 30 d\u00edas.<br><span style="font-size:11px">Las ofertas aparecer\u00e1n autom\u00e1ticamente cuando un Provider te escriba.</span>')
+      +'</div>';
+    return;
+  }
+  listEl.innerHTML=emailsToShow.map(function(it){
+    var isRead=NX_PROV_INBOX.readIds.has(it.id);
+    var provider=NX_PROV_INBOX.matchProvider(it.from);
+    var providerBadge='';
+    if(provider){
+      providerBadge='<span style="background:rgba(245,158,11,.15);color:var(--orange);padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(provider.name||provider.company||'?')+(provider.company&&provider.name?' \u2022 '+esc(provider.company):'')+'</span>';
+    }
+    var d=new Date(it.receivedAt);
+    var dateStr=d.toLocaleDateString('es-ES',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+    var bg=isRead?'transparent':'rgba(245,158,11,.06)';
+    var dotColor=isRead?'var(--t3)':'var(--orange)';
+    return '<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid var(--border);background:'+bg+';align-items:flex-start">'
+      +'<div style="width:8px;height:8px;border-radius:50%;background:'+dotColor+';flex-shrink:0;margin-top:6px"></div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div class="fbet" style="margin-bottom:4px;gap:6px;flex-wrap:wrap">'
+          +'<div style="font-size:12px;font-weight:'+(isRead?'500':'700')+';color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">'+esc(it.fromName||it.from)+'</div>'
+          +'<div style="font-size:10px;color:var(--t3);flex-shrink:0">'+dateStr+'</div>'
+        +'</div>'
+        +(providerBadge?'<div style="margin-bottom:4px">'+providerBadge+'</div>':'<div style="margin-bottom:4px"><span style="font-size:10px;color:var(--t3)">'+esc(it.from)+'</span></div>')
+        +'<div style="font-size:12px;font-weight:'+(isRead?'400':'600')+';color:var(--t2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.subject)+'</div>'
+        +'<div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4;max-height:36px;overflow:hidden">'+esc((it.preview||'').slice(0,180))+'</div>'
+        +'<div class="fc g8" style="flex-wrap:wrap">'
+          +(isRead?'':'<button class="btn bs" onclick="provInboxMarkOneRead(\''+esc(it.id)+'\')" style="font-size:10px;padding:4px 8px">\u2713 Marcar le\u00eddo</button>')
+          +(provider?'<button class="btn bs" onclick="provInboxGoToProvider(\''+provider.id+'\')" style="font-size:10px;padding:4px 8px">\u2192 Ir al Provider</button>':'')
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
 // ===========================================================================
 // PROVIDERS MODULE — gestione fornitori (separato da Contactos B2B)
 // ===========================================================================
@@ -6655,7 +6986,7 @@ function renderProv(){
           return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
         }).join('')+'</div>';
       }
-      return '<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((p.name||p.company||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(p.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(p.company||'')+'</div></div></div><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></div>'+
+      return '<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((p.name||p.company||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(p.name||'')+provInboxBadgeHtml(p.email)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(p.company||'')+'</div></div></div><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></div>'+
       '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
         (p.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(p.country)+'</span>':'')+
         (p.providerType?ptBadge(p.providerType):'')+
@@ -6683,7 +7014,7 @@ function renderProv(){
         if(p.labels.length>3)lblsh+=' <span style="font-size:9px;color:var(--t4)">+'+(p.labels.length-3)+'</span>';
       }
       return '<tr>'+
-        '<td><strong>'+esc(p.name||'')+'</strong></td>'+
+        '<td><strong>'+esc(p.name||'')+'</strong>'+provInboxBadgeHtml(p.email)+'</td>'+
         '<td>'+esc(p.company||'')+'</td>'+
         '<td>'+esc(p.country||'')+'</td>'+
         '<td>'+(p.providerType?ptBadge(p.providerType):'--')+'</td>'+
@@ -6713,7 +7044,7 @@ function renderProv(){
         '<div style="font-size:9px;color:var(--t4);margin-bottom:8px;line-height:1.3">'+esc(PROV_TAG_DESC[tg]||'')+'</div>'+
         inCol.map(function(p){
           return '<div draggable="true" ondragstart="provKanbanDrag(event,\''+p.id+'\')" onclick="editProvider(\''+p.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab;position:relative">'+
-            '<div style="font-size:12px;font-weight:600">'+esc(p.name||'')+'</div>'+
+            '<div style="font-size:12px;font-weight:600">'+esc(p.name||'')+provInboxBadgeHtml(p.email)+'</div>'+
             '<div style="font-size:10px;color:var(--t3)">'+esc(p.company||'')+'</div>'+
             '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(p.country||'')+(p.providerType?' \u00B7 '+esc(p.providerType):'')+'</div>'+
             (p.brands?'<div style="font-size:9px;color:var(--acc);margin-top:3px">&#128663; '+esc(p.brands.slice(0,30))+'</div>':'')+
@@ -6757,6 +7088,7 @@ function openNewProvider(){
   n('pv-labels').value='';
   n('m-provider').removeAttribute('data-edit-id');
   if(n('pv-tasks-section'))n('pv-tasks-section').style.display='none';
+  if(n('pv-stock-section'))n('pv-stock-section').style.display='none';
   // Reset sezione Pegar info: chiusa, textarea vuota
   if(n('pp-collapse'))n('pp-collapse').style.display='none';
   if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
@@ -6787,6 +7119,8 @@ function editProvider(id){
     n('pv-tasks-section').style.display='';
     renderProvTasksList(p);
   }
+  // Show "Enviar a Stock Vivo" button (only in editing)
+  if(n('pv-stock-section'))n('pv-stock-section').style.display='';
   // Reset sezione Pegar info: chiusa, textarea vuota
   if(n('pp-collapse'))n('pp-collapse').style.display='none';
   if(n('pp-toggle-icon'))n('pp-toggle-icon').innerHTML='\u25BC';
@@ -7267,6 +7601,326 @@ function mapRole(text){
   return 'Otro';
 }
 
+// =====================================================================
+// PROVIDER -> STOCK VIVO
+// Click "Enviar a Stock Vivo" en modal Provider → mostra mail del provider
+// → seleziona quali processare → AI Haiku estrae auto → anti-duplicati → stock
+// =====================================================================
+var _provStockCurrentProvider=null; // provider corrente
+var _provStockMails=[];              // mails caricate
+var _provStockSelected=new Set();    // ID mail selezionate
+
+// Apre il modal di selezione mail per il provider in editing
+function provOpenSendToStock(){
+  var pid=n('m-provider').getAttribute('data-edit-id');
+  if(!pid){alert('Guarda primero el provider antes de procesar emails.');return;}
+  var p=providers.find(function(x){return String(x.id)===String(pid);});
+  if(!p){alert('Provider no encontrado.');return;}
+  if(!p.email){alert('Este provider no tiene email configurado.');return;}
+  _provStockCurrentProvider=p;
+  _provStockSelected=new Set();
+  // Filtra mail di questo provider da NX_PROV_INBOX
+  if(typeof NX_PROV_INBOX==='undefined'||!NX_PROV_INBOX.emails){
+    alert('M\u00f3dulo de emails Provider no disponible.');return;
+  }
+  var pemail=String(p.email).toLowerCase().trim();
+  _provStockMails=NX_PROV_INBOX.emails.filter(function(m){
+    return m.from&&String(m.from).toLowerCase().trim()===pemail;
+  }).sort(function(a,b){
+    return new Date(b.receivedAt||0)-new Date(a.receivedAt||0);
+  });
+  if(_provStockMails.length===0){
+    alert('No hay emails recibidos de '+p.email+'.\nEspera que llegue al menos un email antes de procesar.');return;
+  }
+  // Default: tutte le non lette selezionate
+  _provStockMails.forEach(function(m){
+    if(!NX_PROV_INBOX.readIds.has(m.id))_provStockSelected.add(m.id);
+  });
+  n('ps-status').textContent='Provider: '+esc(p.name||p.company||'?')+' \u2014 '+_provStockMails.length+' email'+(_provStockMails.length!==1?'s':'')+' encontrado'+(_provStockMails.length!==1?'s':'');
+  n('ps-progress').style.display='none';
+  n('ps-progress').innerHTML='';
+  n('ps-process-btn').disabled=false;
+  provStockRenderList();
+  openM('m-prov-stock');
+}
+
+function provStockRenderList(){
+  var html='';
+  if(!_provStockMails.length){
+    html='<div style="text-align:center;color:var(--t3);padding:30px">No hay emails de este provider</div>';
+  }else{
+    _provStockMails.forEach(function(m){
+      var isRead=NX_PROV_INBOX.readIds.has(m.id);
+      var isSel=_provStockSelected.has(m.id);
+      var dt=m.receivedAt?new Date(m.receivedAt):null;
+      var dateStr=dt?(dt.getDate().toString().padStart(2,'0')+'/'+(dt.getMonth()+1).toString().padStart(2,'0')+' '+dt.getHours().toString().padStart(2,'0')+':'+dt.getMinutes().toString().padStart(2,'0')):'';
+      var safeId=String(m.id).replace(/'/g,'\\\'');
+      html+='<div onclick="provStockToggle(\''+safeId+'\')" style="cursor:pointer;padding:10px;margin-bottom:6px;background:'+(isSel?'rgba(16,185,129,.12)':'var(--bg2)')+';border:1px solid '+(isSel?'#10b981':'var(--border)')+';border-radius:8px;display:flex;align-items:center;gap:10px">'
+        +'<div style="width:20px;height:20px;border:2px solid '+(isSel?'#10b981':'var(--t3)')+';border-radius:5px;background:'+(isSel?'#10b981':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:13px;font-weight:700">'+(isSel?'\u2713':'')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:12px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(isRead?'':'<span style="color:var(--red);margin-right:4px">\u25cf</span>')+esc(m.subject||'(sin asunto)')+'</div>'
+        +'<div style="font-size:10px;color:var(--t3);margin-top:3px">'+esc(dateStr)+' \u2014 '+esc((m.preview||'').slice(0,80))+(m.preview&&m.preview.length>80?'...':'')+'</div>'
+        +'</div>'
+        +'</div>';
+    });
+  }
+  n('ps-list').innerHTML=html;
+  provStockUpdateCount();
+}
+
+function provStockToggle(id){
+  if(_provStockSelected.has(id))_provStockSelected.delete(id);
+  else _provStockSelected.add(id);
+  provStockRenderList();
+}
+function provStockSelectAll(yes){
+  _provStockSelected=new Set();
+  if(yes)_provStockMails.forEach(function(m){_provStockSelected.add(m.id);});
+  provStockRenderList();
+}
+function provStockUpdateCount(){
+  var c=_provStockSelected.size;
+  n('ps-count').textContent=c+' email'+(c!==1?'s':'')+' seleccionado'+(c!==1?'s':'');
+  n('ps-process-btn').disabled=c===0;
+}
+
+// Process mail seleccionate: scarica body+allegati, manda a AI, estrae auto, anti-duplica, push to stock
+function provStockProcessSelected(){
+  if(_provStockSelected.size===0){alert('Selecciona al menos un email.');return;}
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){alert('Microsoft no est\u00e1 conectado.');return;}
+  if(!getKey()){alert('Configura tu API key de Anthropic en Configuracion.');return;}
+
+  var ids=Array.from(_provStockSelected);
+  var total=ids.length;
+  var processed=0;
+  var totalAdded=0;
+  var totalDup=0;
+  var totalSkipped=0;
+  var errors=[];
+  n('ps-process-btn').disabled=true;
+  n('ps-progress').style.display='block';
+  n('ps-progress').innerHTML='\u23f3 Iniciando procesamiento de '+total+' email'+(total!==1?'s':'')+'...';
+
+  function next(){
+    if(processed>=total){
+      // FINE
+      var html='<div style="font-size:12px;line-height:1.7"><strong>\u2705 Procesamiento completo:</strong><br>'
+        +'\u2022 <strong>'+totalAdded+'</strong> nuevos veh\u00edculos a\u00f1adidos al Stock<br>'
+        +'\u2022 <strong>'+totalDup+'</strong> duplicados omitidos<br>';
+      if(totalSkipped>0)html+='\u2022 <strong>'+totalSkipped+'</strong> emails sin datos extra\u00edbles<br>';
+      if(errors.length>0)html+='\u2022 <strong style="color:var(--red)">'+errors.length+' error(es):</strong><br>'+errors.map(function(e){return '&nbsp;&nbsp;- '+esc(e);}).join('<br>');
+      html+='</div>';
+      n('ps-progress').innerHTML=html;
+      n('ps-process-btn').disabled=false;
+      n('ps-process-btn').textContent='\u2713 Cerrar';
+      n('ps-process-btn').onclick=function(){closeM('m-prov-stock');};
+      // Refresh stock view se aperta
+      try{if(typeof renderStock==='function')renderStock();}catch(e){}
+      // Toast finale
+      if(typeof showToast==='function'){
+        showToast('\u2713 '+totalAdded+' veh\u00edculos a\u00f1adidos, '+totalDup+' duplicados');
+      }
+      return;
+    }
+    var mid=ids[processed];
+    var pct=Math.round(processed/total*100);
+    n('ps-progress').innerHTML='\u23f3 Procesando email '+(processed+1)+'/'+total+' ('+pct+'%)...<br><small style="color:var(--t3)">Descargando contenido y anexos desde Microsoft Graph...</small>';
+    provStockProcessOne(mid).then(function(result){
+      totalAdded+=result.added||0;
+      totalDup+=result.dup||0;
+      if(result.skipped)totalSkipped++;
+      // Marca mail come letta
+      try{if(typeof NX_PROV_INBOX!=='undefined'&&NX_PROV_INBOX.markRead)NX_PROV_INBOX.markRead(mid);}catch(e){}
+      processed++;
+      next();
+    }).catch(function(err){
+      errors.push('Email '+(processed+1)+': '+(err.message||err));
+      processed++;
+      next();
+    });
+  }
+  next();
+}
+
+// Processa una singola mail: scarica body completo + allegati, manda ad AI, ritorna {added,dup,skipped}
+function provStockProcessOne(mailId){
+  return new Promise(function(resolve,reject){
+    NX_MS.getToken(function(token,terr){
+      if(terr||!token){reject(new Error('No token: '+terr));return;}
+      // 1. Scarica body completo
+      var urlMsg='https://graph.microsoft.com/v1.0/me/messages/'+encodeURIComponent(mailId)+'?$select=subject,body,from,receivedDateTime,hasAttachments';
+      fetch(urlMsg,{headers:{'Authorization':'Bearer '+token}}).then(function(r){
+        if(!r.ok)throw new Error('Graph body HTTP '+r.status);
+        return r.json();
+      }).then(function(msg){
+        var bodyText='';
+        if(msg.body){
+          if(msg.body.contentType==='html'){
+            // Strip HTML rapido
+            bodyText=String(msg.body.content||'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
+          }else{
+            bodyText=String(msg.body.content||'').trim();
+          }
+        }
+        // 2. Scarica allegati se ce ne sono
+        if(msg.hasAttachments){
+          var urlAtt='https://graph.microsoft.com/v1.0/me/messages/'+encodeURIComponent(mailId)+'/attachments';
+          return fetch(urlAtt,{headers:{'Authorization':'Bearer '+token}}).then(function(r){
+            if(!r.ok)throw new Error('Graph attachments HTTP '+r.status);
+            return r.json();
+          }).then(function(attData){
+            var atts=(attData.value||[]).filter(function(a){return a.contentBytes;}); // solo file con bytes
+            return {body:bodyText,subject:msg.subject||'',attachments:atts};
+          });
+        }else{
+          return {body:bodyText,subject:msg.subject||'',attachments:[]};
+        }
+      }).then(function(mailData){
+        // 3. Manda tutto ad AI per estrarre lista auto
+        return provStockExtractCarsFromMail(mailData);
+      }).then(function(cars){
+        if(!cars||!cars.length){resolve({added:0,dup:0,skipped:true});return;}
+        // 4. Anti-duplicati e push a stock (uso struct stock reale: brand/model/version/reg/kms/colors/damage/units/equip/buy)
+        var added=0,dup=0;
+        var supplierName=_provStockCurrentProvider?(_provStockCurrentProvider.company||_provStockCurrentProvider.name||''):'';
+        cars.forEach(function(car){
+          var key=provStockMakeDupKey(car);
+          var exists=stock.some(function(s){return provStockMakeDupKey(s)===key;});
+          if(exists){dup++;return;}
+          // Usa la stessa funzione addStkItem se esiste, altrimenti push manuale
+          var item={
+            brand:String(car.marca||car.brand||'').toUpperCase().trim(),
+            model:String(car.modelo||car.model||'').toUpperCase().trim(),
+            version:String(car.version||'').trim(),
+            reg:String(car.primer||car.registration||car.reg||'').trim(),
+            units:String(car.uds||car.unidades||car.units||'1').trim(),
+            kms:String(car.kms||'').trim(),
+            colors:String(car.colores||car.colors||'').trim(),
+            damage:String(car.danos||car.damages||car.damage||'').trim(),
+            equip:String(car.equipamiento||car.equipment||car.equip||'').trim(),
+            buy:String(car.precio||car.price||car.buy||car.pcompra||'').trim(),
+            sell:'',
+            supplier:supplierName,
+            status:'Stock',
+            pickup:'--',
+            notes:'Importado de email Provider',
+            sourceProviderId:_provStockCurrentProvider?_provStockCurrentProvider.id:null,
+            sourceMailId:mailId,
+            addedAt:new Date().toISOString()
+          };
+          if(typeof addStkItem==='function'){addStkItem(item);}
+          else{
+            item.id='s'+Date.now()+'_'+Math.floor(Math.random()*9999);
+            item.internalId='DMCAR-'+String(stkCnt++).padStart(4,'0');
+            item.date=(typeof today==='function')?today():new Date().toLocaleDateString('es-ES');
+            stock.push(item);
+            SS('stock',stock);SS('stkCnt',stkCnt);
+          }
+          added++;
+        });
+        resolve({added:added,dup:dup,skipped:false});
+      }).catch(reject);
+    });
+  });
+}
+
+// Chiave anti-duplicato: normalizzata. Usa sia "marca/modelo/..." (input AI) sia "brand/model/..." (campi stock)
+function provStockMakeDupKey(car){
+  function norm(s){return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/[^\w]/g,'');}
+  var brand=car.marca||car.brand||'';
+  var model=car.modelo||car.model||'';
+  var version=car.version||'';
+  var reg=car.primer||car.registration||car.reg||'';
+  var kms=car.kms||'';
+  return [norm(brand),norm(model),norm(version),norm(reg),norm(kms)].join('|');
+}
+
+// Manda mail (body+attachments) ad AI Haiku per estrarre lista auto
+function provStockExtractCarsFromMail(mailData){
+  return new Promise(function(resolve,reject){
+    var content=[];
+    // Aggiungi prima gli allegati come document/image
+    (mailData.attachments||[]).forEach(function(a){
+      var name=(a.name||'').toLowerCase();
+      var ct=(a.contentType||'').toLowerCase();
+      var b64=a.contentBytes;
+      if(!b64)return;
+      // Image
+      if(ct.indexOf('image/')===0||/\.(jpe?g|png|gif|webp)$/i.test(name)){
+        var mt=ct.indexOf('image/')===0?ct:(name.endsWith('.png')?'image/png':'image/jpeg');
+        content.push({type:'image',source:{type:'base64',media_type:mt,data:b64}});
+      }
+      // PDF
+      else if(ct==='application/pdf'||/\.pdf$/i.test(name)){
+        content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
+      }
+      // DOCX
+      else if(/\.docx$/i.test(name)||ct.indexOf('wordprocessingml')>=0){
+        content.push({type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',data:b64}});
+      }
+      // Excel: lo convertiamo a CSV testuale (Haiku non legge xlsx nativamente)
+      else if(/\.(xlsx|xls)$/i.test(name)){
+        try{
+          if(window.XLSX){
+            var bin=atob(b64);
+            var arr=new Uint8Array(bin.length);
+            for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+            var wb=window.XLSX.read(arr,{type:'array'});
+            var csv='';
+            wb.SheetNames.forEach(function(sn){csv+='--- Sheet: '+sn+' ---\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\n\n';});
+            // Aggiunge come testo
+            content.push({type:'text',text:'[ATTACHMENT EXCEL: '+a.name+']\n'+csv.slice(0,50000)});
+          }
+        }catch(e){console.warn('XLSX parse fail:',e);}
+      }
+      // EML
+      else if(/\.eml$/i.test(name)){
+        try{
+          var emlText=atob(b64);
+          if(typeof parseEml==='function')emlText=parseEml(emlText);
+          content.push({type:'text',text:'[ATTACHMENT EML: '+a.name+']\n'+emlText.slice(0,50000)});
+        }catch(e){}
+      }
+      // Other: skip
+    });
+    // Aggiungi corpo email
+    var prompt='Extrae TODOS los veh\u00edculos disponibles que se mencionan en este email del proveedor. '
+      +'Combina informaci\u00f3n del cuerpo del email Y de los anexos.\n\n'
+      +'Cuerpo del email:\n"""\n'+(mailData.body||'').slice(0,30000)+'\n"""\n\n'
+      +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). Cada veh\u00edculo:\n'
+      +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"2024 / KM 0 / Al pagamento","uds":"1","kms":"15000","colores":"Negro, Blanco","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28500 \u20ac","pais":"Espa\u00f1a"}\n\n'
+      +'Reglas:\n'
+      +'- "primer" es la fecha 1\u00aa matriculaci\u00f3n (formato MM/YYYY) o "Km 0" o "Al pagamento" (nuevo).\n'
+      +'- "kms" solo n\u00famero, sin "km".\n'
+      +'- "precio" formato "X.XXX \u20ac" o "X,XXX \u20ac".\n'
+      +'- Si una info no est\u00e1 disponible, deja el campo vac\u00edo "".\n'
+      +'- Si el email no contiene veh\u00edculos para vender, devuelve array vac\u00edo: [].\n'
+      +'- Si hay m\u00faltiples versiones del mismo modelo, listalas como entradas separadas.\n'
+      +'\nRESPONDE SOLO EL ARRAY JSON, NADA M\u00c1S.';
+    content.push({type:'text',text:prompt});
+
+    callAPIbody({
+      model:'claude-haiku-4-5-20251001',
+      max_tokens:4000,
+      messages:[{role:'user',content:content}]
+    },function(resp,err){
+      if(err){reject(new Error(err));return;}
+      // Parse JSON
+      var txt=String(resp||'').trim();
+      // Rimuovi eventuali markdown fences
+      txt=txt.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+      // Cerca primo [ e ultimo ]
+      var i1=txt.indexOf('['),i2=txt.lastIndexOf(']');
+      if(i1<0||i2<0||i2<=i1){resolve([]);return;}
+      try{
+        var arr=JSON.parse(txt.slice(i1,i2+1));
+        if(!Array.isArray(arr)){resolve([]);return;}
+        resolve(arr);
+      }catch(e){console.warn('AI returned invalid JSON:',txt.slice(0,200));resolve([]);}
+    });
+  });
+}
+
 // END PROVIDERS MODULE
 // ===========================================================================
 
@@ -7310,6 +7964,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
   setTimeout(function(){NX_MS.init();},800);
   // NEXO Inbox (B2B reply notifications) — dopo NX_MS
   setTimeout(function(){if(typeof NX_INBOX!=='undefined')NX_INBOX.init();},2000);
+  // NEXO Provider Inbox (Provider offers) — anche questo post NX_MS
+  setTimeout(function(){if(typeof NX_PROV_INBOX!=='undefined')NX_PROV_INBOX.init();},2100);
 })();
 
 </script>
