@@ -439,19 +439,14 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bp" onclick="contView('cards')" id="cv-cards" style="font-size:11px">&#128196; Cards</button>
           <button class="btn bs" onclick="contView('list')" id="cv-list" style="font-size:11px">&#128203; Lista</button>
           <button class="btn bs" onclick="contView('kanban')" id="cv-kanban" style="font-size:11px">&#128301; Kanban</button>
-          <button class="btn bp" onclick="openM('m-contact')">+ Contacto</button>
+          <button class="btn bs" onclick="openLabelsManagerStandalone()" style="font-size:11px">&#127991; Etiquetas</button>
+          <button class="btn bp" onclick="openNewContact()">+ Contacto</button>
         </div>
       </div>
       <!-- Filters row -->
       <div class="card mb10" style="padding:10px">
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
           <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="f-cont-q" placeholder="Nombre, empresa, email..." oninput="renderCont()"></div>
-          <div><label style="font-size:10px;color:var(--t3)">Mi empresa</label>
-            <select id="f-cont-co" onchange="renderCont()">
-              <option value="">Todas</option>
-              <option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option>
-            </select>
-          </div>
           <div><label style="font-size:10px;color:var(--t3)">Pais</label>
             <select id="f-cont-country" onchange="renderCont()">
               <option value="">Todos</option>
@@ -495,7 +490,7 @@ En que te puedo ayudar hoy?</div></div>
           <table>
             <thead><tr>
               <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tipo</th><th>Rol</th><th>Tel</th><th>Email</th>
-              <th>Mi Empresa</th><th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
+              <th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
               <th style="width:140px">Acciones</th>
             </tr></thead>
             <tbody id="cont-list-body"></tbody>
@@ -1112,14 +1107,38 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
-    <div class="g2 mb10"><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div></div>
-    <div class="g2 mb10"><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div><div><label>Etiquetas (separadas por coma)</label><input type="text" id="cn-labels" placeholder="audi, q3, usado"></div></div>
+    <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div></div>
+    <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
     <button class="btn bp" style="width:100%" onclick="saveCont()">Guardar</button>
   </div>
 </div>
 
-<!-- LEAD -->
+<!-- LABELS MANAGER MODAL -->
+<div class="ovl" id="m-labels-manager">
+  <div class="modal" style="max-width:600px">
+    <div class="fbet mb14"><div class="mt" id="lm-title">Gestor de Etiquetas</div><button class="btn bg" onclick="closeM('m-labels-manager')" style="padding:5px 10px">X</button></div>
+    <div class="ss mb10" id="lm-subtitle">Crea, edita y asigna etiquetas a este contacto</div>
+    <!-- Create new label -->
+    <div class="card mb10" style="padding:10px">
+      <label style="font-size:11px;font-weight:600;color:var(--t2)">Crear nueva etiqueta</label>
+      <div class="fc g8 mt6"><input type="text" id="lm-new-input" placeholder="ej: audi, vip, urgente..." onkeypress="if(event.key==='Enter')createNewLabel()"><button class="btn bp" onclick="createNewLabel()" style="white-space:nowrap">+ Crear</button></div>
+      <div style="font-size:10px;color:var(--t3);margin-top:4px">Las etiquetas se normalizan automaticamente (minusculas, sin acentos)</div>
+    </div>
+    <!-- Label cloud -->
+    <div class="card" style="padding:10px;max-height:340px;overflow-y:auto">
+      <div class="fbet mb8"><label style="font-size:11px;font-weight:600;color:var(--t2)">Etiquetas disponibles</label><span id="lm-stats" style="font-size:10px;color:var(--t3)"></span></div>
+      <div id="lm-cloud" style="display:flex;flex-wrap:wrap;gap:6px;min-height:60px"></div>
+      <div id="lm-empty" style="color:var(--t3);font-size:11px;text-align:center;padding:20px;display:none">No hay etiquetas todavia. Crea una arriba.</div>
+    </div>
+    <div class="fbet mt14">
+      <button class="btn bg" onclick="closeM('m-labels-manager')" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="saveLabelsToContact()" id="lm-save-btn" style="font-size:12px">Guardar asignacion</button>
+    </div>
+  </div>
+</div>
+
+<!-- LABELS LIST PAGE (accessible from sidebar later, for now via Labels Manager) -->
 <div class="ovl" id="m-equip">
   <div class="modal" style="max-width:480px">
     <div class="fbet mb12"><div class="mt" style="margin:0">Equipamiento</div><button class="btn bg" id="btn-eq-close" style="padding:5px 10px">X</button></div>
@@ -1820,7 +1839,6 @@ function promoteLeadToB2B(leadId,silent){
     company:l.company||'',
     country:l.country||'',
     role:'Comprador',
-    myCompany:'DMCAR GROUP',
     clientType:'',
     phone:l.phone||'',
     email:l.email||'',
@@ -4046,7 +4064,6 @@ function contView(mode){
 }
 
 function renderCont(){
-  var filter=n('f-cont-co')?n('f-cont-co').value:'';
   var q=(n('f-cont-q')&&n('f-cont-q').value||'').toLowerCase();
   var ctryFilter=n('f-cont-country')&&n('f-cont-country').value||'';
   var typeFilter=n('f-cont-ctype')&&n('f-cont-ctype').value||'';
@@ -4064,7 +4081,6 @@ function renderCont(){
   }
 
   var list=contacts.filter(function(c){
-    if(filter&&c.myCompany!==filter) return false;
     if(q&&!((c.name||'').toLowerCase().indexOf(q)>=0||(c.company||'').toLowerCase().indexOf(q)>=0||(c.email||'').toLowerCase().indexOf(q)>=0)) return false;
     if(ctryFilter&&(c.country||'')!==ctryFilter) return false;
     if(typeFilter&&(c.clientType||'')!==typeFilter) return false;
@@ -4102,7 +4118,6 @@ function renderCont(){
         (c.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(c.country)+'</span>':'')+
         (c.role?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span>':'')+
         (c.clientType?ctBadge(c.clientType):'')+
-        (c.myCompany?'<span class="pill">'+esc(c.myCompany)+'</span>':'')+
       '</div>'+
       labelsHtml+
       (c.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>':'')+
@@ -4131,7 +4146,6 @@ function renderCont(){
         '<td>'+esc(c.role||'')+'</td>'+
         '<td style="font-family:monospace;font-size:11px">'+esc(c.phone||'')+'</td>'+
         '<td style="font-size:11px">'+esc(c.email||'')+'</td>'+
-        '<td><span class="pill">'+esc(c.myCompany||'')+'</span></td>'+
         '<td style="max-width:160px;line-height:1.6">'+lblsh+'</td>'+
         '<td><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></td>'+
         '<td style="font-size:10px;color:var(--t3)">'+fmtD(c.lastContact||'')+'</td>'+
@@ -4177,6 +4191,17 @@ function contKanbanDrop(e,newTag){
 }
 
 // Edit / Delete contact
+function openNewContact(){
+  // Reset all fields for new contact
+  ['cn-name','cn-co','cn-country','cn-phone','cn-email','cn-notes','cn-labels'].forEach(function(id){if(n(id))n(id).value='';});
+  if(n('cn-role'))n('cn-role').value='Comprador';
+  if(n('cn-ctype'))n('cn-ctype').value='';
+  if(n('cn-tag'))n('cn-tag').value='reg';
+  n('m-contact').removeAttribute('data-edit-id');
+  if(typeof renderContactLabelsDisplay==='function')renderContactLabelsDisplay();
+  openM('m-contact');
+}
+
 function editContact(id){
   var c=contacts.find(function(x){return String(x.id)===String(id);});
   if(!c)return;
@@ -4184,15 +4209,37 @@ function editContact(id){
   n('cn-co').value=c.company||'';
   n('cn-country').value=c.country||'';
   n('cn-role').value=c.role||'Comprador';
-  n('cn-myco').value=c.myCompany||'DMCAR GROUP';
   if(n('cn-ctype'))n('cn-ctype').value=c.clientType||'';
   n('cn-phone').value=c.phone||'';
   if(n('cn-email'))n('cn-email').value=c.email||'';
   n('cn-notes').value=c.notes||'';
   n('cn-tag').value=c.tag||'reg';
-  if(n('cn-labels'))n('cn-labels').value=(c.labels||[]).join(', ');
+  if(n('cn-labels'))n('cn-labels').value=(c.labels||[]).join(',');
+  renderContactLabelsDisplay();
   n('m-contact').setAttribute('data-edit-id',id);
   openM('m-contact');
+}
+
+// Render labels in contact modal
+function renderContactLabelsDisplay(){
+  var box=n('cn-labels-display');var hidden=n('cn-labels');
+  if(!box||!hidden)return;
+  var arr=hidden.value?hidden.value.split(',').filter(function(s){return s.trim();}):[];
+  if(!arr.length){
+    box.innerHTML='<span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span>';
+    return;
+  }
+  box.innerHTML=arr.map(function(t){
+    var col=labelColor(t.trim());
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 8px;border-radius:5px;font-size:10px;font-weight:600;display:inline-flex;align-items:center;gap:4px">'+esc(t.trim())+'<span onclick="event.stopPropagation();removeLabelFromContact(\''+esc(t.trim())+'\')" style="cursor:pointer;margin-left:2px;font-weight:bold;opacity:.6">x</span></span>';
+  }).join('');
+}
+
+function removeLabelFromContact(t){
+  var hidden=n('cn-labels');if(!hidden)return;
+  var arr=hidden.value?hidden.value.split(',').filter(function(s){return s.trim()&&s.trim()!==t;}):[];
+  hidden.value=arr.join(',');
+  renderContactLabelsDisplay();
 }
 function delContact(id){
   if(!confirm('Eliminar este contacto B2B?'))return;
@@ -4200,7 +4247,144 @@ function delContact(id){
   SS('contacts',contacts);renderCont();renderDash();
 }
 
-// Labels filter for contacts
+// ========== LABELS MANAGER (B2B) ==========
+// Stores all known labels (also persisted to localStorage so user-created ones survive)
+var labelsLibrary=null;
+function getLabelsLibrary(){
+  if(!labelsLibrary){
+    var stored=LS('labelsLibrary',null);
+    labelsLibrary=stored?stored:[];
+  }
+  // Merge: ensure labels used in contacts and leads are included
+  var s=new Set(labelsLibrary);
+  contacts.forEach(function(c){(c.labels||[]).forEach(function(t){s.add(t);});});
+  leads.forEach(function(l){(l.labels||[]).forEach(function(t){s.add(t);});});
+  labelsLibrary=Array.from(s).sort();
+  return labelsLibrary;
+}
+function saveLabelsLibrary(){SS('labelsLibrary',labelsLibrary);}
+
+// Open the labels manager from the contact modal context (assigns to current contact)
+function openLabelsManagerForContact(){
+  // Initialize selection from hidden field
+  var hidden=n('cn-labels');
+  var current=hidden&&hidden.value?hidden.value.split(',').filter(function(s){return s.trim();}):[];
+  contactLabelsSel=new Set(current);
+  n('m-labels-manager').setAttribute('data-mode','contact');
+  if(n('lm-title'))n('lm-title').textContent='Etiquetas del contacto';
+  if(n('lm-subtitle'))n('lm-subtitle').textContent='Crea, edita y asigna etiquetas a este contacto. Click para asignar/quitar.';
+  if(n('lm-save-btn'))n('lm-save-btn').style.display='';
+  renderLabelsManagerCloud();
+  openM('m-labels-manager');
+}
+
+// Open in standalone mode (just manage labels, no assignment)
+function openLabelsManagerStandalone(){
+  contactLabelsSel=new Set();
+  n('m-labels-manager').setAttribute('data-mode','manage');
+  if(n('lm-title'))n('lm-title').textContent='Gestor de Etiquetas';
+  if(n('lm-subtitle'))n('lm-subtitle').textContent='Crear, editar y eliminar etiquetas del sistema.';
+  if(n('lm-save-btn'))n('lm-save-btn').style.display='none';
+  renderLabelsManagerCloud();
+  openM('m-labels-manager');
+}
+
+var contactLabelsSel=new Set();
+
+function renderLabelsManagerCloud(){
+  getLabelsLibrary();
+  var cloud=n('lm-cloud');var stats=n('lm-stats');var empty=n('lm-empty');
+  if(!cloud)return;
+  if(!labelsLibrary.length){
+    cloud.innerHTML='';if(empty)empty.style.display='';
+    if(stats)stats.textContent='0 etiquetas';
+    return;
+  }
+  if(empty)empty.style.display='none';
+  var mode=n('m-labels-manager').getAttribute('data-mode');
+  var html=labelsLibrary.map(function(t){
+    var col=labelColor(t);
+    // Count usage
+    var nC=contacts.filter(function(c){return (c.labels||[]).indexOf(t)>=0;}).length;
+    var nL=leads.filter(function(l){return (l.labels||[]).indexOf(t)>=0;}).length;
+    var sel=contactLabelsSel.has(t);
+    if(mode==='contact'){
+      // Click to toggle selection
+      return '<div onclick="toggleContactLabel(\''+esc(t)+'\')" style="display:inline-flex;align-items:center;gap:4px;background:'+(sel?col.bg:'var(--bg2)')+';color:'+(sel?col.fg:'var(--t2)')+';border:2px solid '+(sel?col.fg:'var(--border)')+';padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">'+
+        (sel?'\u2713 ':'')+esc(t)+
+        '<span style="font-size:9px;opacity:.6;margin-left:3px">('+(nC+nL)+')</span>'+
+        '<span onclick="event.stopPropagation();deleteLabel(\''+esc(t)+'\')" style="margin-left:4px;cursor:pointer;font-weight:bold;color:var(--red);font-size:13px;line-height:1" title="Eliminar etiqueta">&times;</span>'+
+      '</div>';
+    }else{
+      // Standalone manage mode: just show with delete
+      return '<div style="display:inline-flex;align-items:center;gap:4px;background:'+col.bg+';color:'+col.fg+';padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600">'+
+        esc(t)+
+        '<span style="font-size:9px;opacity:.6;margin-left:3px">('+(nC+nL)+')</span>'+
+        '<span onclick="deleteLabel(\''+esc(t)+'\')" style="margin-left:4px;cursor:pointer;font-weight:bold;font-size:13px;line-height:1" title="Eliminar">&times;</span>'+
+      '</div>';
+    }
+  }).join('');
+  cloud.innerHTML=html;
+  if(stats)stats.textContent=labelsLibrary.length+' etiquetas \u00B7 '+contactLabelsSel.size+' seleccionadas';
+}
+
+function toggleContactLabel(t){
+  if(contactLabelsSel.has(t))contactLabelsSel.delete(t);
+  else contactLabelsSel.add(t);
+  renderLabelsManagerCloud();
+}
+
+function createNewLabel(){
+  var inp=n('lm-new-input');if(!inp)return;
+  var raw=inp.value.trim();
+  if(!raw){alert('Introduce un nombre para la etiqueta');return;}
+  var norm=normalizeLabel(raw);
+  if(!norm){alert('Etiqueta no valida');return;}
+  getLabelsLibrary();
+  if(labelsLibrary.indexOf(norm)>=0){
+    showToast('La etiqueta "'+norm+'" ya existe');
+  }else{
+    labelsLibrary.push(norm);
+    labelsLibrary.sort();
+    saveLabelsLibrary();
+    showToast('\u2713 Etiqueta creada: '+norm);
+  }
+  // Auto-select if in contact mode
+  var mode=n('m-labels-manager').getAttribute('data-mode');
+  if(mode==='contact')contactLabelsSel.add(norm);
+  inp.value='';
+  renderLabelsManagerCloud();
+}
+
+function deleteLabel(t){
+  if(!confirm('Eliminar etiqueta "'+t+'"? Se quitara de todos los contactos y leads.'))return;
+  // Remove from library
+  getLabelsLibrary();
+  labelsLibrary=labelsLibrary.filter(function(x){return x!==t;});
+  saveLabelsLibrary();
+  // Remove from all contacts
+  contacts.forEach(function(c){if(c.labels)c.labels=c.labels.filter(function(x){return x!==t;});});
+  SS('contacts',contacts);
+  // Remove from all leads
+  leads.forEach(function(l){if(l.labels)l.labels=l.labels.filter(function(x){return x!==t;});});
+  SS('leads',leads);
+  // Remove from filter and selection
+  contLabelsFilter.delete(t);
+  contactLabelsSel.delete(t);
+  showToast('\u2713 Etiqueta eliminada: '+t);
+  renderLabelsManagerCloud();
+  if(typeof renderCont==='function')renderCont();
+  if(typeof renderLeads==='function')renderLeads();
+}
+
+function saveLabelsToContact(){
+  var hidden=n('cn-labels');if(!hidden){closeM('m-labels-manager');return;}
+  hidden.value=Array.from(contactLabelsSel).join(',');
+  renderContactLabelsDisplay();
+  closeM('m-labels-manager');
+}
+
+
 function renderContactsLabelsFilterDisplay(){
   var el=n('cf-labels-display');var emp=n('cf-labels-empty');var clr=n('cf-labels-clear');
   if(!el)return;
@@ -4219,14 +4403,24 @@ function renderContactsLabelsFilterDisplay(){
 }
 function clearContactsLabelsFilter(){contLabelsFilter.clear();renderCont();}
 function openContactsLabelsFilter(){
-  // Build set of all known labels from contacts
-  var all=new Set();
-  contacts.forEach(function(c){(c.labels||[]).forEach(function(t){all.add(t);});});
-  var arr=Array.from(all).sort();
-  if(!arr.length){alert('No hay etiquetas en los contactos B2B todavia. Anade etiquetas al editar un contacto.');return;}
-  var sel=prompt('Etiquetas disponibles:\n'+arr.join(', ')+'\n\nIntroduce las etiquetas para filtrar separadas por coma:');
-  if(sel===null)return;
-  contLabelsFilter=new Set(sel.split(',').map(function(s){return normalizeLabel(s);}).filter(function(s){return s;}));
+  // Use a dedicated "filter" mode picker
+  getLabelsLibrary();
+  if(!labelsLibrary.length){alert('No hay etiquetas en el sistema todavia. Anade etiquetas a un contacto.');return;}
+  // Lightweight picker: open the labels manager in filter mode
+  contactLabelsSel=new Set(contLabelsFilter);
+  n('m-labels-manager').setAttribute('data-mode','filter');
+  if(n('lm-title'))n('lm-title').textContent='Filtrar por etiquetas';
+  if(n('lm-subtitle'))n('lm-subtitle').textContent='Selecciona las etiquetas para filtrar contactos (logica AND).';
+  if(n('lm-save-btn')){n('lm-save-btn').style.display='';n('lm-save-btn').textContent='Aplicar filtro';n('lm-save-btn').setAttribute('onclick','applyContactsLabelsFilter()');}
+  renderLabelsManagerCloud();
+  openM('m-labels-manager');
+}
+
+function applyContactsLabelsFilter(){
+  contLabelsFilter=new Set(contactLabelsSel);
+  closeM('m-labels-manager');
+  // Restore default save button binding
+  if(n('lm-save-btn')){n('lm-save-btn').textContent='Guardar asignacion';n('lm-save-btn').setAttribute('onclick','saveLabelsToContact()');}
   renderCont();
 }
 
@@ -4238,7 +4432,6 @@ function saveCont(){
     company:n('cn-co').value.trim(),
     country:n('cn-country').value.trim(),
     role:n('cn-role').value,
-    myCompany:n('cn-myco').value,
     clientType:n('cn-ctype')?n('cn-ctype').value:'',
     phone:n('cn-phone').value.trim(),
     email:n('cn-email')?n('cn-email').value.trim():'',
