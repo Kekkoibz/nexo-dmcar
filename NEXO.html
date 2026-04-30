@@ -7823,6 +7823,7 @@ function provStockProcessSelected(){
   var totalAdded=0;
   var totalDup=0;
   var totalSkipped=0;
+  var totalGroups=0;
   var errors=[];
   n('ps-process-btn').disabled=true;
   n('ps-progress').style.display='block';
@@ -7832,7 +7833,9 @@ function provStockProcessSelected(){
     if(processed>=total){
       // FINE
       var html='<div style="font-size:12px;line-height:1.7"><strong>\u2705 Procesamiento completo:</strong><br>'
-        +'\u2022 <strong>'+totalAdded+'</strong> nuevos veh\u00edculos a\u00f1adidos al Stock<br>'
+        +'\u2022 <strong>'+totalAdded+'</strong> unidades a\u00f1adidas al Stock'
+        +(totalGroups>0?' en <strong>'+totalGroups+'</strong> grupo'+(totalGroups!==1?'s':'')+' nuevo'+(totalGroups!==1?'s':''):'')
+        +'<br>'
         +'\u2022 <strong>'+totalDup+'</strong> duplicados omitidos<br>';
       if(totalSkipped>0)html+='\u2022 <strong>'+totalSkipped+'</strong> emails sin datos extra\u00edbles<br>';
       if(errors.length>0)html+='\u2022 <strong style="color:var(--red)">'+errors.length+' error(es):</strong><br>'+errors.map(function(e){return '&nbsp;&nbsp;- '+esc(e);}).join('<br>');
@@ -7845,7 +7848,7 @@ function provStockProcessSelected(){
       try{if(typeof renderStock==='function')renderStock();}catch(e){}
       // Toast finale
       if(typeof showToast==='function'){
-        showToast('\u2713 '+totalAdded+' veh\u00edculos a\u00f1adidos, '+totalDup+' duplicados');
+        showToast('\u2713 '+totalAdded+' unidades a\u00f1adidas, '+totalDup+' duplicados');
       }
       return;
     }
@@ -7855,6 +7858,7 @@ function provStockProcessSelected(){
     provStockProcessOne(mid).then(function(result){
       totalAdded+=result.added||0;
       totalDup+=result.dup||0;
+      totalGroups+=result.groups||0;
       if(result.skipped)totalSkipped++;
       // Marca mail come letta
       try{if(typeof NX_PROV_INBOX!=='undefined'&&NX_PROV_INBOX.markRead)NX_PROV_INBOX.markRead(mid);}catch(e){}
@@ -7907,45 +7911,131 @@ function provStockProcessOne(mailId){
         return provStockExtractCarsFromMail(mailData);
       }).then(function(cars){
         if(!cars||!cars.length){resolve({added:0,dup:0,skipped:true});return;}
-        // 4. Anti-duplicati e push a stock (uso struct stock reale: brand/model/version/reg/kms/colors/damage/units/equip/buy)
-        var added=0,dup=0;
+        // 4. AGGREGAZIONE per BRAND+MODEL+VERSION
+        // Le auto con stessa versione vengono raggruppate in 1 stock-item con vehicles[] dettaglio
+        var added=0,dup=0,unitsAdded=0,unitsDup=0;
         var supplierName=_provStockCurrentProvider?(_provStockCurrentProvider.company||_provStockCurrentProvider.name||''):'';
-        cars.forEach(function(car){
-          var key=provStockMakeDupKey(car);
-          var exists=stock.some(function(s){return provStockMakeDupKey(s)===key;});
-          if(exists){dup++;return;}
-          // Usa la stessa funzione addStkItem se esiste, altrimenti push manuale
-          var item={
-            brand:String(car.marca||car.brand||'').toUpperCase().trim(),
-            model:String(car.modelo||car.model||'').toUpperCase().trim(),
-            version:String(car.version||'').trim(),
-            reg:String(car.primer||car.registration||car.reg||'').trim(),
-            units:String(car.uds||car.unidades||car.units||'1').trim(),
-            kms:String(car.kms||'').trim(),
-            colors:String(car.colores||car.colors||'').trim(),
-            damage:String(car.danos||car.damages||car.damage||'').trim(),
-            equip:String(car.equipamiento||car.equipment||car.equip||'').trim(),
-            buy:String(car.precio||car.price||car.buy||car.pcompra||'').trim(),
-            sell:'',
-            supplier:supplierName,
-            status:'Stock',
-            pickup:'--',
-            notes:'Importado de email Provider',
-            sourceProviderId:_provStockCurrentProvider?_provStockCurrentProvider.id:null,
-            sourceMailId:mailId,
-            addedAt:new Date().toISOString()
+
+        // Helper normalizzazione per chiave gruppo
+        function normKey(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim();}
+        // Helper: crea singolo veicolo (per vehicles[])
+        function makeVehicle(car){
+          return {
+            vin:String(car.vin||'').trim()||'--',
+            color:String(car.colores||car.colors||car.color||'--').trim(),
+            kms:String(car.kms||'--').trim(),
+            damage:String(car.danos||car.damages||car.damage||'0 \u20ac').trim(),
+            reg:String(car.primer||car.registration||car.reg||'--').trim(),
+            location:String(car.location||car.ubicacion||'--').trim()
           };
-          if(typeof addStkItem==='function'){addStkItem(item);}
-          else{
-            item.id='s'+Date.now()+'_'+Math.floor(Math.random()*9999);
-            item.internalId='DMCAR-'+String(stkCnt++).padStart(4,'0');
-            item.date=(typeof today==='function')?today():new Date().toLocaleDateString('es-ES');
-            stock.push(item);
-            SS('stock',stock);SS('stkCnt',stkCnt);
+        }
+        // Helper: chiave univoca singolo veicolo per anti-duplicato (within group)
+        function vehDupKey(v){
+          function norm(s){return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/[^\w]/g,'');}
+          return norm(v.vin)+'|'+norm(v.color)+'|'+norm(v.kms)+'|'+norm(v.reg);
+        }
+
+        // 1) RAGGRUPPA cars[] per chiave brand+model+version
+        var groups={};
+        cars.forEach(function(car){
+          var brand=String(car.marca||car.brand||'').toUpperCase().trim();
+          var model=String(car.modelo||car.model||'').toUpperCase().trim();
+          var version=String(car.version||'').trim();
+          if(!brand&&!model)return; // skip auto vuote
+          var groupKey=normKey(brand)+'||'+normKey(model)+'||'+normKey(version);
+          if(!groups[groupKey]){
+            groups[groupKey]={brand:brand,model:model,version:version,cars:[],firstCar:car};
           }
-          added++;
+          groups[groupKey].cars.push(car);
         });
-        resolve({added:added,dup:dup,skipped:false});
+
+        // 2) Per ogni gruppo: cerca stock-item esistente o creane uno nuovo
+        Object.keys(groups).forEach(function(gk){
+          var g=groups[gk];
+          // Cerca stock-item esistente con stessa brand+model+version
+          var existing=stock.find(function(s){
+            return normKey(s.brand)===normKey(g.brand)&&normKey(s.model)===normKey(g.model)&&normKey(s.version)===normKey(g.version);
+          });
+
+          if(existing){
+            // GRUPPO ESISTENTE: aggiungi solo veicoli nuovi a vehicles[]
+            if(!Array.isArray(existing.vehicles))existing.vehicles=[];
+            var existingKeys=existing.vehicles.map(vehDupKey);
+            g.cars.forEach(function(car){
+              var v=makeVehicle(car);
+              var k=vehDupKey(v);
+              if(existingKeys.indexOf(k)>=0){unitsDup++;return;}
+              existing.vehicles.push(v);
+              existingKeys.push(k);
+              unitsAdded++;
+            });
+            // Aggiorna campi aggregati
+            existing.units=String(existing.vehicles.length);
+            // Ricalcola colors come lista univoca
+            var allColors={};
+            existing.vehicles.forEach(function(v){if(v.color&&v.color!=='--')allColors[v.color]=1;});
+            existing.colors=Object.keys(allColors).join(', ')||existing.colors;
+            existing.notes=(existing.notes||'')+' | Updated '+new Date().toLocaleDateString('es-ES');
+          }else{
+            // NUOVO GRUPPO: crea stock-item con tutti i veicoli
+            var firstCar=g.firstCar;
+            var vehicles=g.cars.map(makeVehicle);
+            // Colors uniti
+            var allColors={};
+            vehicles.forEach(function(v){if(v.color&&v.color!=='--')allColors[v.color]=1;});
+            // KMS aggregati: se tutti uguali → quello, altrimenti range
+            var allKms=vehicles.map(function(v){return String(v.kms||'').replace(/[^\d]/g,'');}).filter(Boolean);
+            var kmsAgg='';
+            if(allKms.length>0){
+              var kmsNum=allKms.map(Number);
+              var min=Math.min.apply(null,kmsNum),max=Math.max.apply(null,kmsNum);
+              kmsAgg=(min===max)?String(min):(min+'-'+max);
+            }
+            // Damage aggregato: media se varia, altrimenti il valore
+            var allDmg=vehicles.map(function(v){return String(v.damage||'').replace(/[^\d]/g,'');}).filter(Boolean);
+            var dmgAgg='';
+            if(allDmg.length>0){
+              var dmgNum=allDmg.map(Number);
+              var avg=Math.round(dmgNum.reduce(function(a,b){return a+b;},0)/dmgNum.length);
+              dmgAgg=avg+' \u20ac';
+            }
+            var item={
+              brand:g.brand,
+              model:g.model,
+              version:g.version,
+              reg:String(firstCar.primer||firstCar.registration||firstCar.reg||'').trim(),
+              units:String(vehicles.length),
+              kms:kmsAgg||String(firstCar.kms||'').trim(),
+              colors:Object.keys(allColors).join(', ')||String(firstCar.colores||firstCar.colors||'').trim(),
+              damage:dmgAgg||String(firstCar.danos||firstCar.damages||firstCar.damage||'').trim(),
+              equip:String(firstCar.equipamiento||firstCar.equipment||firstCar.equip||'').trim(),
+              buy:String(firstCar.precio||firstCar.price||firstCar.buy||firstCar.pcompra||'').trim(),
+              sell:'',
+              supplier:supplierName,
+              status:'Stock',
+              pickup:'--',
+              notes:'Importado de email Provider ('+new Date().toLocaleDateString('es-ES')+')',
+              vehicles:vehicles,
+              sourceProviderId:_provStockCurrentProvider?_provStockCurrentProvider.id:null,
+              sourceMailId:mailId,
+              addedAt:new Date().toISOString()
+            };
+            if(typeof addStkItem==='function'){addStkItem(item);}
+            else{
+              item.id='s'+Date.now()+'_'+Math.floor(Math.random()*9999);
+              item.internalId='DMCAR-'+String(stkCnt++).padStart(4,'0');
+              item.date=(typeof today==='function')?today():new Date().toLocaleDateString('es-ES');
+              stock.push(item);
+              SS('stock',stock);SS('stkCnt',stkCnt);
+            }
+            added++;
+            unitsAdded+=vehicles.length;
+          }
+        });
+        // Salva stock dopo aggiornamento existing
+        SS('stock',stock);
+        // "added" ritorna il numero di unit\u00e0 totali per coerenza con il messaggio
+        resolve({added:unitsAdded,dup:unitsDup,skipped:false,groups:added});
       }).catch(reject);
     });
   });
@@ -8014,15 +8104,18 @@ function provStockExtractCarsFromMail(mailData){
     var prompt='Extrae TODOS los veh\u00edculos disponibles que se mencionan en este email del proveedor. '
       +'Combina informaci\u00f3n del cuerpo del email Y de los anexos.\n\n'
       +'Cuerpo del email:\n"""\n'+(mailData.body||'').slice(0,30000)+'\n"""\n\n'
-      +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). Cada veh\u00edculo:\n'
-      +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"2024 / KM 0 / Al pagamento","uds":"1","kms":"15000","colores":"Negro, Blanco","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28500 \u20ac","pais":"Espa\u00f1a"}\n\n'
+      +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). IMPORTANTE: si hay 5 unidades de la misma versi\u00f3n con kms/colores/da\u00f1os distintos, devuelve 5 entradas separadas, una por unidad fisica. Cada veh\u00edculo:\n'
+      +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"05/2024","kms":"15000","colores":"Negro Mythos","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28.500 \u20ac","pais":"Espa\u00f1a","vin":""}\n\n'
       +'Reglas:\n'
       +'- "primer" es la fecha 1\u00aa matriculaci\u00f3n (formato MM/YYYY) o "Km 0" o "Al pagamento" (nuevo).\n'
       +'- "kms" solo n\u00famero, sin "km".\n'
-      +'- "precio" formato "X.XXX \u20ac" o "X,XXX \u20ac".\n'
+      +'- "precio" formato "X.XXX \u20ac".\n'
+      +'- "colores" un solo color por unidad (ej "Negro Mythos"), no lista.\n'
+      +'- Si hay m\u00faltiples unidades de la misma versi\u00f3n con datos distintos (kms/colores/da\u00f1os), s\u00ed haz una entrada para cada unidad.\n'
+      +'- Si hay m\u00faltiples versiones del mismo modelo, listalas como entradas separadas.\n'
+      +'- "vin" si est\u00e1 presente, si no dejarlo vac\u00edo "".\n'
       +'- Si una info no est\u00e1 disponible, deja el campo vac\u00edo "".\n'
       +'- Si el email no contiene veh\u00edculos para vender, devuelve array vac\u00edo: [].\n'
-      +'- Si hay m\u00faltiples versiones del mismo modelo, listalas como entradas separadas.\n'
       +'\nRESPONDE SOLO EL ARRAY JSON, NADA M\u00c1S.';
     content.push({type:'text',text:prompt});
 
