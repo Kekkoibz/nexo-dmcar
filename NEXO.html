@@ -539,6 +539,7 @@ En que te puedo ayudar hoy?</div></div>
               <option value="Privado">Privado</option>
               <option value="Subasta">Subasta</option>
               <option value="Importador">Importador</option>
+              <option value="Rent a car">Rent a car</option>
               <option value="Otro">Otro</option>
             </select>
           </div>
@@ -1276,7 +1277,7 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans M\u00fcller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW M\u00fcller GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option>Comercial</option><option>Director</option><option>Stock manager</option><option>Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
-    <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
+    <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
     <div class="g2 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openProvLabelsManagerForProvider()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="pv-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openProvLabelsManagerForProvider()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="pv-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="pv-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="pv-notes" rows="3" placeholder="Stock disponible, precios, condiciones especiales..."></textarea></div>
@@ -6638,7 +6639,7 @@ function renderProv(){
   // Type badge color helper
   function ptBadge(pt){
     if(!pt) return '';
-    var col={'Concesionario':{bg:'#dbeafe',fg:'#1e40af'},'Broker':{bg:'#fef3c7',fg:'#92400e'},'Privado':{bg:'#f3e8ff',fg:'#6b21a8'},'Subasta':{bg:'#fee2e2',fg:'#991b1b'},'Importador':{bg:'#dcfce7',fg:'#166534'},'Otro':{bg:'var(--bg3)',fg:'var(--t2)'}}[pt]||{bg:'var(--bg3)',fg:'var(--t2)'};
+    var col={'Concesionario':{bg:'#dbeafe',fg:'#1e40af'},'Broker':{bg:'#fef3c7',fg:'#92400e'},'Privado':{bg:'#f3e8ff',fg:'#6b21a8'},'Subasta':{bg:'#fee2e2',fg:'#991b1b'},'Importador':{bg:'#dcfce7',fg:'#166534'},'Rent a car':{bg:'#ffedd5',fg:'#9a3412'},'Otro':{bg:'var(--bg3)',fg:'var(--t2)'}}[pt]||{bg:'var(--bg3)',fg:'var(--t2)'};
     return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(pt)+'</span>';
   }
 
@@ -7228,7 +7229,9 @@ function provParseText(raw){
 
   // 6. TIPO PROVIDER (euristica)
   var lcraw=raw.toLowerCase();
-  if(/automoci[\u00f3o]n|concesionario|dealer|automobile|motors|auto\s|autohaus|gmbh|s\.?r\.?l\b|s\.?p\.?a\b/i.test(raw)){
+  if(/rent.?a.?car|alquiler|noleggio|rental/i.test(raw)){
+    out.providerType='Rent a car';
+  }else if(/automoci[\u00f3o]n|concesionario|dealer|automobile|motors|auto\s|autohaus|gmbh|s\.?r\.?l\b|s\.?p\.?a\b/i.test(raw)){
     out.providerType='Concesionario';
   }else if(/broker/i.test(lcraw)){
     out.providerType='Broker';
