@@ -2145,6 +2145,13 @@ var NX_INBOX={
         }
       }
       console.log('[NX_INBOX] badge refresh — unread:'+unread+' total:'+this.emails.length+(el?'':' (sidebar el missing)'));
+      // Re-render lista contatti se siamo nella vista contactos
+      try{
+        var contSec=document.getElementById('view-contactos');
+        if(contSec&&contSec.classList.contains('on')&&typeof renderCont==='function'){
+          renderCont();
+        }
+      }catch(e){}
     }catch(e){console.warn('[NX_INBOX] refreshBadge error:',e);}
   },
   getUnreadCount:function(){
@@ -4407,7 +4414,7 @@ function renderCont(){
           return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
         }).join('')+'</div>';
       }
-      return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></div>'+
+      return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+inboxBadgeHtml(c.email,c.id)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></div>'+
       '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
         (c.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(c.country)+'</span>':'')+
         (c.role?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span>':'')+
@@ -4433,7 +4440,7 @@ function renderCont(){
         if(c.labels.length>3)lblsh+=' <span style="font-size:9px;color:var(--t4)">+'+(c.labels.length-3)+'</span>';
       }
       return '<tr>'+
-        '<td><strong>'+esc(c.name||'')+'</strong></td>'+
+        '<td><strong>'+esc(c.name||'')+'</strong>'+inboxBadgeHtml(c.email,c.id)+'</td>'+
         '<td>'+esc(c.company||'')+'</td>'+
         '<td>'+esc(c.country||'')+'</td>'+
         '<td>'+(c.clientType?ctBadge(c.clientType):'--')+'</td>'+
@@ -4466,8 +4473,8 @@ function renderCont(){
           if(c.tag==='lost'&&c.lostReason){
             lossReason='<div style="margin-top:4px;font-size:9px;color:#991b1b;background:#fee2e2;padding:2px 6px;border-radius:4px">'+esc(c.lostReason)+'</div>';
           }
-          return '<div draggable="true" ondragstart="contKanbanDrag(event,\''+c.id+'\')" onclick="editContact(\''+c.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab">'+
-            '<div style="font-size:12px;font-weight:600">'+esc(c.name||'')+'</div>'+
+          return '<div draggable="true" ondragstart="contKanbanDrag(event,\''+c.id+'\')" onclick="editContact(\''+c.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab;position:relative">'+
+            '<div style="font-size:12px;font-weight:600">'+esc(c.name||'')+inboxBadgeHtml(c.email,c.id)+'</div>'+
             '<div style="font-size:10px;color:var(--t3)">'+esc(c.company||'')+'</div>'+
             '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(c.country||'')+(c.clientType?' \u00B7 '+esc(c.clientType):'')+'</div>'+
             lossReason+
@@ -6223,11 +6230,18 @@ function clrAll(){
 }
 
 // -- INBOX UI (NX_INBOX) --------------------------------------
+// Filtro inbox per email (impostato quando si clicca su badge contatto)
+var inboxFilterEmail=null;
 function inboxOpen(){
+  inboxFilterEmail=null; // reset filter quando apri da sidebar/pulsante generico
   openM('m-inbox');
   inboxRenderList();
   // Refresh in background
   if(typeof NX_INBOX!=='undefined')NX_INBOX.fetchInbox();
+}
+function inboxClearFilter(){
+  inboxFilterEmail=null;
+  inboxRenderList();
 }
 function inboxRefresh(){
   if(typeof NX_INBOX==='undefined')return;
@@ -6248,12 +6262,20 @@ function inboxRenderList(){
   var statusEl=document.getElementById('inbox-status');
   var metaEl=document.getElementById('inbox-meta');
   if(!listEl)return;
+  // Apply email filter (set when opened via inboxOpenForContact)
+  var emailsToShow=NX_INBOX.emails;
+  if(inboxFilterEmail){
+    emailsToShow=NX_INBOX.emails.filter(function(it){return it.from===inboxFilterEmail;});
+  }
   // Status line
   if(statusEl){
     if(NX_INBOX.lastError){
       statusEl.innerHTML='<span style="color:#f87171">\u26a0\ufe0f Error: '+esc(NX_INBOX.lastError.slice(0,80))+'</span>';
     }else if(typeof NX_MS==='undefined'||!NX_MS.account){
       statusEl.innerHTML='<span style="color:var(--orange)">\u26a0\ufe0f Microsoft no conectado \u2014 inicia sesi\u00f3n en Configuraci\u00f3n</span>';
+    }else if(inboxFilterEmail){
+      var unreadF=emailsToShow.filter(function(it){return!NX_INBOX.readIds.has(it.id);}).length;
+      statusEl.innerHTML='Filtrado: <strong>'+esc(inboxFilterEmail)+'</strong> \u2014 '+unreadF+' sin leer / '+emailsToShow.length+' total <button onclick="inboxClearFilter()" style="margin-left:8px;background:var(--bg3);border:1px solid var(--border);color:var(--t2);padding:1px 7px;border-radius:6px;font-size:10px;cursor:pointer">\u2715 Quitar filtro</button>';
     }else{
       var unread=NX_INBOX.getUnreadCount();
       statusEl.textContent=unread+' sin leer / '+NX_INBOX.emails.length+' total';
@@ -6268,16 +6290,15 @@ function inboxRenderList(){
     }
   }
   // Lista
-  if(!NX_INBOX.emails.length){
+  if(!emailsToShow.length){
     listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3);font-size:12px">'
       +'<div style="font-size:32px;margin-bottom:10px">\u2709\ufe0f</div>'
-      +'Sin respuestas de contactos B2B en los \u00faltimos '+NX_INBOX.KEEP_DAYS+' d\u00edas.<br>'
-      +'<span style="font-size:11px">Las respuestas aparecer\u00e1n autom\u00e1ticamente cuando un contacto B2B te escriba.</span>'
+      +(inboxFilterEmail?'Sin respuestas de '+esc(inboxFilterEmail)+' en los \u00faltimos '+NX_INBOX.KEEP_DAYS+' d\u00edas.':'Sin respuestas de contactos B2B en los \u00faltimos '+NX_INBOX.KEEP_DAYS+' d\u00edas.<br><span style="font-size:11px">Las respuestas aparecer\u00e1n autom\u00e1ticamente cuando un contacto B2B te escriba.</span>')
       +'</div>';
     return;
   }
   // Render items
-  listEl.innerHTML=NX_INBOX.emails.map(function(it){
+  listEl.innerHTML=emailsToShow.map(function(it){
     var isRead=NX_INBOX.readIds.has(it.id);
     var contact=NX_INBOX.matchContact(it.from);
     var contactBadge='';
@@ -6319,6 +6340,33 @@ function inboxGoToContact(contactId){
     if(typeof openContactModal==='function')openContactModal(contactId);
     else if(typeof editContact==='function')editContact(contactId);
   },200);
+}
+// Filtro inbox per email (impostato quando si clicca su badge contatto)
+// Apre Bandeja filtrata per un singolo contatto
+function inboxOpenForContact(contactEmail){
+  if(!contactEmail)return;
+  inboxFilterEmail=String(contactEmail).toLowerCase().trim();
+  openM('m-inbox');
+  inboxRenderList();
+  if(typeof NX_INBOX!=='undefined')NX_INBOX.fetchInbox();
+}
+// Conta mail non lette di un singolo contatto (per email)
+function inboxUnreadByEmail(email){
+  if(!email||typeof NX_INBOX==='undefined')return 0;
+  email=String(email).toLowerCase().trim();
+  return NX_INBOX.emails.filter(function(it){
+    return it.from===email&&!NX_INBOX.readIds.has(it.id);
+  }).length;
+}
+// Helper HTML badge ⚠️N (rosso) accanto al nome contatto
+function inboxBadgeHtml(contactEmail,contactId){
+  var n=inboxUnreadByEmail(contactEmail);
+  if(!n)return '';
+  var safeEmail=String(contactEmail).replace(/'/g,'\\\'');
+  return '<span onclick="event.stopPropagation();inboxOpenForContact(\''+safeEmail+'\')" '
+    +'title="'+n+' respuesta'+(n!==1?'s':'')+' sin leer" '
+    +'style="display:inline-flex;align-items:center;gap:3px;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:6px;cursor:pointer;vertical-align:middle">'
+    +'\u26a0\ufe0f '+n+'</span>';
 }
 
 // -- MODALS ---------------------------------------------------
