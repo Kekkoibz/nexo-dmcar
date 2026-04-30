@@ -439,12 +439,44 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bp" onclick="contView('cards')" id="cv-cards" style="font-size:11px">&#128196; Cards</button>
           <button class="btn bs" onclick="contView('list')" id="cv-list" style="font-size:11px">&#128203; Lista</button>
           <button class="btn bs" onclick="contView('kanban')" id="cv-kanban" style="font-size:11px">&#128301; Kanban</button>
-          <select id="f-cont-co" onchange="renderCont()" style="width:auto;font-size:12px;padding:6px 10px">
-            <option value="">Todas las empresas</option>
-            <option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option>
-          </select>
-          <input type="text" id="f-cont-q" placeholder="Buscar..." oninput="renderCont()" style="width:140px;font-size:12px;padding:6px 10px">
           <button class="btn bp" onclick="openM('m-contact')">+ Contacto</button>
+        </div>
+      </div>
+      <!-- Filters row -->
+      <div class="card mb10" style="padding:10px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+          <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="f-cont-q" placeholder="Nombre, empresa, email..." oninput="renderCont()"></div>
+          <div><label style="font-size:10px;color:var(--t3)">Mi empresa</label>
+            <select id="f-cont-co" onchange="renderCont()">
+              <option value="">Todas</option>
+              <option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Pais</label>
+            <select id="f-cont-country" onchange="renderCont()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Tipo cliente</label>
+            <select id="f-cont-ctype" onchange="renderCont()">
+              <option value="">Todos</option>
+              <option value="Broker">Broker</option>
+              <option value="Comerciante">Comerciante</option>
+              <option value="Empresa B2B">Empresa B2B</option>
+              <option value="Particular">Particular</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Estado</label>
+            <select id="f-cont-tag" onchange="renderCont()">
+              <option value="">Todos</option>
+              <option value="hot">Hot</option>
+              <option value="urg">Urgent</option>
+              <option value="pend">Pending</option>
+              <option value="reg">Regular</option>
+              <option value="cold">Cold</option>
+            </select>
+          </div>
         </div>
       </div>
       <!-- Labels filter row -->
@@ -454,6 +486,7 @@ En que te puedo ayudar hoy?</div></div>
           <span id="cf-labels-empty" style="color:var(--t3);font-size:11px;padding:0 6px">Click para filtrar por etiquetas...</span>
         </div>
         <button class="btn bg" onclick="clearContactsLabelsFilter()" id="cf-labels-clear" style="font-size:10px;padding:4px 8px;display:none">X Quitar</button>
+        <span id="cont-info" style="font-size:11px;color:var(--t3);margin-left:auto"></span>
       </div>
       <div id="cont-cards-view" class="contg"></div>
       <div id="cont-grid" style="display:none"></div>
@@ -461,7 +494,7 @@ En que te puedo ayudar hoy?</div></div>
         <div class="tbl">
           <table>
             <thead><tr>
-              <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Rol</th><th>Tel</th><th>Email</th>
+              <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tipo</th><th>Rol</th><th>Tel</th><th>Email</th>
               <th>Mi Empresa</th><th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
               <th style="width:140px">Acciones</th>
             </tr></thead>
@@ -1079,8 +1112,8 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
-    <div class="g2 mb10"><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div></div>
-    <div class="mb10"><label>Etiquetas (separadas por coma)</label><input type="text" id="cn-labels" placeholder="audi, q3, usado, urgente"></div>
+    <div class="g2 mb10"><div><label>Mi empresa</label><select id="cn-myco"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div></div>
+    <div class="g2 mb10"><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div><div><label>Etiquetas (separadas por coma)</label><input type="text" id="cn-labels" placeholder="audi, q3, usado"></div></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
     <button class="btn bp" style="width:100%" onclick="saveCont()">Guardar</button>
   </div>
@@ -1788,6 +1821,7 @@ function promoteLeadToB2B(leadId,silent){
     country:l.country||'',
     role:'Comprador',
     myCompany:'DMCAR GROUP',
+    clientType:'',
     phone:l.phone||'',
     email:l.email||'',
     notes:(l.notes||'')+(l.message?'\n\nMensaje original: '+l.message:''),
@@ -4014,9 +4048,27 @@ function contView(mode){
 function renderCont(){
   var filter=n('f-cont-co')?n('f-cont-co').value:'';
   var q=(n('f-cont-q')&&n('f-cont-q').value||'').toLowerCase();
+  var ctryFilter=n('f-cont-country')&&n('f-cont-country').value||'';
+  var typeFilter=n('f-cont-ctype')&&n('f-cont-ctype').value||'';
+  var tagFilter=n('f-cont-tag')&&n('f-cont-tag').value||'';
+
+  // Populate country dropdown dynamically (preserve current selection)
+  if(n('f-cont-country')){
+    var curr=n('f-cont-country').value;
+    var allCountries={};
+    contacts.forEach(function(c){if(c.country) allCountries[c.country]=true;});
+    var arr=Object.keys(allCountries).sort();
+    var html='<option value="">Todos</option>';
+    arr.forEach(function(co){html+='<option value="'+esc(co)+'"'+(co===curr?' selected':'')+'>'+esc(co)+'</option>';});
+    n('f-cont-country').innerHTML=html;
+  }
+
   var list=contacts.filter(function(c){
     if(filter&&c.myCompany!==filter) return false;
     if(q&&!((c.name||'').toLowerCase().indexOf(q)>=0||(c.company||'').toLowerCase().indexOf(q)>=0||(c.email||'').toLowerCase().indexOf(q)>=0)) return false;
+    if(ctryFilter&&(c.country||'')!==ctryFilter) return false;
+    if(typeFilter&&(c.clientType||'')!==typeFilter) return false;
+    if(tagFilter&&(c.tag||'reg')!==tagFilter) return false;
     if(contLabelsFilter.size>0){
       var labs=new Set(c.labels||[]);
       var ok=true;
@@ -4025,6 +4077,15 @@ function renderCont(){
     }
     return true;
   });
+  if(n('cont-info'))n('cont-info').textContent=list.length+' de '+contacts.length+' contactos';
+
+  // Color helper for client type badge
+  function ctBadge(ct){
+    if(!ct) return '';
+    var col={'Broker':{bg:'#fef3c7',fg:'#92400e'},'Comerciante':{bg:'#dbeafe',fg:'#1e40af'},'Empresa B2B':{bg:'#dcfce7',fg:'#166534'},'Particular':{bg:'#f3e8ff',fg:'#6b21a8'},'Otro':{bg:'var(--bg3)',fg:'var(--t2)'}}[ct]||{bg:'var(--bg3)',fg:'var(--t2)'};
+    return '<span style="background:'+col.bg+';color:'+col.fg+';padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(ct)+'</span>';
+  }
+
   // Cards view
   var gridEl=n('cont-cards-view');
   if(gridEl){
@@ -4037,9 +4098,14 @@ function renderCont(){
         }).join('')+'</div>';
       }
       return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></div>'+
-      '<div class="fc g6 mb10" style="flex-wrap:wrap"><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.country||'')+'</span><span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role||'')+'</span><span class="pill">'+esc(c.myCompany||'')+'</span></div>'+
+      '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
+        (c.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(c.country)+'</span>':'')+
+        (c.role?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span>':'')+
+        (c.clientType?ctBadge(c.clientType):'')+
+        (c.myCompany?'<span class="pill">'+esc(c.myCompany)+'</span>':'')+
+      '</div>'+
       labelsHtml+
-      '<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes||'')+'</div>'+
+      (c.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>':'')+
       '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone||'')+'</span><span>'+fmtD(c.lastContact||'')+'</span></div>'+
       '<div class="fc g4 mt8" style="justify-content:flex-end"><button class="btn bs" onclick="editContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="delContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div>'+
       '</div>';
@@ -4061,6 +4127,7 @@ function renderCont(){
         '<td><strong>'+esc(c.name||'')+'</strong></td>'+
         '<td>'+esc(c.company||'')+'</td>'+
         '<td>'+esc(c.country||'')+'</td>'+
+        '<td>'+(c.clientType?ctBadge(c.clientType):'--')+'</td>'+
         '<td>'+esc(c.role||'')+'</td>'+
         '<td style="font-family:monospace;font-size:11px">'+esc(c.phone||'')+'</td>'+
         '<td style="font-size:11px">'+esc(c.email||'')+'</td>'+
@@ -4086,7 +4153,7 @@ function renderCont(){
           return '<div draggable="true" ondragstart="contKanbanDrag(event,\''+c.id+'\')" onclick="editContact(\''+c.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab">'+
             '<div style="font-size:12px;font-weight:600">'+esc(c.name||'')+'</div>'+
             '<div style="font-size:10px;color:var(--t3)">'+esc(c.company||'')+'</div>'+
-            '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(c.country||'')+' \u00B7 '+esc(c.role||'')+'</div>'+
+            '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(c.country||'')+(c.clientType?' \u00B7 '+esc(c.clientType):'')+'</div>'+
             '</div>';
         }).join('')+
       '</div>';
@@ -4118,6 +4185,7 @@ function editContact(id){
   n('cn-country').value=c.country||'';
   n('cn-role').value=c.role||'Comprador';
   n('cn-myco').value=c.myCompany||'DMCAR GROUP';
+  if(n('cn-ctype'))n('cn-ctype').value=c.clientType||'';
   n('cn-phone').value=c.phone||'';
   if(n('cn-email'))n('cn-email').value=c.email||'';
   n('cn-notes').value=c.notes||'';
@@ -4171,6 +4239,7 @@ function saveCont(){
     country:n('cn-country').value.trim(),
     role:n('cn-role').value,
     myCompany:n('cn-myco').value,
+    clientType:n('cn-ctype')?n('cn-ctype').value:'',
     phone:n('cn-phone').value.trim(),
     email:n('cn-email')?n('cn-email').value.trim():'',
     notes:n('cn-notes').value.trim(),
@@ -4200,6 +4269,7 @@ function saveCont(){
   // Reset form
   n('cn-name').value='';n('cn-co').value='';n('cn-country').value='';
   n('cn-phone').value='';if(n('cn-email'))n('cn-email').value='';
+  if(n('cn-ctype'))n('cn-ctype').value='';
   n('cn-notes').value='';if(n('cn-labels'))n('cn-labels').value='';
   renderCont();renderDash();
 }
