@@ -105,6 +105,12 @@ tr:hover>td{background:rgba(0,0,0,.03)}
 .t-pend{background:#fef9c3;color:#854d0e;border-color:#fde047}
 .t-reg{background:#dcfce7;color:#166534;border-color:#86efac}
 .t-cold{background:rgba(100,116,139,.12);color:var(--t2);border-color:rgba(100,116,139,.3)}
+/* B2B Pipeline stages */
+.t-new{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd}
+.t-contacted{background:#e0e7ff;color:#3730a3;border-color:#a5b4fc}
+.t-won{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
+.t-logistica{background:#cffafe;color:#155e75;border-color:#67e8f9}
+.t-lost{background:#fee2e2;color:#7f1d1d;border-color:#fca5a5}
 .t-stk{background:#dcfce7;color:#166534;border-color:#86efac}
 .t-1s{background:#fef9c3;color:#854d0e;border-color:#fde047}
 .t-2s{background:#fed7aa;color:#9a3412;border-color:#fdba74}
@@ -465,11 +471,12 @@ En que te puedo ayudar hoy?</div></div>
           <div><label style="font-size:10px;color:var(--t3)">Estado</label>
             <select id="f-cont-tag" onchange="renderCont()">
               <option value="">Todos</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
               <option value="hot">Hot</option>
-              <option value="urg">Urgent</option>
-              <option value="pend">Pending</option>
-              <option value="reg">Regular</option>
-              <option value="cold">Cold</option>
+              <option value="won">Won</option>
+              <option value="logistica">Logistica</option>
+              <option value="lost">Lost</option>
             </select>
           </div>
         </div>
@@ -1107,10 +1114,41 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><input type="text" id="cn-phone" placeholder="+49 89..."></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
-    <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="cn-tag"><option value="hot">Hot</option><option value="pend">Pending</option><option value="reg">Regular</option><option value="urg">Urgent</option><option value="cold">Cold</option></select></div></div>
+    <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
+    <!-- Related tasks (visible only when editing existing contact) -->
+    <div id="cn-tasks-section" style="display:none;margin-bottom:14px">
+      <label style="font-size:11px;font-weight:600;color:var(--t2);display:flex;align-items:center;justify-content:space-between"><span>&#128203; Tareas relacionadas</span><button class="btn bs" onclick="addManualTaskForContact()" style="font-size:10px;padding:2px 8px">+ Tarea</button></label>
+      <div id="cn-tasks-list" style="margin-top:6px;max-height:140px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px"></div>
+    </div>
     <button class="btn bp" style="width:100%" onclick="saveCont()">Guardar</button>
+  </div>
+</div>
+
+<!-- LOST REASON MODAL -->
+<div class="ovl" id="m-lost-reason">
+  <div class="modal" style="max-width:480px">
+    <div class="fbet mb14"><div class="mt">Motivo de perdida</div><button class="btn bg" onclick="cancelLostReason()" style="padding:5px 10px">X</button></div>
+    <div class="ss mb12" style="color:#7f1d1d">Para mover este cliente a LOST necesitas indicar el motivo.</div>
+    <input type="hidden" id="lr-contact-id">
+    <input type="hidden" id="lr-prev-tag">
+    <div class="mb10"><label>Motivo *</label>
+      <select id="lr-reason">
+        <option value="">-- Selecciona --</option>
+        <option value="Precio">Precio</option>
+        <option value="Tempistiche">Tempistiche / Plazos</option>
+        <option value="Sin respuesta">Sin respuesta</option>
+        <option value="Cliente no interesado">Cliente no interesado</option>
+        <option value="Competencia">Competencia</option>
+        <option value="Otro">Otro</option>
+      </select>
+    </div>
+    <div class="mb14"><label>Notas (opcional)</label><textarea id="lr-notes" rows="3" placeholder="Detalles..."></textarea></div>
+    <div class="fbet">
+      <button class="btn bg" onclick="cancelLostReason()" style="font-size:12px">Cancelar</button>
+      <button class="btn bd" onclick="confirmLostReason()" style="font-size:12px">Confirmar perdida</button>
+    </div>
   </div>
 </div>
 
@@ -1843,7 +1881,7 @@ function promoteLeadToB2B(leadId,silent){
     phone:l.phone||'',
     email:l.email||'',
     notes:(l.notes||'')+(l.message?'\n\nMensaje original: '+l.message:''),
-    tag:'pend',
+    tag:'new',
     labels:l.labels||[],
     leadOriginId:l.id,
     leadCategory:l.category||'',
@@ -1858,6 +1896,10 @@ function promoteLeadToB2B(leadId,silent){
     contacts[existing].lastContact=new Date().toISOString().split('T')[0];
   }else{
     contacts.push(contact);
+    // Trigger NEW stage automation (creates "Contactar a..." task)
+    if(typeof runStageAutomation==='function'){
+      try{runStageAutomation(contact,'new',null);}catch(e){}
+    }
   }
   SS('contacts',contacts);
   // Archive the Lead
@@ -4047,8 +4089,20 @@ function genWordDoc(o,cb){
 // -- CONTACTOS B2B --------------------------------------------
 var contViewCurrent='cards';
 var contLabelsFilter=new Set();
-var CONT_TAG_ORDER=['hot','urg','pend','reg','cold'];
-var CONT_TAG_LABEL={hot:'Hot',urg:'Urgent',pend:'Pending',reg:'Regular',cold:'Cold'};
+// New B2B Pipeline: NEW > CONTACTED > HOT > WON > LOGISTICA  +  LOST (anytime)
+var CONT_TAG_ORDER=['new','contacted','hot','won','logistica','lost'];
+var CONT_TAG_LABEL={'new':'New','contacted':'Contacted','hot':'Hot','won':'Won','logistica':'Logistica','lost':'Lost'};
+var CONT_TAG_DESC={
+  'new':'Recien convertido. Primer contacto en 24h.',
+  'contacted':'Cliente contactado. Cualificar.',
+  'hot':'Negociacion activa. Follow-up cada 2 dias.',
+  'won':'Venta confirmada.',
+  'logistica':'Operativa post-venta.',
+  'lost':'Cliente perdido.'
+};
+function contTagClass(tg){
+  return ({'new':'t-new','contacted':'t-contacted','hot':'t-hot','won':'t-won','logistica':'t-logistica','lost':'t-lost'})[tg]||'t-reg';
+}
 
 function contView(mode){
   contViewCurrent=mode;
@@ -4113,7 +4167,7 @@ function renderCont(){
           return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
         }).join('')+'</div>';
       }
-      return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></div>'+
+      return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></div>'+
       '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
         (c.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(c.country)+'</span>':'')+
         (c.role?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">'+esc(c.role)+'</span>':'')+
@@ -4147,7 +4201,7 @@ function renderCont(){
         '<td style="font-family:monospace;font-size:11px">'+esc(c.phone||'')+'</td>'+
         '<td style="font-size:11px">'+esc(c.email||'')+'</td>'+
         '<td style="max-width:160px;line-height:1.6">'+lblsh+'</td>'+
-        '<td><span class="tag t-'+(c.tag==='urg'?'urg':c.tag==='hot'?'hot':c.tag==='pend'?'pend':'reg')+'">'+esc(c.tag||'reg')+'</span></td>'+
+        '<td><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></td>'+
         '<td style="font-size:10px;color:var(--t3)">'+fmtD(c.lastContact||'')+'</td>'+
         '<td><div class="fc g4">'+
           '<button class="btn bs" onclick="editContact(\''+c.id+'\')" style="padding:2px 7px;font-size:10px">&#9998;</button>'+
@@ -4156,18 +4210,27 @@ function renderCont(){
       '</tr>';
     }).join('');
   }
-  // Kanban view (by tag/estado)
+  // Kanban view (by pipeline stage)
   var kanCols=n('cont-kanban-cols');
   if(kanCols){
+    // 6 columns: new, contacted, hot, won, logistica, lost
+    kanCols.style.gridTemplateColumns='repeat(6,1fr)';
     kanCols.innerHTML=CONT_TAG_ORDER.map(function(tg){
-      var inCol=list.filter(function(c){return (c.tag||'reg')===tg;});
-      return '<div ondragover="event.preventDefault()" ondrop="contKanbanDrop(event,\''+tg+'\')" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:200px">'+
-        '<div class="fbet mb8"><div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--t2)">'+esc(CONT_TAG_LABEL[tg]||tg)+'</div><span class="tag t-'+(tg==='urg'?'urg':tg==='hot'?'hot':tg==='pend'?'pend':'reg')+'">'+inCol.length+'</span></div>'+
+      var inCol=list.filter(function(c){return (c.tag||'new')===tg;});
+      var cls=contTagClass(tg);
+      return '<div ondragover="event.preventDefault();this.style.background=\'var(--bg3)\'" ondragleave="this.style.background=\'var(--bg2)\'" ondrop="contKanbanDrop(event,\''+tg+'\');this.style.background=\'var(--bg2)\'" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:200px">'+
+        '<div class="fbet mb6"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--t2);letter-spacing:.05em">'+esc(CONT_TAG_LABEL[tg]||tg)+'</div><span class="tag '+cls+'">'+inCol.length+'</span></div>'+
+        '<div style="font-size:9px;color:var(--t4);margin-bottom:8px;line-height:1.3">'+esc(CONT_TAG_DESC[tg]||'')+'</div>'+
         inCol.map(function(c){
+          var lossReason='';
+          if(c.tag==='lost'&&c.lostReason){
+            lossReason='<div style="margin-top:4px;font-size:9px;color:#991b1b;background:#fee2e2;padding:2px 6px;border-radius:4px">'+esc(c.lostReason)+'</div>';
+          }
           return '<div draggable="true" ondragstart="contKanbanDrag(event,\''+c.id+'\')" onclick="editContact(\''+c.id+'\')" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;cursor:grab">'+
             '<div style="font-size:12px;font-weight:600">'+esc(c.name||'')+'</div>'+
             '<div style="font-size:10px;color:var(--t3)">'+esc(c.company||'')+'</div>'+
             '<div style="font-size:9px;color:var(--t4);margin-top:3px">'+esc(c.country||'')+(c.clientType?' \u00B7 '+esc(c.clientType):'')+'</div>'+
+            lossReason+
             '</div>';
         }).join('')+
       '</div>';
@@ -4178,16 +4241,113 @@ function renderCont(){
   if(n('cf-labels-display'))renderContactsLabelsFilterDisplay();
 }
 
-// Kanban drag-drop for B2B
+// Kanban drag-drop for B2B with automations (NEW > CONTACTED > HOT > WON > LOGISTICA / LOST)
 function contKanbanDrag(e,id){e.dataTransfer.setData('text/plain',id);}
 function contKanbanDrop(e,newTag){
   e.preventDefault();
   var id=e.dataTransfer.getData('text/plain');
+  changeContactStage(id,newTag);
+}
+
+// Central function to change a contact stage (also called from Edit modal)
+function changeContactStage(id,newTag,opts){
+  opts=opts||{};
   var idx=contacts.findIndex(function(c){return String(c.id)===String(id);});
-  if(idx<0)return;
-  contacts[idx].tag=newTag;
-  contacts[idx].lastContact=new Date().toISOString().split('T')[0];
-  SS('contacts',contacts);renderCont();
+  if(idx<0)return false;
+  var c=contacts[idx];
+  var oldTag=c.tag||'new';
+  if(oldTag===newTag)return false;
+  // LOST stage requires reason
+  if(newTag==='lost'&&!opts.skipReasonModal){
+    openLostReasonModal(id,oldTag);
+    return false;
+  }
+  c.tag=newTag;
+  c.lastContact=new Date().toISOString().split('T')[0];
+  c.stageHistory=c.stageHistory||[];
+  c.stageHistory.push({from:oldTag,to:newTag,at:new Date().toISOString()});
+  // Reset lostReason if leaving lost
+  if(oldTag==='lost'&&newTag!=='lost'){
+    delete c.lostReason;delete c.lostNotes;
+  }
+  if(newTag==='lost'&&opts.lostReason){
+    c.lostReason=opts.lostReason;
+    c.lostNotes=opts.lostNotes||'';
+  }
+  SS('contacts',contacts);
+  // Run automations
+  runStageAutomation(c,newTag,oldTag);
+  renderCont();renderDash();
+  showToast('\u2713 '+esc(c.name||'Cliente')+' \u2192 '+esc(CONT_TAG_LABEL[newTag]||newTag));
+  return true;
+}
+
+// Stage automations
+function runStageAutomation(contact,newTag,oldTag){
+  var contactName=contact.name||'Cliente';
+  var contactId=contact.id;
+  if(newTag==='new'){
+    // Auto-task: contact in 24h
+    addAutoTask(contactId,'\ud83d\udcde Contactar a '+contactName,'alta',1);
+  }else if(newTag==='hot'){
+    // Reminder: follow-up every 2 days
+    addAutoTask(contactId,'\ud83d\udd25 Follow-up con '+contactName+' (HOT)','alta',2);
+  }else if(newTag==='won'){
+    // Auto-stage to LOGISTICA + create logistica task
+    addAutoTask(contactId,'\ud83d\ude9a Iniciar logistica para '+contactName,'urgente',1);
+    setTimeout(function(){
+      // Auto-promote to LOGISTICA after a tiny delay (so user sees WON first)
+      changeContactStage(contactId,'logistica',{skipReasonModal:true});
+    },800);
+  }else if(newTag==='logistica'){
+    addAutoTask(contactId,'\ud83d\udce6 Preparar carga: '+contactName,'media',3);
+  }
+}
+
+// Helper to create an auto-task linked to a contact (uses existing task schema)
+function addAutoTask(contactId,title,priority,daysAhead){
+  if(typeof tasks==='undefined')return;
+  var c=contacts.find(function(x){return String(x.id)===String(contactId);});
+  var due=new Date();
+  due.setDate(due.getDate()+(daysAhead||1));
+  var t={
+    id:Date.now()+Math.floor(Math.random()*1000),
+    title:title,
+    company:c?(c.company||''):'',
+    contact:c?(c.name||'--'):'--',
+    dueDate:due.toISOString().split('T')[0],
+    priority:priority||'media',
+    done:false,
+    autoCreated:true,
+    linkedContactId:contactId,
+    createdAt:new Date().toISOString()
+  };
+  tasks.push(t);
+  SS('tasks',tasks);
+  if(typeof renderTareas==='function')renderTareas();
+  if(typeof renderDash==='function')renderDash();
+}
+
+// LOST reason modal
+function openLostReasonModal(contactId,prevTag){
+  n('lr-contact-id').value=contactId;
+  n('lr-prev-tag').value=prevTag||'new';
+  n('lr-reason').value='';
+  n('lr-notes').value='';
+  openM('m-lost-reason');
+}
+function confirmLostReason(){
+  var id=n('lr-contact-id').value;
+  var reason=n('lr-reason').value;
+  var notes=n('lr-notes').value.trim();
+  if(!reason){alert('Selecciona un motivo');return;}
+  closeM('m-lost-reason');
+  changeContactStage(id,'lost',{skipReasonModal:true,lostReason:reason,lostNotes:notes});
+}
+function cancelLostReason(){
+  closeM('m-lost-reason');
+  // Restore the contact to its previous stage (no change)
+  renderCont();
 }
 
 // Edit / Delete contact
@@ -4196,7 +4356,9 @@ function openNewContact(){
   ['cn-name','cn-co','cn-country','cn-phone','cn-email','cn-notes','cn-labels'].forEach(function(id){if(n(id))n(id).value='';});
   if(n('cn-role'))n('cn-role').value='Comprador';
   if(n('cn-ctype'))n('cn-ctype').value='';
-  if(n('cn-tag'))n('cn-tag').value='reg';
+  if(n('cn-tag'))n('cn-tag').value='new';
+  // Hide related tasks (only shown when editing existing contact)
+  if(n('cn-tasks-section'))n('cn-tasks-section').style.display='none';
   n('m-contact').removeAttribute('data-edit-id');
   if(typeof renderContactLabelsDisplay==='function')renderContactLabelsDisplay();
   openM('m-contact');
@@ -4213,11 +4375,57 @@ function editContact(id){
   n('cn-phone').value=c.phone||'';
   if(n('cn-email'))n('cn-email').value=c.email||'';
   n('cn-notes').value=c.notes||'';
-  n('cn-tag').value=c.tag||'reg';
+  n('cn-tag').value=c.tag||'new';
   if(n('cn-labels'))n('cn-labels').value=(c.labels||[]).join(',');
   renderContactLabelsDisplay();
+  // Show related tasks section (only in edit mode)
+  if(n('cn-tasks-section'))n('cn-tasks-section').style.display='';
+  renderContactRelatedTasks(id);
   n('m-contact').setAttribute('data-edit-id',id);
   openM('m-contact');
+}
+
+// Render related tasks for the contact being edited
+function renderContactRelatedTasks(contactId){
+  var listEl=n('cn-tasks-list');
+  if(!listEl)return;
+  var related=(typeof tasks!=='undefined'?tasks:[]).filter(function(t){return String(t.linkedContactId)===String(contactId);});
+  if(!related.length){
+    listEl.innerHTML='<div style="color:var(--t3);font-size:10px;text-align:center;padding:6px">Sin tareas relacionadas</div>';
+    return;
+  }
+  // Sort: pending first, by dueDate
+  related.sort(function(a,b){
+    if(!!a.done!==!!b.done)return a.done?1:-1;
+    return (a.dueDate||'').localeCompare(b.dueDate||'');
+  });
+  listEl.innerHTML=related.map(function(t){
+    var pri={'urgente':'#ef4444','alta':'#f59e0b','media':'#3b82f6','baja':'#94a3b8'}[t.priority]||'#94a3b8';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border);opacity:'+(t.done?.5:1)+'">'+
+      '<input type="checkbox" '+(t.done?'checked':'')+' onchange="tglTask('+t.id+');setTimeout(function(){renderContactRelatedTasks(\''+contactId+'\')},50)">'+
+      '<div style="width:6px;height:6px;border-radius:50%;background:'+pri+';flex-shrink:0"></div>'+
+      '<div style="flex:1;min-width:0;font-size:11px;'+(t.done?'text-decoration:line-through':'')+'">'+esc(t.title||'')+'</div>'+
+      '<div style="font-size:9px;color:var(--t3);flex-shrink:0">'+(t.dueDate?fmtD(t.dueDate):'')+'</div>'+
+      '<button class="btn bd" style="padding:1px 6px;font-size:10px;flex-shrink:0" onclick="delTask('+t.id+');setTimeout(function(){renderContactRelatedTasks(\''+contactId+'\')},50)">x</button>'+
+    '</div>';
+  }).join('');
+}
+
+// Add manual task for the contact being edited
+function addManualTaskForContact(){
+  var id=n('m-contact').getAttribute('data-edit-id');
+  if(!id){alert('Guarda el contacto primero');return;}
+  var c=contacts.find(function(x){return String(x.id)===String(id);});
+  if(!c){alert('Contacto no encontrado');return;}
+  var title=prompt('Texto de la tarea:','Llamar a '+(c.name||''));
+  if(!title)return;
+  var due=prompt('Fecha (YYYY-MM-DD), vacio = hoy +1:','');
+  var dueDate=due||(function(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().split('T')[0];})();
+  addAutoTask(id,title,'media',null);
+  // Override the auto due with what user picked
+  var t=tasks[tasks.length-1];if(t){t.dueDate=dueDate;t.autoCreated=false;SS('tasks',tasks);}
+  renderContactRelatedTasks(id);
+  if(typeof renderTareas==='function')renderTareas();
 }
 
 // Render labels in contact modal
@@ -4427,6 +4635,7 @@ function applyContactsLabelsFilter(){
 function saveCont(){
   var editId=n('m-contact').getAttribute('data-edit-id');
   var labels=(n('cn-labels')&&n('cn-labels').value||'').split(',').map(function(s){return normalizeLabel(s);}).filter(function(s){return s;});
+  var newTag=n('cn-tag').value;
   var c={
     name:n('cn-name').value.trim(),
     company:n('cn-co').value.trim(),
@@ -4436,7 +4645,7 @@ function saveCont(){
     phone:n('cn-phone').value.trim(),
     email:n('cn-email')?n('cn-email').value.trim():'',
     notes:n('cn-notes').value.trim(),
-    tag:n('cn-tag').value,
+    tag:newTag,
     labels:labels,
     lastContact:new Date().toISOString().split('T')[0]
   };
@@ -4445,18 +4654,42 @@ function saveCont(){
     // Update existing
     var idx=contacts.findIndex(function(x){return String(x.id)===String(editId);});
     if(idx>=0){
-      // Preserve original id and createdAt
+      var oldTag=contacts[idx].tag||'new';
+      // Preserve original id, createdAt, history
       c.id=contacts[idx].id;
       c.createdAt=contacts[idx].createdAt;
       c.leadOriginId=contacts[idx].leadOriginId;
+      c.stageHistory=contacts[idx].stageHistory||[];
+      // If LOST is selected via the modal, intercept and ask for reason
+      if(newTag==='lost'&&oldTag!=='lost'){
+        // Save other fields first WITHOUT changing tag
+        c.tag=oldTag;
+        contacts[idx]=Object.assign({},contacts[idx],c);
+        SS('contacts',contacts);
+        closeM('m-contact');
+        // Open lost reason modal — final tag change happens after confirm
+        openLostReasonModal(editId,oldTag);
+        renderCont();renderDash();
+        return;
+      }
       contacts[idx]=Object.assign({},contacts[idx],c);
+      SS('contacts',contacts);
+      // If tag changed (and not to lost), trigger automation
+      if(oldTag!==newTag){
+        c.stageHistory.push({from:oldTag,to:newTag,at:new Date().toISOString()});
+        contacts[idx].stageHistory=c.stageHistory;
+        SS('contacts',contacts);
+        try{runStageAutomation(contacts[idx],newTag,oldTag);}catch(e){}
+      }
     }
   }else{
     c.id=Date.now()+Math.floor(Math.random()*1000);
     c.createdAt=new Date().toISOString();
+    c.stageHistory=[{from:null,to:newTag,at:new Date().toISOString()}];
     contacts.push(c);
+    // For brand new contacts, run automation if any non-default stage chosen
+    try{runStageAutomation(c,newTag,null);}catch(e){}
   }
-  SS('contacts',contacts);
   n('m-contact').removeAttribute('data-edit-id');
   closeM('m-contact');
   // Reset form
