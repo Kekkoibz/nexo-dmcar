@@ -47,7 +47,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .ni{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--t3);font-size:13px;font-weight:500;transition:all .1s;margin-bottom:1px;user-select:none;border:1px solid transparent}
 .ni:hover{background:var(--bg3);color:var(--t2)}
 .ni.on{background:rgba(37,99,235,.15);color:var(--acc);border-color:rgba(37,99,235,.2)}
-.ni-ico{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+.ni-ico{font-size:14px;width:18px;height:18px;text-align:center;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}
+.ni-ico svg{width:18px;height:18px;display:block}
 .ni-cnt{margin-left:auto;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;min-width:16px;text-align:center}
 .cr{background:var(--red);color:#fff}.cg{background:var(--green);color:#fff}.co{background:var(--orange);color:#fff}
 .sb-foot{padding:10px;border-top:1px solid var(--border)}
@@ -235,17 +236,17 @@ body.fb-banner-on #app{padding-top:30px}
   </div>
   <div class="sb-nav">
     <div class="sb-sec">Principal</div>
-    <div class="ni on" id="n-dashboard" onclick="go('dashboard')"><span class="ni-ico">&#9685;</span>Dashboard</div>
-    <div class="ni" id="n-asistente" onclick="go('asistente')"><span class="ni-ico">&#9702;</span>Asistente NEXO</div>
+    <div class="ni on" id="n-dashboard" onclick="go('dashboard')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2L2 9v13h7v-7h6v7h7V9z"/></svg></span>Dashboard</div>
+    <div class="ni" id="n-asistente" onclick="go('asistente')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l2 2 4-4 2 2"/></svg></span>Asistente NEXO</div>
     <div class="sb-sec">Negocio</div>
-    <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico">&#9646;</span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
-    <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico">&#9633;</span>Generador Ofertas</div>
-    <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico">&#9711;</span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
-    <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico">&#127981;</span>Providers<span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
-    <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico">&#9650;</span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
-    <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico">&#9634;</span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
+    <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.5-4.5A2 2 0 018.4 7h7.2a2 2 0 011.9 1.5L19 13M5 13h14M5 13v4a1 1 0 001 1h1a1 1 0 001-1v-1h8v1a1 1 0 001 1h1a1 1 0 001-1v-4"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/><circle cx="17" cy="16.5" r="1" fill="currentColor"/></svg></span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
+    <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 12.5h8M8 16h5" stroke-linecap="round"/><path d="M9 8l1-1.5h4L15 8h.5v1.5h-7V8z" fill="currentColor" stroke="none"/></svg></span>Generador Ofertas</div>
+    <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l3-3 3 3 3-3 3 3h3M3 12v6a2 2 0 002 2h14a2 2 0 002-2v-6M9 12l3 3 3-3"/></svg></span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
+    <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
+    <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v8a7 7 0 0014 0V4M5 4h4v8a3 3 0 006 0V4h4M4 4h1M19 4h1"/></svg></span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
+    <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M9 12l1.5 1.5L13 11M9 16l1.5 1.5L13 15" stroke-linecap="round"/></svg></span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
-    <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico">&#9679;</span>Configuracion</div>
+    <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 11-2.6 2.6l-7.5 7.5a2 2 0 102.8 2.8l7.5-7.5a4 4 0 002.6-2.6z"/></svg></span>Configuracion</div>
   </div>
   <div class="sb-foot">
     <div class="ni" onclick="go('config')" style="margin-bottom:0">
