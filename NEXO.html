@@ -1121,7 +1121,7 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
-    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsApp()" title="Abrir WhatsApp con este n\u00famero" style="padding:0 12px;background:#25d366;color:#fff;border-color:#25d366;font-size:14px;flex-shrink:0">&#128172;</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este n\u00famero" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
+    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este n\u00famero" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
@@ -4626,37 +4626,50 @@ function openNewContact(){
   openM('m-contact');
 }
 
-// Apre WhatsApp (Web/desktop/mobile) con il numero del contatto
-// Usa wa.me che funziona universalmente con WhatsApp normale + Business
-function contactOpenWhatsApp(){
+// Apre WhatsApp Business (web) col numero del contatto in modal
+function contactOpenWhatsAppBusiness(){
   var raw=(n('cn-phone')&&n('cn-phone').value||'').trim();
-  if(!raw){
-    alert('Introduce un n\u00famero de tel\u00e9fono primero.');
-    return;
-  }
-  openWhatsAppByPhone(raw);
+  if(!raw){alert('Introduce un n\u00famero de tel\u00e9fono primero.');return;}
+  openWhatsAppBusinessByPhone(raw);
 }
+// Apre WhatsApp Personal (app nativa) col numero del contatto in modal
+function contactOpenWhatsAppPersonal(){
+  var raw=(n('cn-phone')&&n('cn-phone').value||'').trim();
+  if(!raw){alert('Introduce un n\u00famero de tel\u00e9fono primero.');return;}
+  openWhatsAppPersonalByPhone(raw);
+}
+// Wrapper legacy (per retrocompat — punta a Business)
+function contactOpenWhatsApp(){contactOpenWhatsAppBusiness();}
 // Avvia chiamata (tel:) col numero del contatto in modal
 function contactOpenTel(){
   var raw=(n('cn-phone')&&n('cn-phone').value||'').trim();
-  if(!raw){
-    alert('Introduce un n\u00famero de tel\u00e9fono primero.');
-    return;
-  }
+  if(!raw){alert('Introduce un n\u00famero de tel\u00e9fono primero.');return;}
   openTelByPhone(raw);
 }
-// Helper: normalizza numero e apre wa.me
-function openWhatsAppByPhone(phone){
+// Helper: apre WhatsApp Business via web.whatsapp.com (browser, account Business loggato)
+function openWhatsAppBusinessByPhone(phone){
   var clean=String(phone||'').replace(/[^0-9+]/g,'');
   if(clean.charAt(0)==='+')clean=clean.slice(1);
   if(!clean||clean.length<6){alert('N\u00famero no v\u00e1lido: '+phone);return;}
-  window.open('https://wa.me/'+clean,'_blank','noopener');
+  // web.whatsapp.com supporta /send?phone= per pre-aprire la chat
+  window.open('https://web.whatsapp.com/send?phone='+clean,'_blank','noopener');
+}
+// Helper: apre WhatsApp Personal via app nativa Mac (schema whatsapp://)
+function openWhatsAppPersonalByPhone(phone){
+  var clean=String(phone||'').replace(/[^0-9+]/g,'');
+  if(clean.charAt(0)==='+')clean=clean.slice(1);
+  if(!clean||clean.length<6){alert('N\u00famero no v\u00e1lido: '+phone);return;}
+  // whatsapp:// e' uno schema registrato dall'app nativa desktop
+  window.location.href='whatsapp://send?phone='+clean;
+}
+// Helper legacy (mantenuto per retrocompatibilita') — equivalente a Business via web
+function openWhatsAppByPhone(phone){
+  openWhatsAppBusinessByPhone(phone);
 }
 // Helper: avvia chiamata tel:
 function openTelByPhone(phone){
   var clean=String(phone||'').replace(/[^0-9+]/g,'');
   if(!clean||clean.length<6){alert('N\u00famero no v\u00e1lido: '+phone);return;}
-  // Mantieni il + se c'era, per supporto internazionale
   if(String(phone).indexOf('+')>=0&&clean.charAt(0)!=='+')clean='+'+clean;
   window.location.href='tel:'+clean;
 }
@@ -6418,16 +6431,17 @@ function inboxBadgeHtml(contactEmail,contactId){
     +'style="display:inline-flex;align-items:center;gap:3px;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;margin-left:6px;cursor:pointer;vertical-align:middle">'
     +'\u26a0\ufe0f '+n+'</span>';
 }
-// Helper HTML icone azioni rapide WA + Tel (per Cards/Lista/Kanban)
+// Helper HTML icone azioni rapide WA Business + WA Personal + Tel (per Cards/Lista/Kanban)
 // Mostra solo le icone disponibili (no numero -> niente icone)
 function quickActionsHtml(phone,size){
   if(!phone||!String(phone).trim())return '';
   size=size||'sm'; // 'sm' (kanban) o 'md' (cards)
-  var pad=size==='md'?'5px 10px':'3px 7px';
-  var fs=size==='md'?'13px':'11px';
+  var pad=size==='md'?'4px 9px':'2px 6px';
+  var fs=size==='md'?'12px':'10px';
   var safePhone=String(phone).replace(/'/g,'\\\'');
-  var btnBase='border:none;border-radius:6px;cursor:pointer;font-size:'+fs+';padding:'+pad+';color:#fff;line-height:1;display:inline-flex;align-items:center;justify-content:center';
-  return '<span onclick="event.stopPropagation();openWhatsAppByPhone(\''+safePhone+'\')" title="WhatsApp" style="background:#25d366;'+btnBase+'">\ud83d\udcac</span>'
+  var btnBase='border:none;border-radius:6px;cursor:pointer;font-size:'+fs+';padding:'+pad+';color:#fff;line-height:1;display:inline-flex;align-items:center;justify-content:center;font-weight:700';
+  return '<span onclick="event.stopPropagation();openWhatsAppBusinessByPhone(\''+safePhone+'\')" title="WhatsApp Business (web)" style="background:#075e54;'+btnBase+'">B</span>'
+    +' <span onclick="event.stopPropagation();openWhatsAppPersonalByPhone(\''+safePhone+'\')" title="WhatsApp Personal (app)" style="background:#25d366;'+btnBase+'">P</span>'
     +' <span onclick="event.stopPropagation();openTelByPhone(\''+safePhone+'\')" title="Llamar" style="background:#3b82f6;'+btnBase+'">\ud83d\udcde</span>';
 }
 
