@@ -1456,7 +1456,26 @@ var FIREBASE_CONFIG={
   appId:"1:642250180456:web:6bddc72a072814c360f8dd"
 };
 
-var FB_SYNC_KEYS=['leads','savedLabels'];
+var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+// Mapping key -> variable globale che contiene i dati locali
+// Usato per i listener real-time per applicare cambi remoti alle vars in memoria
+var FB_KEY_VARS={
+  stock:'stock',stkCnt:'stkCnt',
+  providers:'providers',provCnt:'provCnt',provLabels:'provLabels',
+  contacts:'contacts',
+  tasks:'tasks',
+  offerHist:'offerHist',
+  leads:'leads',savedLabels:'savedLabels'
+};
+// Mapping key -> funzione di re-render (chiamata dopo aggiornamento remoto)
+var FB_KEY_RENDER={
+  stock:'fStk',stkCnt:null,
+  providers:'renderProv',provCnt:null,provLabels:'renderProv',
+  contacts:'renderContacts',
+  tasks:'renderTareas',
+  offerHist:'renderOfertaHist',
+  leads:'renderLeads',savedLabels:null
+};
 
 var NX_FB={
   app:null, auth:null, db:null,
@@ -1466,6 +1485,7 @@ var NX_FB={
   lastSync:null,
   unsubscribers:{},
   pendingWrites:0,
+  _tabId:'tab_'+Date.now()+'_'+Math.random().toString(36).slice(2,9),  // ID univoco per questo tab
   
   init:function(){
     try{
@@ -1497,22 +1517,28 @@ var NX_FB={
     if(user){
       this.currentUser=user;
       console.log('[NX_FB] Login:',user.email);
+      console.log('[NX_FB] Tab ID:',this._tabId);
       this.setBanner('syncing','Sincronizando con la nube...');
-      Promise.all([this.syncLeadsDown(),this.syncLabelsDown()]).then(function(){
+      Promise.all([this.syncLeadsDown(),this.syncLabelsDown(),this.syncAllDown()]).then(function(){
         self.startLeadsListener();
         self.startLabelsListener();
+        self.startAllGenericListeners();
         self.processQueue();
         self.setBanner('online','Sincronizado como '+user.email);
         self.lastSync=new Date();
+        // Re-render TUTTE le viste dopo download iniziale
+        ['fStk','renderProv','renderContacts','renderTareas','renderOfertaHist','renderLeads','renderDash'].forEach(function(fn){
+          if(typeof window[fn]==='function')try{window[fn]();}catch(e){}
+        });
         if(typeof renderConfig==='function')renderConfig();
       }).catch(function(err){
         console.error('[NX_FB] Sync error:',err);
-        self.setBanner('error','Error de sincronización');
+        self.setBanner('error','Error de sincronizaci\u00f3n');
       });
     }else{
       this.currentUser=null;
       this.stopAllListeners();
-      this.setBanner('offline','Modo offline — Inicia sesión para sync multi-dispositivo');
+      this.setBanner('offline','Modo offline \u2014 Inicia sesi\u00f3n para sync multi-dispositivo');
       if(typeof renderConfig==='function')renderConfig();
     }
   },
@@ -1549,7 +1575,7 @@ var NX_FB={
     var promise;
     if(k==='leads')promise=this.syncLeadsUp(v);
     else if(k==='savedLabels')promise=this.syncLabelsUp(v);
-    else return;
+    else promise=this.syncGenericUp(k,v);  // generic per stock/providers/contacts/tasks/offerHist/counters/labels
     promise.then(function(){
       self.pendingWrites--;
       if(self.pendingWrites<=0){
@@ -1561,8 +1587,116 @@ var NX_FB={
       self.pendingWrites--;
       console.error('[NX_FB] Write error:',err);
       self.queueWrite(k);
-      self.setBanner('error','Error guardando — reintentando...');
+      self.setBanner('error','Error guardando \u2014 reintentando...');
     });
+  },
+
+  // === GENERIC SYNC (stock/providers/contacts/tasks/offerHist/counters/labels) ===
+  syncGenericUp:function(key,value){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc(key);
+    // Per array: salva come {items:[]}, per scalar (counters): {value:N}
+    var payload={
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      device:navigator.userAgent.substring(0,80),
+      origin:NX_FB._tabId
+    };
+    if(Array.isArray(value)){payload.items=value;}
+    else{payload.value=value;}
+    return ref.set(payload);
+  },
+
+  syncGenericDown:function(key){
+    if(!this.currentUser)return Promise.reject('No user');
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc(key);
+    return ref.get().then(function(snap){
+      if(!snap.exists)return null;
+      var data=snap.data();
+      if(!data)return null;
+      // Ritorna items[] o value, a seconda di cosa contiene
+      if(typeof data.items!=='undefined')return {type:'array',data:data.items};
+      if(typeof data.value!=='undefined')return {type:'scalar',data:data.value};
+      return null;
+    });
+  },
+
+  // Carica iniziale: scarica TUTTI i moduli dal cloud al login
+  syncAllDown:function(){
+    var self=this;
+    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+    var promises=keys.map(function(k){
+      return self.syncGenericDown(k).then(function(result){
+        if(!result)return null;
+        try{
+          if(result.type==='array'){
+            // Aggiorna var globale + localStorage
+            window[k]=result.data;
+            localStorage.setItem('nx5_'+k,JSON.stringify(result.data));
+            console.log('[NX_FB] \u2b07\ufe0f Descargado '+k+': '+result.data.length+' items');
+          }else if(result.type==='scalar'){
+            window[k]=result.data;
+            localStorage.setItem('nx5_'+k,JSON.stringify(result.data));
+            console.log('[NX_FB] \u2b07\ufe0f Descargado '+k+': '+result.data);
+          }
+        }catch(e){console.warn('[NX_FB] Error applying',k,e);}
+        return null;
+      }).catch(function(err){
+        console.warn('[NX_FB] Error sync down '+k+':',err.message);
+        return null;
+      });
+    });
+    return Promise.all(promises);
+  },
+
+  // Listener real-time generico per una key
+  startGenericListener:function(key){
+    if(!this.currentUser)return;
+    var self=this;
+    if(this.unsubscribers[key]){this.unsubscribers[key]();}
+    var ref=this.db.collection('users').doc(this.currentUser.uid).collection('data').doc(key);
+    this.unsubscribers[key]=ref.onSnapshot(function(snap){
+      if(!snap.exists)return;
+      if(snap.metadata.hasPendingWrites)return;  // ignora i nostri stessi writes
+      var data=snap.data();
+      if(!data)return;
+      // Ignora updates dal proprio tab
+      if(data.origin===NX_FB._tabId)return;
+      try{
+        if(typeof data.items!=='undefined'){
+          // Applica array
+          var cur=window[key];
+          var localStr=JSON.stringify(cur||[]);
+          var cloudStr=JSON.stringify(data.items);
+          if(localStr!==cloudStr){
+            // Update var globale (mantiene il riferimento per chi la usa)
+            if(Array.isArray(cur)){
+              cur.length=0;
+              for(var i=0;i<data.items.length;i++)cur.push(data.items[i]);
+            }else{
+              window[key]=data.items;
+            }
+            try{localStorage.setItem('nx5_'+key,JSON.stringify(data.items));}catch(e){}
+            console.log('[NX_FB] \ud83d\udd04 Cambio remoto '+key+' \u2192 '+data.items.length+' items');
+            // Re-render
+            var renderFn=FB_KEY_RENDER[key];
+            if(renderFn&&typeof window[renderFn]==='function')try{window[renderFn]();}catch(e){console.warn('[NX_FB] Render error:',e);}
+          }
+        }else if(typeof data.value!=='undefined'){
+          window[key]=data.value;
+          try{localStorage.setItem('nx5_'+key,JSON.stringify(data.value));}catch(e){}
+          console.log('[NX_FB] \ud83d\udd04 Cambio remoto '+key+' \u2192 '+data.value);
+        }
+      }catch(e){console.error('[NX_FB] Listener error '+key+':',e);}
+    },function(err){
+      console.error('[NX_FB] Listener error '+key+':',err);
+    });
+  },
+
+  startAllGenericListeners:function(){
+    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+    var self=this;
+    keys.forEach(function(k){self.startGenericListener(k);});
+    console.log('[NX_FB] \u2705 Listeners activos: '+keys.length+' colecciones');
   },
   
   // === LEADS SYNC ===
