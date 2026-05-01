@@ -241,6 +241,12 @@ body.fb-banner-on #app{padding-top:30px}
 .cdd-item-flag{font-size:14px;line-height:1}
 .cdd-inline{font-size:11px;padding:4px 22px 4px 7px;min-height:26px;border-radius:5px}
 .cdd-inline:after{font-size:9px;right:7px}
+/* Column resize handles per la tabella Marketing */
+#mk-tbl{table-layout:fixed}
+#mk-tbl th{position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mk-resize-handle{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:10}
+.mk-resize-handle:hover{background:var(--acc);opacity:.4}
+.mk-resize-handle.dragging{background:var(--acc);opacity:.7}
 </style>
 </head>
 <body>
@@ -8927,6 +8933,8 @@ function renderMarketing(){
   // Render tab attivo
   if(mkActiveTab==='contactos')mkRender();
   else mkRenderLists();
+  // Init colonne ridimensionabili (idempotente)
+  if(typeof mkInitColumnResize==='function')setTimeout(mkInitColumnResize,50);
 }
 
 // ===========================================================================
@@ -9171,6 +9179,97 @@ function mkClearFilters(){
   mkRender();
 }
 
+// Auto-detect bandiere dal nome lista
+// Esempi:
+//   "BELGICA - HOLANDA" \u2192 "\ud83c\udde7\ud83c\uddea BELGICA - \ud83c\uddf3\ud83c\uddf1 HOLANDA"
+//   "Italia"            \u2192 "\ud83c\uddee\ud83c\uddf9 Italia"
+//   "Brokers Nord"      \u2192 "Brokers Nord" (nessun paese rilevato \u2192 invariato)
+// Lista di alias paesi: chiave LOWERCASE \u2192 emoji bandiera
+var MK_LIST_FLAG_ALIASES={
+  // Italia
+  'italia':'\ud83c\uddee\ud83c\uddf9','italy':'\ud83c\uddee\ud83c\uddf9','italie':'\ud83c\uddee\ud83c\uddf9','it':'\ud83c\uddee\ud83c\uddf9',
+  // Spagna
+  'espa\u00f1a':'\ud83c\uddea\ud83c\uddf8','espana':'\ud83c\uddea\ud83c\uddf8','spain':'\ud83c\uddea\ud83c\uddf8','spagna':'\ud83c\uddea\ud83c\uddf8','es':'\ud83c\uddea\ud83c\uddf8',
+  // Francia
+  'francia':'\ud83c\uddeb\ud83c\uddf7','france':'\ud83c\uddeb\ud83c\uddf7','fr':'\ud83c\uddeb\ud83c\uddf7',
+  // Germania
+  'alemania':'\ud83c\udde9\ud83c\uddea','germany':'\ud83c\udde9\ud83c\uddea','germania':'\ud83c\udde9\ud83c\uddea','deutschland':'\ud83c\udde9\ud83c\uddea','de':'\ud83c\udde9\ud83c\uddea',
+  // Portogallo
+  'portugal':'\ud83c\uddf5\ud83c\uddf9','portogallo':'\ud83c\uddf5\ud83c\uddf9','pt':'\ud83c\uddf5\ud83c\uddf9',
+  // Olanda / Paesi Bassi
+  'holanda':'\ud83c\uddf3\ud83c\uddf1','olanda':'\ud83c\uddf3\ud83c\uddf1','netherlands':'\ud83c\uddf3\ud83c\uddf1','pa\u00edses bajos':'\ud83c\uddf3\ud83c\uddf1','paises bajos':'\ud83c\uddf3\ud83c\uddf1','nl':'\ud83c\uddf3\ud83c\uddf1',
+  // Belgio
+  'b\u00e9lgica':'\ud83c\udde7\ud83c\uddea','belgica':'\ud83c\udde7\ud83c\uddea','belgium':'\ud83c\udde7\ud83c\uddea','belgio':'\ud83c\udde7\ud83c\uddea','be':'\ud83c\udde7\ud83c\uddea',
+  // Polonia
+  'polonia':'\ud83c\uddf5\ud83c\uddf1','poland':'\ud83c\uddf5\ud83c\uddf1','pl':'\ud83c\uddf5\ud83c\uddf1',
+  // Austria
+  'austria':'\ud83c\udde6\ud83c\uddf9','at':'\ud83c\udde6\ud83c\uddf9',
+  // Svizzera
+  'suiza':'\ud83c\udde8\ud83c\udded','switzerland':'\ud83c\udde8\ud83c\udded','svizzera':'\ud83c\udde8\ud83c\udded','schweiz':'\ud83c\udde8\ud83c\udded','ch':'\ud83c\udde8\ud83c\udded',
+  // UK
+  'reino unido':'\ud83c\uddec\ud83c\udde7','uk':'\ud83c\uddec\ud83c\udde7','gran breta\u00f1a':'\ud83c\uddec\ud83c\udde7','inghilterra':'\ud83c\uddec\ud83c\udde7','gb':'\ud83c\uddec\ud83c\udde7','england':'\ud83c\uddec\ud83c\udde7',
+  // Irlanda
+  'irlanda':'\ud83c\uddee\ud83c\uddea','ireland':'\ud83c\uddee\ud83c\uddea','ie':'\ud83c\uddee\ud83c\uddea',
+  // Svezia
+  'suecia':'\ud83c\uddf8\ud83c\uddea','sweden':'\ud83c\uddf8\ud83c\uddea','svezia':'\ud83c\uddf8\ud83c\uddea','se':'\ud83c\uddf8\ud83c\uddea',
+  // Danimarca
+  'dinamarca':'\ud83c\udde9\ud83c\uddf0','denmark':'\ud83c\udde9\ud83c\uddf0','danimarca':'\ud83c\udde9\ud83c\uddf0','dk':'\ud83c\udde9\ud83c\uddf0',
+  // Finlandia
+  'finlandia':'\ud83c\uddeb\ud83c\uddee','finland':'\ud83c\uddeb\ud83c\uddee','fi':'\ud83c\uddeb\ud83c\uddee',
+  // Norvegia
+  'noruega':'\ud83c\uddf3\ud83c\uddf4','norway':'\ud83c\uddf3\ud83c\uddf4','norvegia':'\ud83c\uddf3\ud83c\uddf4','no':'\ud83c\uddf3\ud83c\uddf4',
+  // Rep. Ceca
+  'rep\u00fablica checa':'\ud83c\udde8\ud83c\uddff','repubblica ceca':'\ud83c\udde8\ud83c\uddff','czech':'\ud83c\udde8\ud83c\uddff','cz':'\ud83c\udde8\ud83c\uddff',
+  // Slovacchia / Ungheria / Romania / Bulgaria / Grecia
+  'eslovaquia':'\ud83c\uddf8\ud83c\uddf0','slovakia':'\ud83c\uddf8\ud83c\uddf0','slovacchia':'\ud83c\uddf8\ud83c\uddf0','sk':'\ud83c\uddf8\ud83c\uddf0',
+  'hungr\u00eda':'\ud83c\udded\ud83c\uddfa','hungary':'\ud83c\udded\ud83c\uddfa','ungheria':'\ud83c\udded\ud83c\uddfa','hu':'\ud83c\udded\ud83c\uddfa',
+  'ruman\u00eda':'\ud83c\uddf7\ud83c\uddf4','romania':'\ud83c\uddf7\ud83c\uddf4','ro':'\ud83c\uddf7\ud83c\uddf4',
+  'bulgaria':'\ud83c\udde7\ud83c\uddec','bg':'\ud83c\udde7\ud83c\uddec',
+  'grecia':'\ud83c\uddec\ud83c\uddf7','greece':'\ud83c\uddec\ud83c\uddf7','gr':'\ud83c\uddec\ud83c\uddf7',
+  // Croazia / Slovenia / Cipro / Malta
+  'croacia':'\ud83c\udded\ud83c\uddf7','croatia':'\ud83c\udded\ud83c\uddf7','croazia':'\ud83c\udded\ud83c\uddf7','hr':'\ud83c\udded\ud83c\uddf7',
+  'eslovenia':'\ud83c\uddf8\ud83c\uddee','slovenia':'\ud83c\uddf8\ud83c\uddee','si':'\ud83c\uddf8\ud83c\uddee',
+  'chipre':'\ud83c\udde8\ud83c\uddfe','cyprus':'\ud83c\udde8\ud83c\uddfe','cipro':'\ud83c\udde8\ud83c\uddfe','cy':'\ud83c\udde8\ud83c\uddfe',
+  'malta':'\ud83c\uddf2\ud83c\uddf9','mt':'\ud83c\uddf2\ud83c\uddf9',
+  // Baltici
+  'estonia':'\ud83c\uddea\ud83c\uddea','ee':'\ud83c\uddea\ud83c\uddea',
+  'letonia':'\ud83c\uddf1\ud83c\uddfb','latvia':'\ud83c\uddf1\ud83c\uddfb','lv':'\ud83c\uddf1\ud83c\uddfb',
+  'lituania':'\ud83c\uddf1\ud83c\uddf9','lithuania':'\ud83c\uddf1\ud83c\uddf9','lt':'\ud83c\uddf1\ud83c\uddf9',
+  // Lussemburgo
+  'luxemburgo':'\ud83c\uddf1\ud83c\uddfa','luxembourg':'\ud83c\uddf1\ud83c\uddfa','lussemburgo':'\ud83c\uddf1\ud83c\uddfa','lu':'\ud83c\uddf1\ud83c\uddfa',
+  // Islanda
+  'islandia':'\ud83c\uddee\ud83c\uddf8','iceland':'\ud83c\uddee\ud83c\uddf8','is':'\ud83c\uddee\ud83c\uddf8'
+};
+
+function mkDecorateListName(name){
+  if(!name)return '';
+  // Split per separatori comuni: "-", "/", ",", "+", "&", "·"
+  // Per ogni segmento, trim, normalizza, cerca match, prepende bandiera se trovata
+  var segs=name.split(/(\s*[\-\/,\+&\u00b7]\s*)/);  // capture group: tiene i separatori
+  var out='';
+  segs.forEach(function(seg){
+    if(/^\s*[\-\/,\+&\u00b7]\s*$/.test(seg)){out+=seg;return;}  // \u00e8 separatore, lascia inalterato
+    var trimmed=seg.trim();
+    if(!trimmed){out+=seg;return;}
+    // Normalize: lowercase + rimuovi accenti per match
+    var key=trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    var flag=MK_LIST_FLAG_ALIASES[key];
+    // Prova senza spazi (es. "pa\u00eedes bajos")
+    if(!flag){
+      flag=MK_LIST_FLAG_ALIASES[trimmed.toLowerCase()];
+    }
+    if(flag){
+      // Mantieni indentazione/spazi originali
+      var leading=seg.match(/^\s*/)[0];
+      var trailing=seg.match(/\s*$/)[0];
+      out+=leading+flag+' '+trimmed+trailing;
+    }else{
+      out+=seg;
+    }
+  });
+  return out;
+}
+
 // Helper: ritorna l'array di liste (statiche e dinamiche) a cui un contatto appartiene
 // Output: [{id, name, type:'static'|'dynamic'}, ...]
 function mkGetContactLists(c){
@@ -9204,10 +9303,11 @@ function mkRenderListsCellHTML(c){
     var bg=isStatic?'rgba(37,99,235,.15)':'rgba(245,158,11,.15)';
     var fg=isStatic?'var(--acc)':'#92400e';
     var icon=isStatic?'\ud83d\udcc4':'\u26a1';
-    html+='<span class="mk-list-chip" data-list-id="'+esc(l.id)+'" title="'+(isStatic?'Lista est\u00e1tica':'Lista din\u00e1mica')+': '+esc(l.name)+'" style="background:'+bg+';color:'+fg+';padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis;display:inline-block">'+icon+' '+esc(l.name)+'</span>';
+    var decoratedName=mkDecorateListName(l.name);
+    html+='<span class="mk-list-chip" data-list-id="'+esc(l.id)+'" title="'+(isStatic?'Lista est\u00e1tica':'Lista din\u00e1mica')+': '+esc(l.name)+'" style="background:'+bg+';color:'+fg+';padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;display:inline-block">'+icon+' '+esc(decoratedName)+'</span>';
   });
   if(hiddenCount>0){
-    var allNames=lists.map(function(l){return (l.type==='static'?'\ud83d\udcc4 ':'\u26a1 ')+l.name;}).join(', ');
+    var allNames=lists.map(function(l){return (l.type==='static'?'\ud83d\udcc4 ':'\u26a1 ')+mkDecorateListName(l.name);}).join(', ');
     html+='<span title="'+esc(allNames)+'" style="background:var(--bg3);color:var(--t3);padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:help">+'+hiddenCount+'</span>';
   }
   html+='</div>';
@@ -9215,6 +9315,55 @@ function mkRenderListsCellHTML(c){
 }
 
 // Popola dinamicamente il select del filtro lista con le liste esistenti
+// === COLONNE RIDIMENSIONABILI: tabella Marketing ===
+// Le larghezze vengono salvate in localStorage 'nx5_mkColWidths' (per indice colonna)
+function mkInitColumnResize(){
+  var tbl=n('mk-tbl');
+  if(!tbl||tbl._mkResizeInited)return;
+  tbl._mkResizeInited=true;
+  var headers=tbl.querySelectorAll('thead th');
+  // Restore larghezze salvate
+  var saved=LS('mkColWidths',{});
+  headers.forEach(function(th,idx){
+    if(saved[idx])th.style.width=saved[idx]+'px';
+    // Non aggiungo handle all'ultima colonna (azioni)
+    if(idx>=headers.length-1)return;
+    // Aggiungi handle se non c'\u00e8
+    if(!th.querySelector('.mk-resize-handle')){
+      var handle=document.createElement('div');
+      handle.className='mk-resize-handle';
+      handle.title='Trascina per ridimensionare';
+      th.appendChild(handle);
+      // Drag logic
+      var startX,startWidth;
+      handle.addEventListener('mousedown',function(e){
+        e.preventDefault();e.stopPropagation();
+        startX=e.pageX;
+        startWidth=th.offsetWidth;
+        handle.classList.add('dragging');
+        document.body.style.cursor='col-resize';
+        function onMove(ev){
+          var newW=startWidth+(ev.pageX-startX);
+          if(newW<40)newW=40; // min width
+          th.style.width=newW+'px';
+        }
+        function onUp(){
+          handle.classList.remove('dragging');
+          document.body.style.cursor='';
+          document.removeEventListener('mousemove',onMove);
+          document.removeEventListener('mouseup',onUp);
+          // Salva in localStorage
+          var w=LS('mkColWidths',{});
+          w[idx]=th.offsetWidth;
+          SS('mkColWidths',w);
+        }
+        document.addEventListener('mousemove',onMove);
+        document.addEventListener('mouseup',onUp);
+      });
+    }
+  });
+}
+
 function mkPopulateListFilter(){
   var sel=n('f-mk-list');
   if(!sel)return;
@@ -9227,14 +9376,14 @@ function mkPopulateListFilter(){
     html+='<optgroup label="\ud83d\udcc4 Est\u00e1ticas">';
     statics.forEach(function(l){
       var count=Array.isArray(l.contactIds)?l.contactIds.length:0;
-      html+='<option value="static:'+esc(l.id)+'">'+esc(l.name)+' ('+count+')</option>';
+      html+='<option value="static:'+esc(l.id)+'">'+esc(mkDecorateListName(l.name))+' ('+count+')</option>';
     });
     html+='</optgroup>';
   }
   if(dyns.length){
     html+='<optgroup label="\u26a1 Din\u00e1micas">';
     dyns.forEach(function(l){
-      html+='<option value="dynamic:'+esc(l.id)+'">'+esc(l.name)+'</option>';
+      html+='<option value="dynamic:'+esc(l.id)+'">'+esc(mkDecorateListName(l.name))+'</option>';
     });
     html+='</optgroup>';
   }
@@ -9680,7 +9829,7 @@ function mkPopulateStaticListsSelect(){
   }else{
     sel.innerHTML='<option value="">Selecciona una lista...</option>'+staticLists.map(function(l){
       var count=Array.isArray(l.contactIds)?l.contactIds.length:0;
-      return '<option value="'+esc(l.id)+'">'+esc(l.name)+' ('+count+' contactos)</option>';
+      return '<option value="'+esc(l.id)+'">'+esc(mkDecorateListName(l.name))+' ('+count+' contactos)</option>';
     }).join('');
   }
 }
@@ -9944,7 +10093,7 @@ function mkRenderLists(){
       rulesPreview=(l.contactIds||[]).length+' contactos congelados';
     }
     return '<div class="card" style="padding:14px">'
-      +'<div class="fbet mb6"><div style="font-weight:700;font-size:14px;color:var(--t1)">'+esc(l.name)+'</div><span style="background:'+typeColor.bg+';color:'+typeColor.fg+';padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">'+typeLabel+'</span></div>'
+      +'<div class="fbet mb6"><div style="font-weight:700;font-size:14px;color:var(--t1)">'+esc(mkDecorateListName(l.name))+'</div><span style="background:'+typeColor.bg+';color:'+typeColor.fg+';padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">'+typeLabel+'</span></div>'
       +(l.desc?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(l.desc)+'</div>':'')
       +'<div style="font-size:10px;color:var(--t4);margin-bottom:10px;font-family:monospace;background:var(--bg3);padding:6px;border-radius:5px">'+rulesPreview+'</div>'
       +'<div class="fbet">'
