@@ -11812,12 +11812,10 @@ function campRenderCarsList(){
     var parts=key.split('||');
     var brand=parts[0]||'?';
     var model=parts[1]||'';
-    // Cuenta unidades reales del stock para validar
-    var availableUnits=stock.filter(function(s){
-      var k=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
-      return k===key;
-    });
-    var available=availableUnits.length;
+    // Cuenta unidades reales usando la l\u00f3gica de agrupaci\u00f3n
+    var groups=campGroupStockByModel();
+    var grp=groups.find(function(g){return g.key===key;});
+    var available=grp?grp.count:1;
     var qtyLbl=(qty===available)?'todas las '+available+' unidades':qty+' de '+available+' unidades';
     var modeLbl=qty===1?'\ud83d\udd2c detalles individuales':'\ud83d\udcca medias del lote';
     return '<div class="fbet" style="background:var(--bg2);padding:8px 10px;border-radius:5px;margin-bottom:4px">'
@@ -11856,8 +11854,11 @@ function campRemoveCarGroup(groupKey){
 //   cantidad = cu\u00e1ntas unidades selecc. de ese modelo (1 hasta max disponibles)
 var _campStockPick={};
 
-// Agrupa el stock por brand+model, contando unidades por grupo
-// Devuelve array: [{key, brand, model, units:[stockObj,...], count}]
+// Agrupa el stock por brand+model, contando unidades reales por grupo
+// El stock puede tener:
+//  - i.vehicles[] = array de unidades reales del lote (cada una con vin, color, etc.)
+//  - i.units = texto "12" o "Varias" (sin sub-array)
+// Devuelve array: [{key, brand, model, units:[unidad,...], count, parentStock}]
 function campGroupStockByModel(){
   var groups={};
   stock.forEach(function(s){
@@ -11867,10 +11868,39 @@ function campGroupStockByModel(){
         key:key,
         brand:s.brand||'',
         model:s.model||'',
-        units:[]
+        units:[],
+        parentStock:[]
       };
     }
-    groups[key].units.push(s);
+    groups[key].parentStock.push(s);
+    // Si el stock tiene vehicles[] (lote real con N unidades), las a\u00f1adimos individualmente
+    if(Array.isArray(s.vehicles)&&s.vehicles.length>0){
+      s.vehicles.forEach(function(v){
+        // Cada unidad hereda los campos del padre + sobrescribe con los suyos
+        groups[key].units.push(Object.assign({},s,v,{
+          // Mantenemos el id padre + identificador unidad
+          parentId:s.id,
+          // VIN como referencia \u00fanica si existe
+          unit:v.vin||v.unit||s.unit||''
+        }));
+      });
+    }else{
+      // Sin vehicles[] \u2192 lo tratamos como 1 unidad (la fila padre)
+      // Si tiene units > 1 y no es "Varias", clonamos para que el conteo sea correcto
+      var u=String(s.units||'1').toLowerCase();
+      var qty=1;
+      if(u!=='varias'&&u!=='several'){
+        qty=parseInt(u,10)||1;
+      }
+      // Para evitar duplicar todo, solo a\u00f1adimos 1 unidad pero marcamos qty
+      var unitObj=Object.assign({},s);
+      unitObj.parentId=s.id;
+      groups[key].units.push(unitObj);
+      // Si units > 1, clonamos las restantes (con mismas propiedades)
+      for(var j=1;j<qty;j++){
+        groups[key].units.push(Object.assign({},s,{parentId:s.id,_cloned:true}));
+      }
+    }
   });
   var arr=Object.keys(groups).map(function(k){
     var g=groups[k];
@@ -12231,61 +12261,78 @@ function campSaveDraft(){
 // Si qty=1 \u2192 toma los detalles completos de la primera unidad
 // Si qty>1 \u2192 calcula medias del lote (precio, kms, da\u00f1os) + lista colores
 function campBuildCardConfigFromGroup(groupKey,qty){
-  // Filtra unidades del stock para este grupo
-  var units=stock.filter(function(s){
-    var k=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
-    return k===groupKey;
-  });
-  if(units.length===0)return null;
-  // Toma las primeras qty unidades (en el futuro permitiremos elegir cu\u00e1les)
-  var selected=units.slice(0,qty);
+  // Reusa la l\u00f3gica de agrupaci\u00f3n para tener todas las unidades reales del lote
+  var groups=campGroupStockByModel();
+  var group=groups.find(function(g){return g.key===groupKey;});
+  if(!group||!group.units||group.units.length===0)return null;
+  // Toma las primeras qty unidades del grupo
+  var selected=group.units.slice(0,qty);
   var first=selected[0];
-  var brandLogo=first.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+first.brand+'.png':''):'';
+  // Saca el "padre" del stock (de donde vienen los datos comunes: notes, salePrice, regDate, etc.)
+  var parent=group.parentStock&&group.parentStock[0]?group.parentStock[0]:first;
+  var brandLogo=parent.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+parent.brand+'.png':''):'';
   if(qty===1){
-    // 1 unidad: detalles completos del coche
+    // 1 unidad: detalles completos del coche espec\u00edfico
     return {
-      stockId:first.id,
-      title:((first.brand||'')+' '+(first.model||'')).trim(),
-      price:first.salePrice?(typeof first.salePrice==='number'?first.salePrice.toLocaleString('es-ES'):first.salePrice)+'\u20ac':'',
-      reference:first.unit||first.id||'',
-      firstReg:first.regDate||'',
-      extColor:first.color||'',
+      stockId:first.id||first.parentId,
+      title:((parent.brand||'')+' '+(parent.model||'')).trim(),
+      price:parent.salePrice?(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+'\u20ac':'',
+      reference:first.unit||first.vin||parent.unit||parent.id||'',
+      firstReg:first.reg||parent.regDate||'',
+      extColor:first.color||parent.color||'',
       delivery:'Stock',
-      equipment:first.notes||'',
-      photo1:first.photo1||'',
-      photo2:first.photo2||'',
-      photo3:first.photo3||'',
+      equipment:parent.notes||'',
+      photo1:parent.photo1||'',
+      photo2:parent.photo2||'',
+      photo3:parent.photo3||'',
       brandLogo:brandLogo
     };
   }
   // Lote: calcula medias
-  var prices=selected.map(function(u){return typeof u.salePrice==='number'?u.salePrice:parseFloat(String(u.salePrice||'').replace(/[^0-9.,]/g,'').replace(',','.'));}).filter(function(p){return !isNaN(p)&&p>0;});
+  var prices=selected.map(function(u){
+    var p=u.salePrice||parent.salePrice;
+    return typeof p==='number'?p:parseFloat(String(p||'').replace(/[^0-9.,]/g,'').replace(',','.'));
+  }).filter(function(p){return !isNaN(p)&&p>0;});
   var avgPrice=prices.length?Math.round(prices.reduce(function(s,p){return s+p;},0)/prices.length):0;
-  var kms=selected.map(function(u){return typeof u.kms==='number'?u.kms:parseInt(String(u.kms||'').replace(/[^0-9]/g,''),10);}).filter(function(k){return !isNaN(k)&&k>=0;});
+  var kms=selected.map(function(u){
+    var k=u.kms;
+    return typeof k==='number'?k:parseInt(String(k||'').replace(/[^0-9]/g,''),10);
+  }).filter(function(k){return !isNaN(k)&&k>=0;});
   var avgKms=kms.length?Math.round(kms.reduce(function(s,k){return s+k;},0)/kms.length):0;
-  var damages=selected.map(function(u){return typeof u.damages==='number'?u.damages:parseFloat(String(u.damages||'').replace(/[^0-9.,]/g,'').replace(',','.'));}).filter(function(d){return !isNaN(d)&&d>=0;});
+  var damages=selected.map(function(u){
+    var d=u.damage||u.damages;
+    return typeof d==='number'?d:parseFloat(String(d||'').replace(/[^0-9.,]/g,'').replace(',','.'));
+  }).filter(function(d){return !isNaN(d)&&d>=0;});
   var avgDamages=damages.length?Math.round(damages.reduce(function(s,d){return s+d;},0)/damages.length):0;
-  // Lista colores (con conteo: "3x Black, 5x White, 4x Grey")
+  // Lista colores con conteo
   var colorMap={};
-  selected.forEach(function(u){if(u.color)colorMap[u.color]=(colorMap[u.color]||0)+1;});
+  selected.forEach(function(u){
+    var c=u.color||parent.color;
+    if(c)colorMap[c]=(colorMap[c]||0)+1;
+  });
   var colorList=Object.keys(colorMap).map(function(c){return colorMap[c]+'x '+c;}).join(', ');
-  // Equipment: usa el del primero (suele ser igual en mismo modelo)
-  var equipment=first.notes||'';
+  // Equipment del padre
+  var equipment=parent.notes||'';
   if(equipment){
     equipment='Lote de '+qty+' unidades \u2014 mismo equipamiento:\n\n'+equipment;
   }
+  // A\u00f1ade medias al equipment
+  var extras=[];
+  if(avgKms)extras.push('Media Kms: '+avgKms.toLocaleString('es-ES'));
+  if(avgDamages)extras.push('Media Damage: '+avgDamages.toLocaleString('es-ES')+'\u20ac');
+  if(extras.length)equipment+=(equipment?'\n\n':'')+extras.join('\n');
   return {
     stockId:'group_'+groupKey,
-    title:((first.brand||'')+' '+(first.model||'')).trim()+' \u2014 LOTE '+qty+' UDS',
+    title:((parent.brand||'')+' '+(parent.model||'')).trim()+' \u2014 LOTE '+qty+' UDS',
     price:avgPrice?avgPrice.toLocaleString('es-ES')+'\u20ac (medio)':'',
     reference:'Lote '+qty+' uds',
-    firstReg:first.regDate?'desde '+first.regDate:'',
+    firstReg:parent.regDate?'desde '+parent.regDate:'',
     extColor:colorList||'(varios)',
     delivery:'Stock \u00b7 '+qty+' unidades disponibles',
-    equipment:equipment+(avgKms?'\n\nMedia Kms: '+avgKms.toLocaleString('es-ES'):'')+(avgDamages?'\nMedia Damage: '+avgDamages.toLocaleString('es-ES')+'\u20ac':''),
-    photo1:first.photo1||'',
-    photo2:first.photo2||'',
-    photo3:first.photo3||'',
+    equipment:equipment,
+    photo1:parent.photo1||'',
+    photo2:parent.photo2||'',
+    photo3:parent.photo3||'',
     brandLogo:brandLogo
   };
 }
