@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.32 — DMCAR GROUP CRM | 2026-05-01 | fixes: \uXXXX HTML escapes decoded, campUpdSubjectFromEmoji + campAutoFillSubject defined, campStripEmojis() for outbound email anti-spam -->
+<!-- NEXO v9.33 — DMCAR GROUP CRM | 2026-05-01 | removed emoji select from email subject (anti-spam B2B), campStripEmojis now applied to both body+subject -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2014,25 +2014,10 @@ En que te puedo ayudar hoy?</div></div>
         <div class="mb14">
           <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">2. Asunto del email</label>
           <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-            <select id="camp-emoji" onchange="campUpdSubjectFromEmoji()" style="width:auto;min-width:60px;font-size:14px;padding:6px 8px">
-              <option value="">(sin emoji)</option>
-              <option value="🚗">🚗 Coche</option>
-              <option value="⚡">⚡ Rayo</option>
-              <option value="🔥">🔥 Fuego</option>
-              <option value="💰">💰 Dinero</option>
-              <option value="💎">💎 Diamante</option>
-              <option value="🏁">🏁 Bandera</option>
-              <option value="✨">✨ Estrellas</option>
-              <option value="🚀">🚀 Cohete</option>
-              <option value="🆕">🆕 Nuevo</option>
-              <option value="📈">📈 Subida</option>
-              <option value="🎁">🎁 Regalo</option>
-              <option value="✅">✅ Check</option>
-            </select>
             <input type="text" id="camp-subject" placeholder="ej: used Audi A3 Sportback S line..." style="flex:1">
             <button type="button" class="btn bs" onclick="campAutoFillSubject()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con el t&iacute;tulo del coche">⚡ Auto</button>
           </div>
-          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click ‘Auto’ para rellenar con el t&iacute;tulo del coche seleccionado (ej. ‘used Audi A3 Sportback S line 40 TFSI...’)</div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Sin emojis (anti-spam B2B). Click ‘Auto’ para rellenar con el t&iacute;tulo del coche seleccionado.</div>
         </div>
         <!-- 3. Template -->
         <div class="mb14">
@@ -12255,14 +12240,11 @@ function campUpdSummary(){
 }
 
 // === ASUNTO: emoji prefix + auto-fill desde coche seleccionado ===
+// Nota v9.33: el select de emoji se eliminó del modal (anti-spam B2B).
+// Esta función queda como no-op para retrocompatibilidad si quedan referencias.
 function campUpdSubjectFromEmoji(){
-  var sel=n('camp-emoji');var inp=n('camp-subject');
-  if(!sel||!inp)return;
-  var emoji=sel.value||'';
-  // Quita cualquier emoji previo al inicio del asunto (Unicode emoji + espacio)
-  var cur=(inp.value||'').replace(/^[\u2600-\u27BF\u2700-\u27BF\u2B00-\u2BFF\uD83C-\uDBFF\uDC00-\uDFFF\uFE0F\u200D]+\s*/u,'').trim();
-  inp.value=(emoji?emoji+' ':'')+cur;
-  if(_campEditing)_campEditing.subject=inp.value;
+  // No-op desde v9.33 — emoji eliminado del asunto.
+  return;
 }
 window.campUpdSubjectFromEmoji=campUpdSubjectFromEmoji;
 
@@ -12278,9 +12260,8 @@ function campAutoFillSubject(){
   var title='used '+(s.brand||'')+' '+(s.model||'');
   if(s.version)title+=' '+s.version;
   title=title.replace(/\s+/g,' ').trim();
-  // Conserva el emoji del select si está activo
-  var emoji=(n('camp-emoji')&&n('camp-emoji').value)||'';
-  inp.value=(emoji?emoji+' ':'')+title;
+  // Sin emoji (anti-spam B2B)
+  inp.value=title;
   if(_campEditing)_campEditing.subject=inp.value;
 }
 window.campAutoFillSubject=campAutoFillSubject;
@@ -12724,8 +12705,9 @@ function campSendTest(){
   }).then(function(html){
     if(!html){alert('Error al construir el HTML.');return;}
     var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
-    // Quita emojis decorativos del HTML (anti-spam B2B). Subject queda como está.
+    // Quita emojis decorativos del HTML Y del subject (anti-spam B2B)
     html=campStripEmojis(html);
+    subject=campStripEmojis(subject).trim();
     // Envio
     if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
     NX_MS.sendEmail(to,subject,html,function(ok,err){
