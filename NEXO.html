@@ -12254,7 +12254,57 @@ function campSaveDraft(){
   if(typeof showToast==='function')showToast('\u2713 Borrador guardado');
 }
 
-// Construye config de Card Auto desde un grupo de unidades
+// Helper: construye URL del logo marca (con CamelCase + espacios codificados)
+// Ejemplos: AUDI \u2192 Audi.png, MERCEDES-BENZ \u2192 Mercedes-Benz.png, BMW \u2192 BMW.png, ASTON MARTIN \u2192 Aston Martin.png
+function campBrandLogoUrl(brand){
+  if(!brand)return '';
+  if(typeof LOGOS_GITHUB_BASE==='undefined')return '';
+  // Mapas especiales para marcas con grafia particular
+  var SPECIAL={
+    'BMW':'BMW',
+    'VW':'Volkswagen',
+    'MERCEDES':'Mercedes-Benz',
+    'MERCEDES-BENZ':'Mercedes-Benz',
+    'ALFA':'Alfa Romeo',
+    'ALFA ROMEO':'Alfa Romeo',
+    'LANDROVER':'Land Rover',
+    'LAND ROVER':'Land Rover',
+    'RANGEROVER':'Range Rover',
+    'RANGE ROVER':'Range Rover',
+    'ASTONMARTIN':'Aston Martin',
+    'ASTON MARTIN':'Aston Martin',
+    'ROLLS-ROYCE':'Rolls-Royce',
+    'ROLLS ROYCE':'Rolls-Royce',
+    'CITROEN':'Citro\u00ebn',
+    'CITRO\u00cbN':'Citro\u00ebn'
+  };
+  var key=String(brand).toUpperCase().trim();
+  var fname;
+  if(SPECIAL[key]){
+    fname=SPECIAL[key];
+  }else{
+    // Default: capitalize first letter, lower rest (Audi, Ford, Toyota...)
+    fname=key.charAt(0)+key.slice(1).toLowerCase();
+  }
+  return LOGOS_GITHUB_BASE+encodeURIComponent(fname)+'.png';
+}
+
+// Limpia el equipment de texto interno generado por imports/sync
+// Quita patrones como "Importado de email Provider (XX/XX/XXXX)", "TEST SYNC PC-A", etc.
+function campCleanEquipment(notes){
+  if(!notes)return 'Standard';
+  var clean=String(notes);
+  // Quita patrones t\u00edpicos de imports/sync
+  clean=clean.replace(/Importado de email[^\n]*\([^)]*\)/gi,'');
+  clean=clean.replace(/Importado de [^\n]+/gi,'');
+  clean=clean.replace(/TEST SYNC[^\n]*/gi,'');
+  clean=clean.replace(/Min order:[^\n]+/gi,'');
+  clean=clean.replace(/Sync from[^\n]+/gi,'');
+  // Limpia espacios y l\u00edneas vac\u00edas
+  clean=clean.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length>0;}).join('\n').trim();
+  // Si queda vac\u00edo, devuelve "Standard" (regla DMCAR)
+  return clean||'Standard';
+}
 // SIGUE LAS MISMAS REGLAS DEL GENERADOR DE OFERTAS WORD
 // Si qty=1 \u2192 toma los detalles completos de la primera unidad (incluyendo VIN)
 // Si qty>1 \u2192 calcula medias del lote (rangos de kms, da\u00f1os medios) + lista colores SIN conteo
@@ -12265,7 +12315,8 @@ function campBuildCardConfigFromGroup(groupKey,qty){
   var selected=group.units.slice(0,qty);
   var first=selected[0];
   var parent=group.parentStock&&group.parentStock[0]?group.parentStock[0]:first;
-  var brandLogo=parent.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+parent.brand+'.png':''):'';
+  var brandLogo=campBrandLogoUrl(parent.brand);
+  var cleanEquipment=campCleanEquipment(parent.notes);
   // T\u00edtulo: brand + model + version (igual al Word)
   var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
   // Precio
@@ -12283,7 +12334,7 @@ function campBuildCardConfigFromGroup(groupKey,qty){
       extColor:first.color||parent.color||'',
       availableUnits:'1',
       delivery:'Stock',
-      equipment:parent.notes||'Standard',
+      equipment:cleanEquipment,
       photo1:parent.photo1||'',
       photo2:parent.photo2||'',
       photo3:parent.photo3||'',
@@ -12308,7 +12359,7 @@ function campBuildCardConfigFromGroup(groupKey,qty){
     return typeof d==='number'?d:parseFloat(String(d||'').replace(/[^0-9.,]/g,'').replace(',','.'));
   }).filter(function(d){return !isNaN(d)&&d>=0;});
   var avgDamages=damages.length?Math.round(damages.reduce(function(s,d){return s+d;},0)/damages.length):0;
-  // Available Colors: lista SIN conteo (como Word: "Mythos Black, Danish Blue, Glacier White")
+  // Available Colors: lista SIN conteo (como Word)
   var colorSet={};
   selected.forEach(function(u){
     var c=u.color||parent.color;
@@ -12319,14 +12370,14 @@ function campBuildCardConfigFromGroup(groupKey,qty){
     stockId:'group_'+groupKey,
     title:fullTitle,
     price:priceFmt,
-    vin:'',  // No VIN en lote, es un campo solo de 1 unidad
+    vin:'',
     firstReg:parent.regDate||first.reg||'',
     avgKms:kmsLabel,
     avgDamages:avgDamages?avgDamages.toLocaleString('es-ES')+' \u20ac':'',
     extColor:colorList,
     availableUnits:String(qty),
     delivery:'Stock',
-    equipment:parent.notes||'Standard',
+    equipment:cleanEquipment,
     photo1:parent.photo1||'',
     photo2:parent.photo2||'',
     photo3:parent.photo3||'',
@@ -13001,11 +13052,10 @@ function tplRenderBlockHTML(block){
       if(c.availableUnits)ah+='<div><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
       if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
       ah+='</div>';
-      // Equipment (header azul + texto)
-      if(c.equipment){
-        ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 8px 0">Equipment:</div>';
-        ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px">'+esc(c.equipment)+'</div>';
-      }
+      // Equipment (header azul + texto) - siempre se muestra (regla DMCAR: si vac\u00edo \u2192 "Standard")
+      var eqText=(c.equipment||'').trim()||'Standard';
+      ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 8px 0">Equipment:</div>';
+      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px">'+esc(eqText)+'</div>';
       // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
       var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
       if(photos.length>0){
