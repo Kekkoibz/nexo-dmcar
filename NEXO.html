@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.36 — DMCAR GROUP CRM | 2026-05-01 | FIX equip leído de parent.equip (no notes), Standard fallback aplicado, warning pre-envío campañas (equip/VIN/fotos) -->
+<!-- NEXO v9.37 — DMCAR GROUP CRM | 2026-05-01 | Offer ID global counter (001,002,...), prezzo da buy+margin, auto-fill nome campagna, pulsanti Pegar Equipamiento + Adjuntar Fotos in dialog campagna -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2041,7 +2041,11 @@ En que te puedo ayudar hoy?</div></div>
         <div class="mb14">
           <div class="fbet" style="margin-bottom:6px">
             <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px;margin:0">5. Coches a incluir</label>
-            <button class="btn bs" onclick="campOpenStockPicker()" style="font-size:10px;padding:3px 9px">+ A&ntilde;adir del Stock Vivo</button>
+            <div class="fc g4" style="flex-wrap:wrap;justify-content:flex-end">
+              <button class="btn bs" onclick="campOpenStockPicker()" style="font-size:10px;padding:3px 9px">+ A&ntilde;adir del Stock Vivo</button>
+              <button class="btn bs" onclick="campOpenAddEquip()" title="Pegar / extraer equipamiento del primer coche seleccionado (se guarda en Stock)" style="font-size:10px;padding:3px 9px;background:#0ea5e9;color:#fff;border-color:#0284c7">&#128203; Equipamiento</button>
+              <button class="btn bs" onclick="campOpenAddPhotos()" title="Adjuntar hasta 3 fotos al primer coche seleccionado (se guardan en Stock)" style="font-size:10px;padding:3px 9px;background:#8b5cf6;color:#fff;border-color:#7c3aed">&#128247; Fotos</button>
+            </div>
           </div>
           <div id="camp-cars-list" style="background:var(--bg3);border-radius:7px;padding:10px;min-height:60px;font-size:11px;color:var(--t3)">
             <em>Ningún coche seleccionado aún. Click '+' para añadir.</em>
@@ -2080,6 +2084,55 @@ En que te puedo ayudar hoy?</div></div>
         <button class="btn bs" onclick="campSendTest()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none">&#128231; Test a m&iacute;</button>
         <button class="btn bp" onclick="campSendNow()" style="font-size:12px">&#9889; Enviar ahora</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD EQUIPAMIENTO desde campaña (se guarda en Stock) -->
+<div class="ovl" id="m-camp-add-equip">
+  <div class="modal" style="max-width:680px">
+    <div class="fbet mb14"><div class="mt">&#128203; Pegar equipamiento</div><button class="btn bg" onclick="closeM('m-camp-add-equip')" style="padding:5px 10px">X</button></div>
+    <div id="ce-target" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:12px;color:var(--t2);margin-bottom:12px"></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">Pega aqu&iacute; la lista de equipamiento (separada por gui&oacute;n, salto de l&iacute;nea o vi&ntilde;etas). NEXO la limpiar&aacute; al guardar y la a&ntilde;adir&aacute; al Stock Vivo del coche.</div>
+    <textarea id="ce-text" rows="10" placeholder="Ej:&#10;Pack Allure - LED - Rear Camera - Apple CarPlay - 17&quot; Alloy Wheels - ..." style="font-family:monospace;font-size:12px"></textarea>
+    <div id="ce-status" style="font-size:11px;color:var(--acc);margin-top:8px;min-height:14px"></div>
+    <div class="fbet" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-camp-add-equip')" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="campSaveEquipFromModal()" style="font-size:12px">&#128190; Guardar en Stock + Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD FOTOS desde campaña (se guarda en Stock) -->
+<div class="ovl" id="m-camp-add-photos">
+  <div class="modal" style="max-width:720px">
+    <div class="fbet mb14"><div class="mt">&#128247; Adjuntar fotos (m&aacute;x 3)</div><button class="btn bg" onclick="closeM('m-camp-add-photos')" style="padding:5px 10px">X</button></div>
+    <div id="cp-target" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:12px;color:var(--t2);margin-bottom:12px"></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:12px;line-height:1.4">Selecciona hasta 3 fotos. Se guardan en el Stock Vivo del coche para futuras campa&ntilde;as.</div>
+    <div class="g3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div>
+        <label style="font-size:11px">Foto 1</label>
+        <div id="cp-prev-1" style="background:var(--bg2);border:1px dashed var(--border);border-radius:6px;height:120px;display:flex;align-items:center;justify-content:center;color:var(--t4);font-size:10px;margin-bottom:6px;overflow:hidden">Sin foto</div>
+        <input type="file" accept="image/*" onchange="campLoadPhotoToModal(event,1)" style="font-size:10px;width:100%">
+        <button type="button" class="btn bd" onclick="campClearModalPhoto(1)" style="font-size:10px;padding:2px 8px;margin-top:4px;width:100%">Quitar</button>
+      </div>
+      <div>
+        <label style="font-size:11px">Foto 2</label>
+        <div id="cp-prev-2" style="background:var(--bg2);border:1px dashed var(--border);border-radius:6px;height:120px;display:flex;align-items:center;justify-content:center;color:var(--t4);font-size:10px;margin-bottom:6px;overflow:hidden">Sin foto</div>
+        <input type="file" accept="image/*" onchange="campLoadPhotoToModal(event,2)" style="font-size:10px;width:100%">
+        <button type="button" class="btn bd" onclick="campClearModalPhoto(2)" style="font-size:10px;padding:2px 8px;margin-top:4px;width:100%">Quitar</button>
+      </div>
+      <div>
+        <label style="font-size:11px">Foto 3</label>
+        <div id="cp-prev-3" style="background:var(--bg2);border:1px dashed var(--border);border-radius:6px;height:120px;display:flex;align-items:center;justify-content:center;color:var(--t4);font-size:10px;margin-bottom:6px;overflow:hidden">Sin foto</div>
+        <input type="file" accept="image/*" onchange="campLoadPhotoToModal(event,3)" style="font-size:10px;width:100%">
+        <button type="button" class="btn bd" onclick="campClearModalPhoto(3)" style="font-size:10px;padding:2px 8px;margin-top:4px;width:100%">Quitar</button>
+      </div>
+    </div>
+    <div id="cp-status" style="font-size:11px;color:var(--acc);margin-top:8px;min-height:14px"></div>
+    <div class="fbet" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-camp-add-photos')" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="campSavePhotosFromModal()" style="font-size:12px">&#128190; Guardar en Stock + Aplicar</button>
     </div>
   </div>
 </div>
@@ -2131,7 +2184,7 @@ var FIREBASE_CONFIG={
   appId:"1:642250180456:web:6bddc72a072814c360f8dd"
 };
 
-var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','mkCampaigns','mkCampaignsCounter','mkFirmas','mkFirmasCounter','mkTemplates','mkTemplatesCounter'];
+var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','mkCampaigns','mkCampaignsCounter','mkFirmas','mkFirmasCounter','mkTemplates','mkTemplatesCounter'];
 // Mapping key -> variable globale che contiene i dati locali
 // Usato per i listener real-time per applicare cambi remoti alle vars in memoria
 var FB_KEY_VARS={
@@ -2146,7 +2199,7 @@ var FB_KEY_VARS={
 };
 // Mapping key -> funzione di re-render (chiamata dopo aggiornamento remoto)
 var FB_KEY_RENDER={
-  stock:'fStk',stkCnt:null,
+  stock:'fStk',stkCnt:null,offerCnt:null,
   providers:'renderProv',provCnt:null,provLabels:'renderProv',
   contacts:'renderContacts',
   tasks:'renderTareas',
@@ -2302,7 +2355,7 @@ var NX_FB={
   // Carica iniziale: scarica TUTTI i moduli dal cloud al login
   syncAllDown:function(){
     var self=this;
-    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
+    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
     var promises=keys.map(function(k){
       return self.syncGenericDown(k).then(function(result){
         if(!result)return null;
@@ -2372,7 +2425,7 @@ var NX_FB={
   },
 
   startAllGenericListeners:function(){
-    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
+    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
     var self=this;
     keys.forEach(function(k){self.startGenericListener(k);});
     console.log('[NX_FB] \u2705 Listeners activos: '+keys.length+' colecciones');
@@ -3368,6 +3421,39 @@ var NX_PROV_INBOX={
 // -- STATE ----------------------------------------------------
 var stock=LS('stock',[]);
 var stkCnt=LS('stkCnt',1);
+// v9.37: counter global de IDs de oferta (compartido entre Word + campañas email)
+// Formato: '001', '002', '003'... padded a 3 dígitos.
+var offerCnt=LS('offerCnt',1);
+function nxNextOfferId(){
+  var id=String(offerCnt).padStart(3,'0');
+  offerCnt++;
+  SS('offerCnt',offerCnt);
+  return id;
+}
+function nxPeekOfferId(){
+  // Solo devuelve la "próxima" sin avanzar el counter (para preview)
+  return String(offerCnt).padStart(3,'0');
+}
+window.nxNextOfferId=nxNextOfferId;
+window.nxPeekOfferId=nxPeekOfferId;
+
+// Calcula precio de venta a partir de buy + margin (mismo método que el Word).
+// margin acepta formatos: "+500 EUR", "500", "+5%", "5%". Default: +500 EUR.
+function nxComputeSellPrice(buy,margin){
+  function fnumLocal(s){
+    if(typeof s==='number')return s;
+    if(!s)return 0;
+    return parseFloat(String(s).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
+  }
+  var buyN=fnumLocal(buy);
+  if(!buyN)return '';
+  var m=margin||'+500 EUR';
+  var mN=parseFloat(String(m).replace(/[^0-9.]/g,''))||500;
+  var isPct=String(m).indexOf('%')>=0;
+  var sellN=isPct?buyN*(1+mN/100):buyN+mN;
+  return Math.round(sellN).toLocaleString('es-ES')+' \u20ac';
+}
+window.nxComputeSellPrice=nxComputeSellPrice;
 var contacts=LS('contacts',[
   {id:1,name:'Klaus Muller',company:'BavariaAuto GmbH',country:'Alemania',role:'Comprador',myCompany:'DMCAR GROUP',phone:'+49 89 123456',notes:'Interesado en lote BMW Serie 5.',tag:'hot',lastContact:'2026-04-18'},
   {id:2,name:'Jean Dupont',company:'AutoFrance SAS',country:'Francia',role:'Proveedor',myCompany:'DMCAR GROUP',phone:'+33 1 987654',notes:'Ofrece Peugeot 308 diesel.',tag:'pend',lastContact:'2026-04-15'},
@@ -7766,6 +7852,7 @@ function exportAll(){
     exportedAt:new Date().toISOString(),
     stock:stock,
     stkCnt:stkCnt,
+    offerCnt:offerCnt,
     contacts:contacts,
     tasks:tasks,
     leads:leads,
@@ -7812,8 +7899,9 @@ function importAll(input){
       leads=Array.isArray(data.leads)?data.leads:[];
       offerHist=Array.isArray(data.offerHist)?data.offerHist:[];
       stkCnt=typeof data.stkCnt==='number'&&data.stkCnt>0?data.stkCnt:Math.max(1,stock.length+1);
+      offerCnt=typeof data.offerCnt==='number'&&data.offerCnt>0?data.offerCnt:Math.max(1,(offerHist?offerHist.length:0)+1);
       // Persist
-      SS('stock',stock);SS('stkCnt',stkCnt);SS('contacts',contacts);
+      SS('stock',stock);SS('stkCnt',stkCnt);SS('offerCnt',offerCnt);SS('contacts',contacts);
       SS('tasks',tasks);SS('leads',leads);SS('offerHist',offerHist);
       // Refresh UI
       stkSel.clear();stkFlt=stock.slice();
@@ -7835,8 +7923,8 @@ function importAll(input){
 
 function clrAll(){
   if(!confirm('Borrar TODOS los datos de NEXO?')) return;
-  ['stock','stkCnt','contacts','tasks','leads','offerHist'].forEach(function(k){localStorage.removeItem('nx5_'+k);});
-  stock=[];contacts=[];tasks=[];leads=[];offerHist=[];stkCnt=1;
+  ['stock','stkCnt','offerCnt','contacts','tasks','leads','offerHist'].forEach(function(k){localStorage.removeItem('nx5_'+k);});
+  stock=[];contacts=[];tasks=[];leads=[];offerHist=[];stkCnt=1;offerCnt=1;
   renderConfig();renderDash();alert('Datos eliminados.');
 }
 
@@ -11761,6 +11849,8 @@ var _campEditing={
   tplId:'',
   firmaId:'',
   listId:'',
+  offerId:'',                // v9.37: ID único secuencial (001, 002, ...) — asignado al crear
+  margin:'+500 EUR',         // v9.37: margen por defecto para calcular precio venta
   selectedCarIds:[],         // IDs de coches del stock seleccionados
   excludedRecipientIds:{},   // mapa id\u2192true de contactos deseleccionados
   status:'draft'
@@ -11769,6 +11859,8 @@ var _campEditing={
 // Apre el modal Crear campa\u00f1a (nueva o pre-rellenada con coches del stock)
 // preselectedCarIds: array opcional de IDs de stock para preseleccionar
 function campOpenNew(preselectedCarIds){
+  // v9.37: genera offerId al abrir (peek, no avanza el counter hasta que se envíe/guarde)
+  var newOfferId=nxPeekOfferId();
   _campEditing={
     id:null,
     name:'',
@@ -11776,6 +11868,8 @@ function campOpenNew(preselectedCarIds){
     tplId:'',
     firmaId:'',
     listId:'',
+    offerId:newOfferId,
+    margin:LS('campDefaultMargin','+500 EUR'),
     selectedCarIds:Array.isArray(preselectedCarIds)?preselectedCarIds.slice():[],
     excludedRecipientIds:{},
     status:'draft'
@@ -11785,6 +11879,14 @@ function campOpenNew(preselectedCarIds){
   if(n('camp-subject'))n('camp-subject').value='';
   // Popula selects
   campPopulateSelects();
+  // v9.37: si hay coches preseleccionados, auto-fill nombre + asunto
+  if(_campEditing.selectedCarIds.length>0){
+    setTimeout(function(){
+      campAutoFillName();
+      // Auto-fill subject también si existe coche seleccionado
+      if(typeof campAutoFillSubject==='function')campAutoFillSubject();
+    },50);
+  }
   // Renderiza
   campRenderCarsList();
   campRenderRecipients();
@@ -11792,6 +11894,31 @@ function campOpenNew(preselectedCarIds){
   campUpdSummary();
   openM('m-camp-new');
 }
+
+// v9.37: rellena el nombre de la campaña con "<MARCA MODELO> #ID"
+function campAutoFillName(){
+  var inp=n('camp-name');if(!inp)return;
+  var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
+  if(sel.length===0)return;
+  var first=sel[0];
+  var s=null;
+  if(typeof first==='string'){
+    s=stock.find(function(x){return String(x.id)===String(first);});
+  }else if(first&&first.groupKey){
+    var parts=String(first.groupKey).split('||');
+    var brand=(parts[0]||'').toUpperCase();
+    var model=(parts[1]||'').toUpperCase();
+    s=stock.find(function(x){
+      return ((x.brand||'').toUpperCase()===brand)&&((x.model||'').toUpperCase()===model);
+    });
+  }
+  if(!s)return;
+  var label=((s.brand||'')+' '+(s.model||'')).trim();
+  var oid=_campEditing.offerId||nxPeekOfferId();
+  inp.value=label+' #'+oid;
+  _campEditing.name=inp.value;
+}
+window.campAutoFillName=campAutoFillName;
 
 function campOpenEdit(id){
   var c=mkCampaigns.find(function(x){return x.id===id;});
@@ -11803,6 +11930,8 @@ function campOpenEdit(id){
     tplId:c.tplId||'',
     firmaId:c.firmaId||'',
     listId:c.listId||'',
+    offerId:c.offerId||nxPeekOfferId(),
+    margin:c.margin||LS('campDefaultMargin','+500 EUR'),
     selectedCarIds:Array.isArray(c.selectedCarIds)?c.selectedCarIds.slice():[],
     excludedRecipientIds:c.excludedRecipientIds?Object.assign({},c.excludedRecipientIds):{},
     status:c.status||'draft'
@@ -12183,6 +12312,13 @@ function campStockPickerConfirm(){
   });
   closeM('m-camp-stock-picker');
   campRenderCarsList();
+  // v9.37: auto-fill nombre + asunto si todavía vacíos
+  if(!_campEditing.name||!_campEditing.name.trim()){
+    if(typeof campAutoFillName==='function')campAutoFillName();
+  }
+  if(!_campEditing.subject||!_campEditing.subject.trim()){
+    if(typeof campAutoFillSubject==='function')campAutoFillSubject();
+  }
   campUpdSummary();
 }
 
@@ -12455,6 +12591,8 @@ function campSaveDraft(){
     tplId:_campEditing.tplId,
     firmaId:_campEditing.firmaId,
     listId:_campEditing.listId,
+    offerId:_campEditing.offerId||'',
+    margin:_campEditing.margin||'+500 EUR',
     selectedCarIds:_campEditing.selectedCarIds,
     excludedRecipientIds:_campEditing.excludedRecipientIds,
     status:'draft',
@@ -12651,8 +12789,19 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
   var cleanEquipment=campCleanEquipment(rawEquip);
   // T\u00edtulo: brand + model + version (igual al Word)
   var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
-  // Precio
-  var priceFmt=parent.salePrice?(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+' \u20ac':'';
+  // Precio: prioriza salePrice → sell → calcula desde buy + margin (como Word)
+  var priceFmt='';
+  if(parent.salePrice){
+    priceFmt=(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+' \u20ac';
+  }else if(parent.sell){
+    var sellN=parseFloat(String(parent.sell).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
+    if(sellN>0)priceFmt=Math.round(sellN).toLocaleString('es-ES')+' \u20ac';
+  }
+  if(!priceFmt&&parent.buy){
+    // Calcula con margen por defecto (+500 EUR como Word)
+    var defMargin=(_campEditing&&_campEditing.margin)||LS('campDefaultMargin','+500 EUR');
+    priceFmt=nxComputeSellPrice(parent.buy,defMargin);
+  }
   var actualQty=selected.length;
   if(actualQty===1){
     // 1 unidad: detalles completos del coche espec\u00edfico (con VIN)
@@ -12672,7 +12821,8 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
       photo1:parent.photo1||'',
       photo2:parent.photo2||'',
       photo3:parent.photo3||'',
-      brandLogo:brandLogo
+      brandLogo:brandLogo,
+      offerId:(_campEditing&&_campEditing.offerId)||''
     };
   }
   // LOTE: calcula valores agregados
@@ -12715,7 +12865,8 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
     photo1:parent.photo1||'',
     photo2:parent.photo2||'',
     photo3:parent.photo3||'',
-    brandLogo:brandLogo
+    brandLogo:brandLogo,
+    offerId:(_campEditing&&_campEditing.offerId)||''
   };
 }
 
@@ -12825,6 +12976,122 @@ function campShowMissingWarning(problems){
 }
 window.campShowMissingWarning=campShowMissingWarning;
 
+// === ADD EQUIPAMIENTO desde modal campaña (v9.37) ===
+// Toma el primer coche seleccionado, abre modal para pegar equipment.
+// Al guardar: limpia el texto y lo escribe en stock[].equip + lo refleja en _campEditing.
+function campResolveFirstSelectedStock(){
+  var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
+  if(sel.length===0)return null;
+  var first=sel[0];
+  var s=null;
+  if(typeof first==='string'){
+    s=stock.find(function(x){return String(x.id)===String(first);});
+  }else if(first&&first.groupKey){
+    var parts=String(first.groupKey).split('||');
+    var brand=(parts[0]||'').toUpperCase();
+    var model=(parts[1]||'').toUpperCase();
+    s=stock.find(function(x){
+      return ((x.brand||'').toUpperCase()===brand)&&((x.model||'').toUpperCase()===model);
+    });
+  }
+  return s;
+}
+window.campResolveFirstSelectedStock=campResolveFirstSelectedStock;
+
+function campOpenAddEquip(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('\u26a0\ufe0f Primero selecciona al menos 1 coche en el paso 5.');return;}
+  n('ce-target').innerHTML='<strong>Coche destino:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:''))+
+    '<div style="font-size:10px;color:var(--t4);margin-top:4px">Equipamiento actual: '+(s.equip&&s.equip!=='--'?'<span style=\"color:var(--green)\">'+esc(s.equip.substring(0,80))+(s.equip.length>80?'...':'')+'</span>':'<em>vacío</em>')+'</div>';
+  n('ce-text').value=(s.equip&&s.equip!=='--')?s.equip:'';
+  n('ce-status').textContent='';
+  openM('m-camp-add-equip');
+}
+window.campOpenAddEquip=campOpenAddEquip;
+
+function campSaveEquipFromModal(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('Coche no encontrado.');return;}
+  var raw=n('ce-text').value.trim();
+  if(!raw){
+    if(!confirm('\u26a0\ufe0f Texto vac\u00edo. \u00bfBorrar el equipamiento del coche en Stock?'))return;
+  }
+  // Limpia: quita líneas vacías, normaliza separadores
+  var cleaned=raw.split(/\n|\r|;/).map(function(l){return l.trim();}).filter(function(l){return l.length>0;}).join(' - ');
+  // Si ya viene separado por " - " mantenelo
+  cleaned=cleaned.replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
+  // Aplica en Stock
+  var idx=stock.findIndex(function(x){return x.id===s.id;});
+  if(idx<0){alert('Stock no encontrado.');return;}
+  stock[idx].equip=cleaned||'--';
+  SS('stock',stock);
+  if(typeof fStk==='function')fStk();
+  closeM('m-camp-add-equip');
+  if(typeof showToast==='function')showToast('\u2713 Equipamiento guardado en Stock');
+  // Re-renderiza el resumen de cars
+  if(typeof campRenderCarsList==='function')campRenderCarsList();
+}
+window.campSaveEquipFromModal=campSaveEquipFromModal;
+
+// === ADD FOTOS desde modal campaña ===
+var _campModalPhotos={1:'',2:'',3:''};
+
+function campOpenAddPhotos(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('\u26a0\ufe0f Primero selecciona al menos 1 coche en el paso 5.');return;}
+  n('cp-target').innerHTML='<strong>Coche destino:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:''));
+  // Pre-rellena con las fotos actuales
+  _campModalPhotos={1:s.photo1||'',2:s.photo2||'',3:s.photo3||''};
+  [1,2,3].forEach(function(i){
+    var prev=n('cp-prev-'+i);
+    if(!prev)return;
+    if(_campModalPhotos[i]){
+      prev.innerHTML='<img src="'+esc(_campModalPhotos[i])+'" style="width:100%;height:100%;object-fit:cover">';
+    }else{
+      prev.innerHTML='Sin foto';
+    }
+  });
+  n('cp-status').textContent='';
+  openM('m-camp-add-photos');
+}
+window.campOpenAddPhotos=campOpenAddPhotos;
+
+function campLoadPhotoToModal(ev,slot){
+  var f=ev.target.files[0];if(!f)return;
+  if(!/^image\//.test(f.type)){alert('Solo im\u00e1genes.');return;}
+  if(f.size>5*1024*1024){alert('M\u00e1ximo 5 MB por foto.');return;}
+  var rd=new FileReader();
+  rd.onload=function(e){
+    _campModalPhotos[slot]=e.target.result;
+    var prev=n('cp-prev-'+slot);
+    if(prev)prev.innerHTML='<img src="'+esc(e.target.result)+'" style="width:100%;height:100%;object-fit:cover">';
+  };
+  rd.readAsDataURL(f);
+}
+window.campLoadPhotoToModal=campLoadPhotoToModal;
+
+function campClearModalPhoto(slot){
+  _campModalPhotos[slot]='';
+  var prev=n('cp-prev-'+slot);
+  if(prev)prev.innerHTML='Sin foto';
+}
+window.campClearModalPhoto=campClearModalPhoto;
+
+function campSavePhotosFromModal(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('Coche no encontrado.');return;}
+  var idx=stock.findIndex(function(x){return x.id===s.id;});
+  if(idx<0){alert('Stock no encontrado.');return;}
+  stock[idx].photo1=_campModalPhotos[1]||'';
+  stock[idx].photo2=_campModalPhotos[2]||'';
+  stock[idx].photo3=_campModalPhotos[3]||'';
+  SS('stock',stock);
+  closeM('m-camp-add-photos');
+  if(typeof showToast==='function')showToast('\u2713 Fotos guardadas en Stock');
+  if(typeof campRenderCarsList==='function')campRenderCarsList();
+}
+window.campSavePhotosFromModal=campSavePhotosFromModal;
+
 // VERSION SYNC: para preview r\u00e1pida (sin esperar logos)
 // Devuelve HTML construido sin pre-resolve de logos
 function campBuildHTML(vars){
@@ -12870,6 +13137,11 @@ function campSendTest(){
   if(!to)return;
   to=to.trim();
   if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
+  // v9.37: consume el offerId (avanza el counter) en el momento del envío
+  if(_campEditing&&!_campEditing.offerIdConsumed){
+    _campEditing.offerId=nxNextOfferId();
+    _campEditing.offerIdConsumed=true;
+  }
   // Construye HTML con inyecci\u00f3n de coches + variables de ejemplo + logos en base64
   if(typeof showToast==='function')showToast('\u23f3 Descargando logos y construyendo email...');
   campBuildHTMLAsync({
@@ -13579,6 +13851,10 @@ function tplRenderBlockHTML(block){
           ah+='</td>';
         });
         ah+='</tr></table>';
+      }
+      // v9.37: Offer ID en footer de la card (gris pequeño, para trazabilidad)
+      if(c.offerId){
+        ah+='<div style="margin-top:14px;padding-top:8px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;letter-spacing:.5px">Offer ID: <strong style="color:#6b7280;font-family:monospace">#'+esc(c.offerId)+'</strong></div>';
       }
       ah+='</div>';
       return ah;
