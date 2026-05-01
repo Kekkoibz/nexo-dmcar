@@ -244,6 +244,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l3-3 3 3 3-3 3 3h3M3 12v6a2 2 0 002 2h14a2 2 0 002-2v-6M9 12l3 3 3-3"/></svg></span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
     <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cr" id="cnt-prov-inbox" style="display:none;cursor:pointer" title="Bandeja de ofertas Provider" onclick="event.stopPropagation();provInboxOpen()">0</span><span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
     <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v8a7 7 0 0014 0V4M5 4h4v8a3 3 0 006 0V4h4M4 4h1M19 4h1"/></svg></span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
+    <div class="ni" id="n-marketing" onclick="go('marketing')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l9-5 9 5"/></svg></span>Marketing<span class="ni-cnt cg" id="cnt-marketing" style="display:none">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M9 12l1.5 1.5L13 11M9 16l1.5 1.5L13 15" stroke-linecap="round"/></svg></span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
     <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 11-2.6 2.6l-7.5 7.5a2 2 0 102.8 2.8l7.5-7.5a4 4 0 002.6-2.6z"/></svg></span>Configuracion</div>
@@ -675,6 +676,134 @@ En que te puedo ayudar hoy?</div></div>
       </div>
 
       <!-- TABLE VIEW (Kanban removed - moved to B2B) -->
+    </div>
+
+    <!-- MARKETING -->
+    <div class="view" id="view-marketing">
+      <div class="fbet mb14">
+        <div><div class="st">Marketing</div><div class="ss">Contactos para email marketing y listas de difusi&oacute;n</div></div>
+        <div class="fc g8">
+          <button class="btn bs" onclick="mkDownloadTemplate()" style="font-size:12px" title="Descargar plantilla CSV vac&iacute;a"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Plantilla CSV</button>
+          <button class="btn bs" onclick="mkExportCSV()" style="font-size:12px">&#9111; Exportar</button>
+          <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
+          <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
+          <button class="btn bp" onclick="mkOpenManual()">+ Contacto</button>
+        </div>
+      </div>
+
+      <!-- TABS: Contactos / Listas -->
+      <div class="fc g4 mb12" style="border-bottom:1px solid var(--border)">
+        <button id="mk-tab-contactos" class="btn bg" onclick="mkSwitchTab('contactos')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff">&#128100; Contactos <span id="mk-tab-cnt-c" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+        <button id="mk-tab-listas" class="btn bg" onclick="mkSwitchTab('listas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none">&#128221; Listas <span id="mk-tab-cnt-l" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+      </div>
+
+      <!-- TAB: Contactos -->
+      <div id="mk-pane-contactos">
+        <!-- Filtri -->
+        <div class="card mb12">
+          <div class="g4 mb10">
+            <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="f-mk-q" placeholder="Nombre, empresa, email..." oninput="mkRender()"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Pa&iacute;s</label><input type="text" id="f-mk-country" placeholder="Todos" oninput="mkRender()"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Tipo cliente</label>
+              <select id="f-mk-type" onchange="mkRender()">
+                <option value="">Todos</option>
+                <option value="dealer">Dealer</option>
+                <option value="broker">Broker</option>
+                <option value="cliente_final">Cliente final</option>
+                <option value="importador">Importador</option>
+                <option value="rent_a_car">Rent a car</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+            <div><label style="font-size:10px;color:var(--t3)">Estado</label>
+              <select id="f-mk-status" onchange="mkRender()">
+                <option value="">Todos</option>
+                <option value="subscribed">Subscribed</option>
+                <option value="unsubscribed">Unsubscribed</option>
+                <option value="bounced">Bounced</option>
+              </select>
+            </div>
+          </div>
+          <div class="g3">
+            <div><label style="font-size:10px;color:var(--t3)">Inter&eacute;s (marca)</label><input type="text" id="f-mk-interest" placeholder="ej: Audi, BMW" oninput="mkRender()"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Origen</label>
+              <select id="f-mk-origin" onchange="mkRender()">
+                <option value="">Todos</option>
+                <option value="web">Web</option>
+                <option value="instagram">Instagram</option>
+                <option value="fiera">Fiera</option>
+                <option value="lista_vieja">Lista vieja</option>
+                <option value="manual">Manual</option>
+                <option value="pegar_texto">Pegar texto</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:flex-end">
+              <button class="btn bs" onclick="mkClearFilters()" style="font-size:11px">&#9750; Limpiar filtros</button>
+              <button class="btn bp" onclick="mkSaveCurrentFilterAsList()" style="font-size:11px;margin-left:6px" title="Guardar los filtros actuales como lista din&aacute;mica">&#128190; Guardar como lista</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabella contatti -->
+        <div class="card" style="padding:0">
+          <div style="overflow-x:auto">
+            <table id="mk-tbl">
+              <thead><tr style="background:var(--bg3)">
+                <th style="width:36px"><input type="checkbox" id="mk-sel-all" onchange="mkSelAll(this)"></th>
+                <th>Estado</th>
+                <th>Nombre</th>
+                <th>Empresa</th>
+                <th>Email</th>
+                <th>Tel&eacute;fono</th>
+                <th>Pa&iacute;s</th>
+                <th>Tipo</th>
+                <th>Inter&eacute;s</th>
+                <th>Origen</th>
+                <th>Fecha</th>
+                <th style="width:90px"></th>
+              </tr></thead>
+              <tbody id="mk-body"></tbody>
+            </table>
+          </div>
+          <div id="mk-empty" class="tbl-empty" style="display:none">
+            <div style="font-size:32px;margin-bottom:10px">&#128231;</div>
+            <div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:5px">No hay contactos</div>
+            <div style="font-size:12px">Importa una lista o crea contactos manualmente</div>
+          </div>
+          <div id="mk-info" style="padding:7px 14px;font-size:11px;color:var(--t3);border-top:1px solid var(--border)"></div>
+        </div>
+
+        <!-- Sel bar marketing -->
+        <div class="sel-bar" id="mk-sel-bar" style="display:none;margin-top:12px">
+          <div class="fbet">
+            <div class="fc g8">
+              <span id="mk-sel-cnt" style="font-size:13px;font-weight:600;color:var(--acc)">0 sel.</span>
+              <span style="font-size:11px;color:var(--t3)">Acciones masivas</span>
+            </div>
+            <div class="fc g8">
+              <button class="btn bg" onclick="mkClrSel()" style="font-size:11px">Deseleccionar</button>
+              <button class="btn bs" onclick="mkBulkSetStatus()" style="font-size:11px">Cambiar estado</button>
+              <button class="btn bs" onclick="mkBulkAddToList()" style="font-size:11px">A&ntilde;adir a lista</button>
+              <button class="btn bd" onclick="mkBulkDel()" style="font-size:11px">&#128465; Eliminar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Listas -->
+      <div id="mk-pane-listas" style="display:none">
+        <div class="fbet mb12">
+          <div style="font-size:12px;color:var(--t3)">Las listas son segmentaciones de contactos: <strong>est&aacute;ticas</strong> (snapshot fijo) o <strong>din&aacute;micas</strong> (filtros que se auto-actualizan).</div>
+          <button class="btn bp" onclick="mkOpenNewList()">+ Lista</button>
+        </div>
+        <div id="mk-lists-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+        <div id="mk-lists-empty" style="text-align:center;padding:40px;color:var(--t3);display:none">
+          <div style="font-size:32px;margin-bottom:10px">&#128221;</div>
+          <div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:5px">No hay listas a&uacute;n</div>
+          <div style="font-size:12px">Aplica filtros y guarda como lista din&aacute;mica, o crea una est&aacute;tica desde "+ Lista"</div>
+        </div>
+      </div>
     </div>
 
     <!-- TAREAS -->
@@ -1421,6 +1550,153 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- MARKETING: IMPORTAR EXCEL/CSV -->
+<div class="ovl" id="m-mk-import">
+  <div class="modal" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="fbet mb14"><div class="mt">&#128229; Importar contactos</div><button class="btn bg" onclick="closeM('m-mk-import')" style="padding:5px 10px">X</button></div>
+    <div id="mk-import-step1">
+      <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sube un archivo <strong>Excel (.xlsx, .xls)</strong> o <strong>CSV</strong>. NEXO detecta autom&aacute;ticamente las columnas. Puedes descargar la <a onclick="closeM('m-mk-import');mkDownloadTemplate()" style="color:var(--acc);cursor:pointer">plantilla CSV</a> para ver el formato esperado.</div>
+      <div id="mk-drop" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="mkDrop(event)" style="border:2px dashed var(--border);border-radius:10px;padding:30px;text-align:center;cursor:pointer;transition:all .2s" onclick="document.getElementById('mk-file').click()">
+        <div style="font-size:32px;margin-bottom:8px">&#128194;</div>
+        <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:4px" id="mk-fn">Arrastra aqu&iacute; tu archivo o click para seleccionar</div>
+        <div style="font-size:11px;color:var(--t3)">Excel o CSV &middot; m&aacute;x 5MB</div>
+      </div>
+      <input type="file" id="mk-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="mkFileChg(this)">
+    </div>
+    <div id="mk-import-step2" style="display:none;flex:1;overflow-y:auto">
+      <!-- Riepilogo + classificazione default -->
+      <div class="card mb12">
+        <div class="ct">Vista previa &amp; clasificaci&oacute;n</div>
+        <div id="mk-preview-info" style="font-size:11px;color:var(--t3);margin-bottom:10px"></div>
+        <div style="overflow-x:auto;max-height:200px;border:1px solid var(--border);border-radius:8px;margin-bottom:10px">
+          <table id="mk-preview-tbl" style="width:100%;font-size:11px"><thead></thead><tbody></tbody></table>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--t1);margin-bottom:8px">Aplicar a todos los contactos importados (puedes cambiarlo despu&eacute;s):</div>
+        <div class="g3 mb10">
+          <div><label style="font-size:10px;color:var(--t3)">Tipo cliente (default)</label>
+            <select id="mk-bulk-type">
+              <option value="">No clasificar</option>
+              <option value="dealer">Dealer</option>
+              <option value="broker">Broker</option>
+              <option value="cliente_final">Cliente final</option>
+              <option value="importador">Importador</option>
+              <option value="rent_a_car">Rent a car</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Origen (default)</label>
+            <select id="mk-bulk-origin">
+              <option value="lista_vieja">Lista vieja</option>
+              <option value="web">Web</option>
+              <option value="instagram">Instagram</option>
+              <option value="fiera">Fiera</option>
+              <option value="manual">Manual</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div><label style="font-size:10px;color:var(--t3)">Inter&eacute;s (default)</label><input type="text" id="mk-bulk-interest" placeholder="ej: Audi, BMW"></div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--t1);margin-bottom:6px">Estrategia de duplicados (por email):</div>
+        <div class="fc g12 mb10" style="font-size:12px">
+          <label><input type="radio" name="mk-dup" value="ignore" checked> Ignorar duplicados</label>
+          <label><input type="radio" name="mk-dup" value="update"> Actualizar campos vac&iacute;os</label>
+          <label><input type="radio" name="mk-dup" value="replace"> Reemplazar todos los datos</label>
+        </div>
+      </div>
+    </div>
+    <div id="mk-import-progress" style="display:none;padding:14px;background:var(--bg2);border-radius:8px;margin-top:10px;font-size:12px"></div>
+    <div class="fc g8" style="margin-top:12px">
+      <button class="btn bg" onclick="closeM('m-mk-import')" style="flex:1">Cancelar</button>
+      <button class="btn bp" id="mk-import-btn" onclick="mkImportConfirm()" style="flex:2;display:none">&#9889; Importar contactos</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKETING: PEGAR TEXTO (firma email, lista incollata) -->
+<div class="ovl" id="m-mk-paste">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">&#128203; Pegar contacto(s)</div><button class="btn bg" onclick="closeM('m-mk-paste')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Pega una firma email, biglietto, o lista de contactos (uno por l&iacute;nea con email). NEXO extrae nombre, empresa, email, tel&eacute;fono y pa&iacute;s autom&aacute;ticamente.</div>
+    <textarea id="mkp-text" rows="10" placeholder="Ej:&#10;Marco Rossi&#10;AutoItalia Srl&#10;marco@autoitalia.it&#10;+39 02 1234567&#10;&#10;O m&uacute;ltiples contactos:&#10;mario@email.com&#10;giulia@empresa.it&#10;..." style="font-family:monospace;font-size:11px"></textarea>
+    <div id="mkp-status" style="font-size:11px;color:var(--acc);min-height:16px;margin:8px 0"></div>
+    <button class="btn bp" onclick="mkExtractFromPaste()" style="width:100%">&#9889; Extraer y a&ntilde;adir contactos</button>
+  </div>
+</div>
+
+<!-- MARKETING: MANUAL / EDIT -->
+<div class="ovl" id="m-mk-edit">
+  <div class="modal" style="max-width:640px">
+    <div class="fbet mb14"><div class="mt">&#128100; Nuevo / Editar contacto</div><button class="btn bg" onclick="closeM('m-mk-edit')" style="padding:5px 10px">X</button></div>
+    <div class="g2 mb10">
+      <div><label>Nombre</label><input type="text" id="mke-name" placeholder="Marco"></div>
+      <div><label>Empresa</label><input type="text" id="mke-co" placeholder="AutoItalia Srl"></div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Email *</label><input type="email" id="mke-email" placeholder="marco@empresa.it"></div>
+      <div><label>Tel&eacute;fono</label><input type="text" id="mke-phone" placeholder="+39 02 1234567"></div>
+    </div>
+    <div class="g3 mb10">
+      <div><label>Pa&iacute;s</label><input type="text" id="mke-country" placeholder="Italia"></div>
+      <div><label>Tipo cliente</label>
+        <select id="mke-type">
+          <option value="">--</option>
+          <option value="dealer">Dealer</option>
+          <option value="broker">Broker</option>
+          <option value="cliente_final">Cliente final</option>
+          <option value="importador">Importador</option>
+          <option value="rent_a_car">Rent a car</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div><label>Estado</label>
+        <select id="mke-status">
+          <option value="subscribed">Subscribed</option>
+          <option value="unsubscribed">Unsubscribed</option>
+          <option value="bounced">Bounced</option>
+        </select>
+      </div>
+    </div>
+    <div class="g2 mb10">
+      <div><label>Inter&eacute;s (marca/s, separadas por coma)</label><input type="text" id="mke-interest" placeholder="Audi, BMW"></div>
+      <div><label>Origen</label>
+        <select id="mke-origin">
+          <option value="manual">Manual</option>
+          <option value="web">Web</option>
+          <option value="instagram">Instagram</option>
+          <option value="fiera">Fiera</option>
+          <option value="lista_vieja">Lista vieja</option>
+          <option value="pegar_texto">Pegar texto</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb10"><label>Notas</label><textarea id="mke-notes" rows="3" placeholder="Observaciones, contexto..."></textarea></div>
+    <button class="btn bp" style="width:100%" onclick="mkSaveContact()">Guardar</button>
+  </div>
+</div>
+
+<!-- MARKETING: NUEVA LISTA -->
+<div class="ovl" id="m-mk-list">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">&#128221; Nueva / Editar lista</div><button class="btn bg" onclick="closeM('m-mk-list')" style="padding:5px 10px">X</button></div>
+    <div class="mb10"><label>Nombre de la lista</label><input type="text" id="mkl-name" placeholder="ej: Clientes Italia BMW"></div>
+    <div class="mb10"><label>Descripci&oacute;n</label><input type="text" id="mkl-desc" placeholder="Para qu&eacute; sirve esta lista..."></div>
+    <div class="mb10">
+      <label>Tipo</label>
+      <div class="fc g12" style="font-size:12px">
+        <label><input type="radio" name="mkl-type" value="dynamic" checked> <strong>Din&aacute;mica</strong> (filtros se auto-actualizan)</label>
+        <label><input type="radio" name="mkl-type" value="static"> <strong>Est&aacute;tica</strong> (snapshot fijo)</label>
+      </div>
+    </div>
+    <div id="mkl-rules-section" class="mb10">
+      <label style="font-size:11px;color:var(--t3)">Filtros guardados (din&aacute;mica)</label>
+      <div id="mkl-rules-display" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:11px;color:var(--t2);min-height:40px;font-family:monospace"></div>
+      <div style="font-size:10px;color:var(--t3);margin-top:4px">Tip: Aplica los filtros que quieras desde la pesta&ntilde;a Contactos antes de guardar como lista din&aacute;mica.</div>
+    </div>
+    <button class="btn bp" style="width:100%" onclick="mkSaveList()">Guardar lista</button>
+  </div>
+</div>
 <script>
 // Global error handler - shows errors visually on mobile
 window.onerror = function(msg, src, line, col, err) {
@@ -1456,7 +1732,7 @@ var FIREBASE_CONFIG={
   appId:"1:642250180456:web:6bddc72a072814c360f8dd"
 };
 
-var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
 // Mapping key -> variable globale che contiene i dati locali
 // Usato per i listener real-time per applicare cambi remoti alle vars in memoria
 var FB_KEY_VARS={
@@ -1465,7 +1741,9 @@ var FB_KEY_VARS={
   contacts:'contacts',
   tasks:'tasks',
   offerHist:'offerHist',
-  leads:'leads',savedLabels:'savedLabels'
+  leads:'leads',savedLabels:'savedLabels',
+  mkContacts:'mkContacts',mkCntCounter:'mkCntCounter',
+  mkLists:'mkLists',mkListsCounter:'mkListsCounter'
 };
 // Mapping key -> funzione di re-render (chiamata dopo aggiornamento remoto)
 var FB_KEY_RENDER={
@@ -1474,7 +1752,9 @@ var FB_KEY_RENDER={
   contacts:'renderContacts',
   tasks:'renderTareas',
   offerHist:'renderOfertaHist',
-  leads:'renderLeads',savedLabels:null
+  leads:'renderLeads',savedLabels:null,
+  mkContacts:'renderMarketing',mkCntCounter:null,
+  mkLists:'renderMarketing',mkListsCounter:null
 };
 
 var NX_FB={
@@ -1623,7 +1903,7 @@ var NX_FB={
   // Carica iniziale: scarica TUTTI i moduli dal cloud al login
   syncAllDown:function(){
     var self=this;
-    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
     var promises=keys.map(function(k){
       return self.syncGenericDown(k).then(function(result){
         if(!result)return null;
@@ -1693,7 +1973,7 @@ var NX_FB={
   },
 
   startAllGenericListeners:function(){
-    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist'];
+    var keys=['stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
     var self=this;
     keys.forEach(function(k){self.startGenericListener(k);});
     console.log('[NX_FB] \u2705 Listeners activos: '+keys.length+' colecciones');
@@ -2799,7 +3079,7 @@ function fmtPickup(loc){
 }
 
 // -- NAV ------------------------------------------------------
-var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',tareas:'Tareas',config:'Configuracion'};
+var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',tareas:'Tareas',config:'Configuracion'};
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
@@ -2815,6 +3095,7 @@ function go(v){
   if(v==='providers') renderProv();
   if(v==='tareas') renderTareas();
   if(v==='leads') renderLeads();
+  if(v==='marketing') renderMarketing();
   if(v==='config') renderConfig();
   if(window.innerWidth<=768) document.getElementById('sb').classList.remove('mob');
 }
@@ -8531,6 +8812,681 @@ function provStockExtractCarsFromMail(mailData){
 }
 
 // END PROVIDERS MODULE
+// ===========================================================================
+
+// ===========================================================================
+// MARKETING MODULE — gestione contatti per direct mail / email marketing
+// ===========================================================================
+var mkContacts=LS('mkContacts',[]);
+var mkCntCounter=LS('mkCntCounter',1);
+var mkLists=LS('mkLists',[]);
+var mkListsCounter=LS('mkListsCounter',1);
+var mkSel=new Set();          // selezione corrente
+var mkFlt=[];                 // contatti filtrati (post applicazione filtri)
+var mkActiveTab='contactos';  // tab corrente: 'contactos' | 'listas'
+var mkImportData=null;        // dati staging import (rows + headers + mapping)
+
+// -- HELPERS --------------------------------------------------------------
+var MK_TYPE_LABEL={dealer:'Dealer',broker:'Broker',cliente_final:'Cliente final',importador:'Importador',rent_a_car:'Rent a car',otro:'Otro'};
+var MK_ORIGIN_LABEL={web:'Web',instagram:'Instagram',fiera:'Fiera',lista_vieja:'Lista vieja',manual:'Manual',pegar_texto:'Pegar texto',otro:'Otro'};
+var MK_STATUS_LABEL={subscribed:'Subscribed',unsubscribed:'Unsubscribed',bounced:'Bounced'};
+var MK_STATUS_COLOR={subscribed:{bg:'#dcfce7',fg:'#166534'},unsubscribed:{bg:'#fee2e2',fg:'#991b1b'},bounced:{bg:'#fef3c7',fg:'#92400e'}};
+
+function mkValidEmail(e){return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(String(e||'').trim());}
+function mkNormEmail(e){return String(e||'').toLowerCase().trim();}
+function mkFindByEmail(em){var ne=mkNormEmail(em);return mkContacts.find(function(c){return mkNormEmail(c.email)===ne;});}
+
+// -- MAIN RENDER ----------------------------------------------------------
+function renderMarketing(){
+  // Update sidebar counter
+  var subs=mkContacts.filter(function(c){return c.status==='subscribed';}).length;
+  var ce=n('cnt-marketing');if(ce){ce.textContent=subs;ce.style.display=mkContacts.length?'':'none';}
+  // Update tab counters
+  if(n('mk-tab-cnt-c'))n('mk-tab-cnt-c').textContent='('+mkContacts.length+')';
+  if(n('mk-tab-cnt-l'))n('mk-tab-cnt-l').textContent='('+mkLists.length+')';
+  // Render tab attivo
+  if(mkActiveTab==='contactos')mkRender();
+  else mkRenderLists();
+}
+
+function mkSwitchTab(t){
+  mkActiveTab=t;
+  // Toggle pannelli
+  n('mk-pane-contactos').style.display=t==='contactos'?'':'none';
+  n('mk-pane-listas').style.display=t==='listas'?'':'none';
+  // Stile tab
+  var btnC=n('mk-tab-contactos'),btnL=n('mk-tab-listas');
+  if(btnC){btnC.style.background=t==='contactos'?'var(--acc)':'';btnC.style.color=t==='contactos'?'#fff':'';}
+  if(btnL){btnL.style.background=t==='listas'?'var(--acc)':'';btnL.style.color=t==='listas'?'#fff':'';}
+  renderMarketing();
+}
+
+function mkClearFilters(){
+  ['f-mk-q','f-mk-country','f-mk-type','f-mk-status','f-mk-interest','f-mk-origin'].forEach(function(id){
+    var el=n(id);if(el){if(el.tagName==='SELECT')el.selectedIndex=0;else el.value='';}
+  });
+  mkRender();
+}
+
+// -- FILTER + RENDER TABLE ------------------------------------------------
+function mkRender(){
+  var q=(n('f-mk-q')&&n('f-mk-q').value||'').toLowerCase().trim();
+  var country=(n('f-mk-country')&&n('f-mk-country').value||'').toLowerCase().trim();
+  var type=n('f-mk-type')&&n('f-mk-type').value||'';
+  var status=n('f-mk-status')&&n('f-mk-status').value||'';
+  var interest=(n('f-mk-interest')&&n('f-mk-interest').value||'').toLowerCase().trim();
+  var origin=n('f-mk-origin')&&n('f-mk-origin').value||'';
+
+  mkFlt=mkContacts.filter(function(c){
+    if(q){
+      var hay=((c.firstName||'')+' '+(c.companyName||'')+' '+(c.email||'')+' '+(c.notes||'')).toLowerCase();
+      if(hay.indexOf(q)<0)return false;
+    }
+    if(country&&!(c.country||'').toLowerCase().includes(country))return false;
+    if(type&&c.customerType!==type)return false;
+    if(status&&c.status!==status)return false;
+    if(interest){
+      var ints=(c.interest||[]).join(' ').toLowerCase();
+      if(ints.indexOf(interest)<0)return false;
+    }
+    if(origin&&c.origin!==origin)return false;
+    return true;
+  });
+
+  var body=n('mk-body'),empty=n('mk-empty'),info=n('mk-info');
+  if(!body)return;
+  if(!mkContacts.length){
+    body.innerHTML='';if(empty)empty.style.display='';
+    if(info)info.textContent='';
+    return;
+  }
+  if(empty)empty.style.display='none';
+  if(!mkFlt.length){
+    body.innerHTML='<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--t3)">Sin resultados con estos filtros</td></tr>';
+    if(info)info.textContent='0 de '+mkContacts.length+' contactos';
+    return;
+  }
+  if(info)info.textContent='Mostrando '+mkFlt.length+' de '+mkContacts.length+' contactos';
+
+  body.innerHTML=mkFlt.map(function(c){
+    var sel=mkSel.has(c.id);
+    var sCol=MK_STATUS_COLOR[c.status]||MK_STATUS_COLOR.subscribed;
+    var statusBadge='<span style="background:'+sCol.bg+';color:'+sCol.fg+';padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600">'+esc(MK_STATUS_LABEL[c.status]||c.status||'?')+'</span>';
+    var ints=Array.isArray(c.interest)?c.interest.join(', '):(c.interest||'');
+    return '<tr id="mktr-'+esc(c.id)+'"'+(sel?' style="background:rgba(37,99,235,.07)"':'')+'>'
+      +'<td style="text-align:center"><input type="checkbox" class="mkrow-chk" data-id="'+esc(c.id)+'"'+(sel?' checked':'')+'></td>'
+      +'<td>'+statusBadge+'</td>'
+      +'<td style="font-weight:500">'+esc(c.firstName||'--')+'</td>'
+      +'<td style="font-size:11px">'+esc(c.companyName||'--')+'</td>'
+      +'<td style="font-size:11px;color:var(--acc)">'+esc(c.email||'')+'</td>'
+      +'<td style="font-family:monospace;font-size:10px">'+esc(c.phone||'')+'</td>'
+      +'<td style="font-size:11px">'+esc(c.country||'')+'</td>'
+      +'<td style="font-size:10px">'+esc(MK_TYPE_LABEL[c.customerType]||c.customerType||'')+'</td>'
+      +'<td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(ints)+'">'+esc(ints)+'</td>'
+      +'<td style="font-size:10px;color:var(--t3)">'+esc(MK_ORIGIN_LABEL[c.origin]||c.origin||'')+'</td>'
+      +'<td style="font-size:10px;color:var(--t3)">'+fmtD(c.createdAt)+'</td>'
+      +'<td><div class="fc g4">'
+        +'<button class="btn bs mk-edit-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">&#9998;</button>'
+        +'<button class="btn bd mk-del-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">x</button>'
+      +'</div></td>'
+    +'</tr>';
+  }).join('');
+
+  // Event listeners
+  body.querySelectorAll('.mkrow-chk').forEach(function(chk){
+    chk.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      if(this.checked)mkSel.add(id);else mkSel.delete(id);
+      var tr=n('mktr-'+id);if(tr)tr.style.background=this.checked?'rgba(37,99,235,.07)':'';
+      mkUpdSelBar();
+    });
+  });
+  body.querySelectorAll('.mk-edit-btn').forEach(function(b){
+    b.addEventListener('click',function(){mkOpenEdit(this.getAttribute('data-id'));});
+  });
+  body.querySelectorAll('.mk-del-btn').forEach(function(b){
+    b.addEventListener('click',function(){mkDelContact(this.getAttribute('data-id'));});
+  });
+
+  mkUpdSelBar();
+}
+
+function mkUpdSelBar(){
+  var bar=n('mk-sel-bar'),cnt=n('mk-sel-cnt');
+  if(bar)bar.style.display=mkSel.size>0?'block':'none';
+  if(cnt)cnt.textContent=mkSel.size+' contacto'+(mkSel.size!==1?'s':'')+' sel.';
+}
+function mkSelAll(cb){
+  if(cb.checked)mkFlt.forEach(function(c){mkSel.add(c.id);});
+  else mkFlt.forEach(function(c){mkSel.delete(c.id);});
+  mkUpdSelBar();mkRender();
+}
+function mkClrSel(){mkSel.clear();var sa=n('mk-sel-all');if(sa)sa.checked=false;mkUpdSelBar();mkRender();}
+
+// -- CRUD CONTATTI --------------------------------------------------------
+function mkOpenManual(){
+  ['mke-name','mke-co','mke-email','mke-phone','mke-country','mke-interest','mke-notes'].forEach(function(i){if(n(i))n(i).value='';});
+  if(n('mke-type'))n('mke-type').value='';
+  if(n('mke-status'))n('mke-status').value='subscribed';
+  if(n('mke-origin'))n('mke-origin').value='manual';
+  n('m-mk-edit').removeAttribute('data-edit-id');
+  openM('m-mk-edit');
+}
+function mkOpenEdit(id){
+  var c=mkContacts.find(function(x){return String(x.id)===String(id);});
+  if(!c)return;
+  n('mke-name').value=c.firstName||'';
+  n('mke-co').value=c.companyName||'';
+  n('mke-email').value=c.email||'';
+  n('mke-phone').value=c.phone||'';
+  n('mke-country').value=c.country||'';
+  n('mke-type').value=c.customerType||'';
+  n('mke-status').value=c.status||'subscribed';
+  n('mke-interest').value=Array.isArray(c.interest)?c.interest.join(', '):(c.interest||'');
+  n('mke-origin').value=c.origin||'manual';
+  n('mke-notes').value=c.notes||'';
+  n('m-mk-edit').setAttribute('data-edit-id',c.id);
+  openM('m-mk-edit');
+}
+function mkSaveContact(){
+  var email=mkNormEmail(n('mke-email').value);
+  if(!email||!mkValidEmail(email)){alert('Email no v\u00e1lida.');return;}
+  var editId=n('m-mk-edit').getAttribute('data-edit-id');
+  // Verifica duplicati su email (escluso se editing)
+  var dup=mkFindByEmail(email);
+  if(dup&&(!editId||String(dup.id)!==String(editId))){
+    if(!confirm('Ya existe un contacto con email "'+email+'". \u00bfActualizar el existente?'))return;
+    editId=dup.id;
+  }
+  var interestStr=n('mke-interest').value.trim();
+  var record={
+    firstName:n('mke-name').value.trim(),
+    companyName:n('mke-co').value.trim(),
+    email:email,
+    phone:n('mke-phone').value.trim(),
+    country:n('mke-country').value.trim(),
+    customerType:n('mke-type').value,
+    status:n('mke-status').value||'subscribed',
+    interest:interestStr?interestStr.split(',').map(function(s){return s.trim();}).filter(Boolean):[],
+    origin:n('mke-origin').value||'manual',
+    notes:n('mke-notes').value.trim(),
+    updatedAt:new Date().toISOString()
+  };
+  if(editId){
+    var idx=mkContacts.findIndex(function(c){return String(c.id)===String(editId);});
+    if(idx>=0){
+      record.id=mkContacts[idx].id;
+      record.createdAt=mkContacts[idx].createdAt;
+      mkContacts[idx]=Object.assign({},mkContacts[idx],record);
+    }
+  }else{
+    record.id='mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    record.createdAt=new Date().toISOString();
+    mkContacts.push(record);
+    mkCntCounter++;SS('mkCntCounter',mkCntCounter);
+  }
+  SS('mkContacts',mkContacts);
+  closeM('m-mk-edit');
+  renderMarketing();
+  if(typeof showToast==='function')showToast('\u2713 Contacto guardado');
+}
+function mkDelContact(id){
+  var c=mkContacts.find(function(x){return String(x.id)===String(id);});
+  if(!c)return;
+  if(!confirm('Eliminar contacto "'+(c.firstName||c.email)+'"?'))return;
+  mkContacts=mkContacts.filter(function(x){return String(x.id)!==String(id);});
+  mkSel.delete(id);
+  SS('mkContacts',mkContacts);
+  renderMarketing();
+}
+function mkBulkDel(){
+  if(!mkSel.size)return;
+  if(!confirm('Eliminar '+mkSel.size+' contacto'+(mkSel.size!==1?'s':'')+'?'))return;
+  mkContacts=mkContacts.filter(function(c){return !mkSel.has(c.id);});
+  mkSel.clear();
+  SS('mkContacts',mkContacts);
+  renderMarketing();
+}
+function mkBulkSetStatus(){
+  if(!mkSel.size)return;
+  var newStatus=prompt('Nuevo estado para los '+mkSel.size+' contactos:\n  subscribed\n  unsubscribed\n  bounced','subscribed');
+  if(!newStatus||['subscribed','unsubscribed','bounced'].indexOf(newStatus)<0)return;
+  var changed=0;
+  mkContacts.forEach(function(c){
+    if(mkSel.has(c.id)){
+      c.status=newStatus;
+      if(newStatus==='unsubscribed')c.unsubscribedAt=new Date().toISOString();
+      changed++;
+    }
+  });
+  SS('mkContacts',mkContacts);
+  renderMarketing();
+  if(typeof showToast==='function')showToast('\u2713 '+changed+' contactos actualizados');
+}
+function mkBulkAddToList(){
+  if(!mkSel.size)return;
+  if(!mkLists.length){alert('No hay listas creadas. Crea una desde la pesta\u00f1a Listas.');return;}
+  var optList=mkLists.map(function(l,i){return (i+1)+'. '+l.name+(l.type==='static'?' (est\u00e1tica)':' (din\u00e1mica)');}).join('\n');
+  var idxStr=prompt('A\u00f1adir '+mkSel.size+' contactos a qu\u00e9 lista?\n\n'+optList+'\n\nEscribe el n\u00famero:');
+  var idx=parseInt(idxStr,10)-1;
+  if(isNaN(idx)||idx<0||idx>=mkLists.length)return;
+  var lst=mkLists[idx];
+  if(lst.type!=='static'){alert('Solo puedes a\u00f1adir contactos manualmente a listas est\u00e1ticas. Esta es din\u00e1mica.');return;}
+  if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+  var added=0;
+  mkSel.forEach(function(cid){if(lst.contactIds.indexOf(cid)<0){lst.contactIds.push(cid);added++;}});
+  SS('mkLists',mkLists);
+  if(typeof showToast==='function')showToast('\u2713 '+added+' contactos a\u00f1adidos a "'+lst.name+'"');
+}
+
+// -- TEMPLATE CSV ---------------------------------------------------------
+function mkDownloadTemplate(){
+  var headers=['Status','First Name','Company Name','Email','Date Unsubscribed','Telefono','Paese','Tipo cliente','Interesse','Origine','Note','Data inserimento'];
+  var sample=['subscribed','Marco Rossi','AutoItalia Srl','marco@autoitalia.it','','+39 02 1234567','Italia','dealer','Audi, BMW','lista_vieja','Cliente activo desde 2020','01/05/2026'];
+  var csv=headers.join(',')+'\n'+sample.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',')+'\n';
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download='NEXO_template_contactos.csv';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},500);
+}
+
+// -- IMPORT EXCEL/CSV -----------------------------------------------------
+function mkDrop(e){e.preventDefault();var d=n('mk-drop');if(d)d.classList.remove('drag');var f=e.dataTransfer.files[0];if(f)mkLoadFile(f);}
+function mkFileChg(inp){if(inp.files[0])mkLoadFile(inp.files[0]);}
+
+function mkLoadFile(file){
+  if(file.size>5*1024*1024){alert('Archivo demasiado grande (max 5MB).');return;}
+  n('mk-fn').textContent=file.name;
+  var ext=(file.name.split('.').pop()||'').toLowerCase();
+  var r=new FileReader();
+  if(ext==='csv'){
+    r.onload=function(e){mkParseCSV(e.target.result);};
+    r.readAsText(file,'UTF-8');
+  }else if(ext==='xlsx'||ext==='xls'){
+    r.onload=function(e){
+      try{
+        var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        var sheet=wb.Sheets[wb.SheetNames[0]];
+        var csv=window.XLSX.utils.sheet_to_csv(sheet);
+        mkParseCSV(csv);
+      }catch(err){alert('Error leyendo Excel: '+err.message);}
+    };
+    r.readAsArrayBuffer(file);
+  }else{
+    alert('Formato no soportado. Usa .xlsx, .xls o .csv');
+  }
+}
+
+function mkParseCSV(text){
+  // Parser CSV semplice (gestisce quoted fields)
+  var lines=[];var cur='';var row=[];var inQ=false;
+  for(var i=0;i<text.length;i++){
+    var ch=text[i],nx=text[i+1];
+    if(ch==='"'){if(inQ&&nx==='"'){cur+='"';i++;}else{inQ=!inQ;}}
+    else if(ch===','&&!inQ){row.push(cur);cur='';}
+    else if((ch==='\n'||ch==='\r')&&!inQ){
+      if(cur||row.length){row.push(cur);lines.push(row);}
+      cur='';row=[];
+      if(ch==='\r'&&nx==='\n')i++;
+    }else cur+=ch;
+  }
+  if(cur||row.length){row.push(cur);lines.push(row);}
+  if(lines.length<2){alert('El archivo est\u00e1 vac\u00edo o no tiene datos.');return;}
+
+  // Headers (prima riga)
+  var headers=lines[0].map(function(h){return String(h||'').trim();});
+  var rows=lines.slice(1).filter(function(r){return r.some(function(c){return String(c||'').trim();});});
+
+  // Auto-mapping: cerca colonne note (case-insensitive, multilingue)
+  function findCol(names){
+    for(var i=0;i<headers.length;i++){
+      var hl=headers[i].toLowerCase();
+      for(var j=0;j<names.length;j++){
+        if(hl===names[j]||hl.indexOf(names[j])>=0)return i;
+      }
+    }
+    return -1;
+  }
+  var mapping={
+    firstName:findCol(['first name','nombre','name','nome']),
+    companyName:findCol(['company','empresa','azienda','company name']),
+    email:findCol(['email','e-mail','correo']),
+    phone:findCol(['telefono','phone','tel','tel\u00e9fono']),
+    country:findCol(['paese','pa\u00eds','country','pais']),
+    customerType:findCol(['tipo cliente','tipo','customer type','type']),
+    interest:findCol(['interesse','interest','inter\u00e9s','marca']),
+    origin:findCol(['origine','origin','origen','source']),
+    notes:findCol(['note','notes','notas','observaciones']),
+    status:findCol(['status','estado']),
+    unsubscribedAt:findCol(['date unsubscribed','unsubscribed','fecha baja']),
+    createdAt:findCol(['data inserimento','fecha','date'])
+  };
+
+  mkImportData={headers:headers,rows:rows,mapping:mapping};
+
+  // Mostra preview (max 5 righe)
+  var preview=rows.slice(0,5);
+  var thead='<tr style="background:var(--bg3)">'+headers.map(function(h){return '<th style="padding:6px 8px;font-size:10px;text-align:left">'+esc(h)+'</th>';}).join('')+'</tr>';
+  var tbody=preview.map(function(r){return '<tr>'+headers.map(function(h,i){return '<td style="padding:5px 8px;font-size:10px;border-top:1px solid var(--border)">'+esc(r[i]||'')+'</td>';}).join('')+'</tr>';}).join('');
+  n('mk-preview-tbl').querySelector('thead').innerHTML=thead;
+  n('mk-preview-tbl').querySelector('tbody').innerHTML=tbody;
+
+  var validEmails=rows.filter(function(r){return mapping.email>=0&&mkValidEmail(r[mapping.email]);}).length;
+  n('mk-preview-info').innerHTML='<strong>'+rows.length+'</strong> filas detectadas, <strong>'+validEmails+'</strong> con email v\u00e1lida.<br><span style="color:var(--t4)">Columnas detectadas: '+
+    Object.keys(mapping).filter(function(k){return mapping[k]>=0;}).map(function(k){return k+'\u2192'+headers[mapping[k]];}).join(', ')+
+    '</span>';
+  n('mk-import-step1').style.display='none';
+  n('mk-import-step2').style.display='';
+  n('mk-import-btn').style.display='';
+}
+
+function mkImportConfirm(){
+  if(!mkImportData||!mkImportData.rows){alert('No hay datos.');return;}
+  var dupStrategy=document.querySelector('input[name="mk-dup"]:checked').value;
+  var bulkType=n('mk-bulk-type').value;
+  var bulkOrigin=n('mk-bulk-origin').value;
+  var bulkInterest=n('mk-bulk-interest').value.trim();
+  var m=mkImportData.mapping;
+  var rows=mkImportData.rows;
+  var added=0,updated=0,ignored=0,invalid=0;
+
+  rows.forEach(function(r){
+    var email=m.email>=0?mkNormEmail(r[m.email]):'';
+    if(!email||!mkValidEmail(email)){invalid++;return;}
+    var existing=mkFindByEmail(email);
+    var newData={
+      firstName:m.firstName>=0?String(r[m.firstName]||'').trim():'',
+      companyName:m.companyName>=0?String(r[m.companyName]||'').trim():'',
+      email:email,
+      phone:m.phone>=0?String(r[m.phone]||'').trim():'',
+      country:m.country>=0?String(r[m.country]||'').trim():'',
+      customerType:(m.customerType>=0?String(r[m.customerType]||'').toLowerCase().trim():'')||bulkType,
+      status:m.status>=0?(String(r[m.status]||'').toLowerCase().trim()||'subscribed'):'subscribed',
+      interest:[],
+      origin:(m.origin>=0?String(r[m.origin]||'').toLowerCase().trim():'')||bulkOrigin,
+      notes:m.notes>=0?String(r[m.notes]||'').trim():'',
+      unsubscribedAt:m.unsubscribedAt>=0?String(r[m.unsubscribedAt]||'').trim():null,
+      updatedAt:new Date().toISOString()
+    };
+    // Interest: dal CSV o bulk
+    var interestStr=m.interest>=0?String(r[m.interest]||'').trim():'';
+    if(!interestStr&&bulkInterest)interestStr=bulkInterest;
+    newData.interest=interestStr?interestStr.split(/[,;|]/).map(function(s){return s.trim();}).filter(Boolean):[];
+
+    if(existing){
+      if(dupStrategy==='ignore'){ignored++;return;}
+      else if(dupStrategy==='update'){
+        // Aggiorna solo i campi vuoti dell'esistente
+        Object.keys(newData).forEach(function(k){
+          if(k==='interest'){
+            // Merge
+            var cur=existing.interest||[];
+            newData.interest.forEach(function(it){if(cur.indexOf(it)<0)cur.push(it);});
+            existing.interest=cur;
+          }else if(k!=='id'&&k!=='createdAt'){
+            if(!existing[k]||existing[k]==='')existing[k]=newData[k];
+          }
+        });
+        existing.updatedAt=new Date().toISOString();
+        updated++;
+      }else{ // replace
+        var idx=mkContacts.findIndex(function(c){return c.id===existing.id;});
+        if(idx>=0){
+          newData.id=existing.id;
+          newData.createdAt=existing.createdAt;
+          mkContacts[idx]=newData;
+          updated++;
+        }
+      }
+    }else{
+      newData.id='mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      newData.createdAt=new Date().toISOString();
+      mkContacts.push(newData);
+      mkCntCounter++;
+      added++;
+    }
+  });
+
+  SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
+
+  // Riepilogo
+  var html='<div style="line-height:1.7"><strong>\u2705 Importaci\u00f3n completa:</strong><br>'
+    +'\u2022 <strong>'+added+'</strong> nuevos contactos a\u00f1adidos<br>'
+    +'\u2022 <strong>'+updated+'</strong> actualizados<br>'
+    +'\u2022 <strong>'+ignored+'</strong> duplicados ignorados<br>';
+  if(invalid>0)html+='\u2022 <strong style="color:var(--orange)">'+invalid+'</strong> filas con email no v\u00e1lida<br>';
+  html+='</div>';
+  n('mk-import-progress').style.display='block';
+  n('mk-import-progress').innerHTML=html;
+  n('mk-import-btn').textContent='\u2713 Cerrar';
+  n('mk-import-btn').onclick=function(){closeM('m-mk-import');mkResetImport();renderMarketing();};
+}
+
+function mkResetImport(){
+  mkImportData=null;
+  if(n('mk-import-step1'))n('mk-import-step1').style.display='';
+  if(n('mk-import-step2'))n('mk-import-step2').style.display='none';
+  if(n('mk-import-progress'))n('mk-import-progress').style.display='none';
+  if(n('mk-import-btn')){n('mk-import-btn').style.display='none';n('mk-import-btn').textContent='\u26a1 Importar contactos';n('mk-import-btn').onclick=mkImportConfirm;}
+  if(n('mk-fn'))n('mk-fn').textContent='Arrastra aqu\u00ed tu archivo o click para seleccionar';
+  if(n('mk-file'))n('mk-file').value='';
+}
+
+// -- PEGAR TEXTO ----------------------------------------------------------
+function mkExtractFromPaste(){
+  var raw=(n('mkp-text')&&n('mkp-text').value||'').trim();
+  if(!raw){n('mkp-status').textContent='Pega primero el texto.';n('mkp-status').style.color='var(--red)';return;}
+
+  // Estrai TUTTE le email dal testo
+  var emails=raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g)||[];
+  emails=emails.map(function(e){return e.toLowerCase();}).filter(function(e,i,a){return a.indexOf(e)===i;});
+  if(!emails.length){n('mkp-status').textContent='No encontre ninguna email v\u00e1lida.';n('mkp-status').style.color='var(--red)';return;}
+
+  var added=0,updated=0,ignored=0;
+  // Se c'\u00e8 una sola email, prova ad estrarre nome+azienda+phone (firma signature)
+  if(emails.length===1){
+    var parsed=provParseText?provParseText(raw):{name:'',company:'',phone:'',country:''};
+    var email=emails[0];
+    var existing=mkFindByEmail(email);
+    if(existing){ignored++;}
+    else{
+      var rec={
+        id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        firstName:parsed.name||'',
+        companyName:parsed.company||'',
+        email:email,
+        phone:parsed.phone||'',
+        country:parsed.country||'',
+        customerType:'',
+        status:'subscribed',
+        interest:[],
+        origin:'pegar_texto',
+        notes:'',
+        createdAt:new Date().toISOString(),
+        updatedAt:new Date().toISOString()
+      };
+      mkContacts.push(rec);
+      mkCntCounter++;added++;
+    }
+  }else{
+    // Multi-email: aggiunge solo email senza altri dettagli
+    emails.forEach(function(email){
+      if(mkFindByEmail(email)){ignored++;return;}
+      mkContacts.push({
+        id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,9),
+        firstName:'',companyName:'',email:email,phone:'',country:'',
+        customerType:'',status:'subscribed',interest:[],origin:'pegar_texto',
+        notes:'Importado de pegar texto (lote)',
+        createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+      });
+      mkCntCounter++;added++;
+    });
+  }
+  SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
+  n('mkp-status').textContent='\u2713 '+added+' a\u00f1adidos, '+ignored+' duplicados ignorados.';
+  n('mkp-status').style.color='var(--green)';
+  setTimeout(function(){closeM('m-mk-paste');n('mkp-text').value='';n('mkp-status').textContent='';renderMarketing();},1500);
+}
+
+// -- EXPORT CSV -----------------------------------------------------------
+function mkExportCSV(){
+  if(!mkContacts.length){alert('No hay contactos.');return;}
+  var headers=['Status','First Name','Company Name','Email','Date Unsubscribed','Telefono','Paese','Tipo cliente','Interesse','Origine','Note','Data inserimento'];
+  var rows=mkContacts.map(function(c){
+    return [c.status||'subscribed',c.firstName||'',c.companyName||'',c.email||'',c.unsubscribedAt||'',c.phone||'',c.country||'',c.customerType||'',Array.isArray(c.interest)?c.interest.join(', '):c.interest||'',c.origin||'',c.notes||'',fmtD(c.createdAt)];
+  });
+  var csv=[headers].concat(rows).map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download='NEXO_marketing_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},500);
+}
+
+// -- LISTAS (segmentazioni) ----------------------------------------------
+function mkRenderLists(){
+  var grid=n('mk-lists-grid'),empty=n('mk-lists-empty');
+  if(!grid)return;
+  if(!mkLists.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
+  if(empty)empty.style.display='none';
+
+  grid.innerHTML=mkLists.map(function(l){
+    var count=mkCountListContacts(l);
+    var typeColor=l.type==='dynamic'?{bg:'rgba(37,99,235,.15)',fg:'var(--acc)'}:{bg:'rgba(245,158,11,.15)',fg:'#92400e'};
+    var typeLabel=l.type==='dynamic'?'\u26a1 Din\u00e1mica':'\ud83d\udcc4 Est\u00e1tica';
+    var rulesPreview='';
+    if(l.type==='dynamic'&&l.filters){
+      var parts=[];
+      Object.keys(l.filters).forEach(function(k){if(l.filters[k])parts.push(k+': '+l.filters[k]);});
+      rulesPreview=parts.length?parts.join(' &middot; '):'(sin filtros)';
+    }else if(l.type==='static'){
+      rulesPreview=(l.contactIds||[]).length+' contactos congelados';
+    }
+    return '<div class="card" style="padding:14px">'
+      +'<div class="fbet mb6"><div style="font-weight:700;font-size:14px;color:var(--t1)">'+esc(l.name)+'</div><span style="background:'+typeColor.bg+';color:'+typeColor.fg+';padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">'+typeLabel+'</span></div>'
+      +(l.desc?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(l.desc)+'</div>':'')
+      +'<div style="font-size:10px;color:var(--t4);margin-bottom:10px;font-family:monospace;background:var(--bg3);padding:6px;border-radius:5px">'+rulesPreview+'</div>'
+      +'<div class="fbet">'
+        +'<div><span style="font-size:18px;font-weight:700;color:var(--green)">'+count+'</span> <span style="font-size:11px;color:var(--t3)">contactos</span></div>'
+        +'<div class="fc g6">'
+          +'<button class="btn bs" onclick="mkOpenList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">Ver</button>'
+          +'<button class="btn bd" onclick="mkDelList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">x</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
+function mkCountListContacts(l){
+  if(l.type==='static')return (l.contactIds||[]).length;
+  if(l.type==='dynamic'&&l.filters){
+    return mkContacts.filter(function(c){return mkContactMatchesFilters(c,l.filters);}).length;
+  }
+  return 0;
+}
+function mkContactMatchesFilters(c,f){
+  if(f.q){
+    var hay=((c.firstName||'')+' '+(c.companyName||'')+' '+(c.email||'')).toLowerCase();
+    if(hay.indexOf(f.q.toLowerCase())<0)return false;
+  }
+  if(f.country&&!(c.country||'').toLowerCase().includes(f.country.toLowerCase()))return false;
+  if(f.type&&c.customerType!==f.type)return false;
+  if(f.status&&c.status!==f.status)return false;
+  if(f.interest){
+    var ints=(c.interest||[]).join(' ').toLowerCase();
+    if(ints.indexOf(f.interest.toLowerCase())<0)return false;
+  }
+  if(f.origin&&c.origin!==f.origin)return false;
+  return true;
+}
+
+function mkOpenNewList(){
+  n('mkl-name').value='';n('mkl-desc').value='';
+  document.querySelectorAll('input[name="mkl-type"]').forEach(function(r){r.checked=r.value==='dynamic';});
+  // Mostra i filtri attualmente applicati come "regole" della futura lista dinamica
+  var rules=mkCurrentFilters();
+  var rd=n('mkl-rules-display');
+  if(rd){
+    var parts=[];
+    Object.keys(rules).forEach(function(k){if(rules[k])parts.push(k+': '+rules[k]);});
+    rd.innerHTML=parts.length?parts.join(' &middot; '):'<span style="color:var(--t4)">(sin filtros activos)</span>';
+  }
+  n('m-mk-list').removeAttribute('data-edit-id');
+  openM('m-mk-list');
+}
+function mkSaveCurrentFilterAsList(){
+  var rules=mkCurrentFilters();
+  var hasFilters=Object.keys(rules).some(function(k){return rules[k];});
+  if(!hasFilters){alert('Aplica al menos un filtro antes de guardar como lista din\u00e1mica.');return;}
+  mkOpenNewList();
+}
+function mkCurrentFilters(){
+  return {
+    q:(n('f-mk-q')&&n('f-mk-q').value||'').trim(),
+    country:(n('f-mk-country')&&n('f-mk-country').value||'').trim(),
+    type:n('f-mk-type')&&n('f-mk-type').value||'',
+    status:n('f-mk-status')&&n('f-mk-status').value||'',
+    interest:(n('f-mk-interest')&&n('f-mk-interest').value||'').trim(),
+    origin:n('f-mk-origin')&&n('f-mk-origin').value||''
+  };
+}
+function mkSaveList(){
+  var name=n('mkl-name').value.trim();
+  if(!name){alert('Pon un nombre.');return;}
+  var type=document.querySelector('input[name="mkl-type"]:checked').value;
+  var rec={
+    id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    name:name,
+    desc:n('mkl-desc').value.trim(),
+    type:type,
+    createdAt:new Date().toISOString()
+  };
+  if(type==='dynamic'){
+    rec.filters=mkCurrentFilters();
+  }else{
+    // Static: snapshot dei contatti FILTRATI o SELEZIONATI
+    if(mkSel.size>0){
+      rec.contactIds=Array.from(mkSel);
+    }else{
+      rec.contactIds=mkFlt.map(function(c){return c.id;});
+    }
+  }
+  mkLists.push(rec);
+  SS('mkLists',mkLists);
+  closeM('m-mk-list');
+  mkSwitchTab('listas');
+  if(typeof showToast==='function')showToast('\u2713 Lista "'+name+'" guardada');
+}
+function mkDelList(id){
+  var l=mkLists.find(function(x){return x.id===id;});
+  if(!l)return;
+  if(!confirm('Eliminar lista "'+l.name+'"?'))return;
+  mkLists=mkLists.filter(function(x){return x.id!==id;});
+  SS('mkLists',mkLists);
+  mkRenderLists();
+}
+function mkOpenList(id){
+  var l=mkLists.find(function(x){return x.id===id;});
+  if(!l)return;
+  if(l.type==='dynamic'&&l.filters){
+    // Applica i filtri ai contatti
+    if(n('f-mk-q'))n('f-mk-q').value=l.filters.q||'';
+    if(n('f-mk-country'))n('f-mk-country').value=l.filters.country||'';
+    if(n('f-mk-type'))n('f-mk-type').value=l.filters.type||'';
+    if(n('f-mk-status'))n('f-mk-status').value=l.filters.status||'';
+    if(n('f-mk-interest'))n('f-mk-interest').value=l.filters.interest||'';
+    if(n('f-mk-origin'))n('f-mk-origin').value=l.filters.origin||'';
+    mkSwitchTab('contactos');
+    mkRender();
+    if(typeof showToast==='function')showToast('Filtros aplicados de "'+l.name+'"');
+  }else{
+    // Static: mostro solo i contatti specifici (workaround: non possiamo "filtrare per ID" senza UI custom)
+    alert('Lista est\u00e1tica con '+(l.contactIds||[]).length+' contactos.\n\nFiltrar por ID no es soportado en esta vista, pero puedes verlos exportando esta lista (pr\u00f3xima funcionalidad).');
+  }
+}
+
+// END MARKETING MODULE
 // ===========================================================================
 
 // -- MODALS ---------------------------------------------------
