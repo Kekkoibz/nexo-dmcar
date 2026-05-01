@@ -11966,10 +11966,11 @@ function campRenderStockPicker(){
     details.push(g.count+' unidad'+(g.count!==1?'es':''));
     if(colors.length>0)details.push(colors.slice(0,3).join(', ')+(colors.length>3?'...':''));
     if(avgPrice)details.push(avgPrice+' (medio)');
-    // Selector cantidad (1..g.count)
+    // Selector cantidad (1..g.count) - siempre habilitado para mostrar el rango disponible
     var qtyOptions='';
+    var displayQty=selectedQty>0?selectedQty:g.count;  // Si no hay seleccionado, default = todas
     for(var i=1;i<=g.count;i++){
-      qtyOptions+='<option value="'+i+'"'+(selectedQty===i?' selected':'')+'>'+i+(i===g.count?' (todas)':'')+'</option>';
+      qtyOptions+='<option value="'+i+'"'+(displayQty===i?' selected':'')+'>'+i+(i===g.count?' (todas)':'')+'</option>';
     }
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border-radius:6px;margin-bottom:5px;border:1px solid '+(checked?'var(--acc)':'var(--border)')+'">'
       +'<input type="checkbox" data-grpkey="'+esc(g.key)+'" onchange="campStockPickerToggleGroup(this)"'+(checked?' checked':'')+'>'
@@ -11979,7 +11980,7 @@ function campRenderStockPicker(){
       +'</div>'
       +'<div style="display:flex;align-items:center;gap:6px">'
         +'<label style="font-size:10px;color:var(--t3);margin:0">Cantidad:</label>'
-        +'<select data-grpkey="'+esc(g.key)+'" onchange="campStockPickerChgQty(this)" style="font-size:11px;padding:3px 6px;width:auto;min-width:55px"'+(checked?'':' disabled')+'>'
+        +'<select data-grpkey="'+esc(g.key)+'" onchange="campStockPickerChgQty(this)" style="font-size:11px;padding:3px 6px;width:auto;min-width:80px">'
           +qtyOptions
         +'</select>'
       +'</div>'
@@ -11992,30 +11993,26 @@ function campRenderStockPicker(){
 function campStockPickerToggleGroup(cb){
   var key=cb.getAttribute('data-grpkey');
   if(cb.checked){
-    // Si no hab\u00eda cantidad, default = 1
-    if(!_campStockPick[key])_campStockPick[key]=1;
-    // Habilita el select de cantidad
+    // Lee la cantidad actual del select y la guarda
     var sel=document.querySelector('select[data-grpkey="'+key+'"]');
-    if(sel){
-      sel.disabled=false;
-      if(!sel.value)sel.value='1';
-      _campStockPick[key]=parseInt(sel.value,10)||1;
-    }
+    var qty=sel?parseInt(sel.value,10)||1:1;
+    _campStockPick[key]=qty;
   }else{
     delete _campStockPick[key];
-    var sel2=document.querySelector('select[data-grpkey="'+key+'"]');
-    if(sel2)sel2.disabled=true;
   }
-  // Visual: actualizo borde del card
+  // Re-render para actualizar borde/contadores
   campRenderStockPicker();
 }
 
-// Cambio cantidad de un grupo
+// Cambio cantidad de un grupo (solo afecta si el checkbox est\u00e1 marcado)
 function campStockPickerChgQty(sel){
   var key=sel.getAttribute('data-grpkey');
   var qty=parseInt(sel.value,10)||1;
-  _campStockPick[key]=qty;
-  campUpdStockPickerCount();
+  // Solo actualiza si el grupo est\u00e1 seleccionado (checkbox marcado)
+  if(_campStockPick[key]!==undefined){
+    _campStockPick[key]=qty;
+    campUpdStockPickerCount();
+  }
 }
 
 function campUpdStockPickerCount(){
