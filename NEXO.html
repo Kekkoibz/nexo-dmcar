@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.40 — DMCAR GROUP CRM | 2026-05-01 | Nome campagna #ID PRIMA del titolo, Note warning condizionali (solo se mancano realmente), auto-fix retroattivo borradores legacy -->
+<!-- NEXO v9.42 — DMCAR GROUP CRM | 2026-05-01 | New/Km 0 → Kms=0, Damages=0€ con label "Kms"/"Damages" (no "Avg."); Used lote → "Average Kms"/"Avg. Damages"; units "Varias" → "several units" → label "Units available" -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2008,7 +2008,11 @@ En que te puedo ayudar hoy?</div></div>
         <!-- 1. Nombre campaña -->
         <div class="mb14">
           <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">1. Nombre de la campa&ntilde;a</label>
-          <input type="text" id="camp-name" placeholder="ej: Newsletter Mayo - AUDI Q5">
+          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+            <input type="text" id="camp-name" placeholder="ej: Newsletter Mayo - AUDI Q5" style="flex:1">
+            <button type="button" class="btn bs" onclick="campAutoFillName()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con #ID + t&iacute;tulo del coche seleccionado">⚡ Auto</button>
+          </div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click '\u26a1 Auto' para rellenar con #ID + t&iacute;tulo del coche.</div>
         </div>
         <!-- 2. Asunto del email -->
         <div class="mb14">
@@ -11986,25 +11990,43 @@ window.nxBuildOfferTitle=nxBuildOfferTitle;
 function campAutoFillName(){
   var inp=n('camp-name');if(!inp)return;
   var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
-  if(sel.length===0)return;
+  if(sel.length===0){console.warn('[campAutoFillName] No selectedCarIds');return;}
   var first=sel[0];
   var s=null;
   if(typeof first==='string'){
     s=stock.find(function(x){return String(x.id)===String(first);});
   }else if(first&&first.groupKey){
     var parts=String(first.groupKey).split('||');
-    var brand=(parts[0]||'').toUpperCase();
-    var model=(parts[1]||'').toUpperCase();
+    var brand=(parts[0]||'').toUpperCase().trim();
+    var model=(parts[1]||'').toUpperCase().trim();
+    // Match case-insensitive + trim difensivo
     s=stock.find(function(x){
-      return ((x.brand||'').toUpperCase()===brand)&&((x.model||'').toUpperCase()===model);
+      return ((x.brand||'').toUpperCase().trim()===brand)&&((x.model||'').toUpperCase().trim()===model);
     });
+    // Fallback: se non trova match esatto, usa contains
+    if(!s){
+      s=stock.find(function(x){
+        return ((x.brand||'').toUpperCase().indexOf(brand)>=0)&&((x.model||'').toUpperCase().indexOf(model)>=0);
+      });
+    }
+    // Fallback estremo: usa solo brand+model dal groupKey come stub
+    if(!s){
+      console.warn('[campAutoFillName] Stock match not found for',brand,model,'\u2014 using stub');
+      s={brand:parts[0]||'',model:parts[1]||'',version:'',kms:'',damage:''};
+    }
   }
-  if(!s)return;
+  if(!s){console.warn('[campAutoFillName] No stock found');return;}
   // v9.40: ID PRIMA, poi titolo (es: "#001 New DACIA DUSTER Expression Eco-G 120 AUT")
   var fullTitle=nxBuildOfferTitle(s);
   var oid=_campEditing.offerId||nxPeekOfferId();
   inp.value='#'+oid+' '+fullTitle;
   _campEditing.name=inp.value;
+  // Dispatch event para que listeners (input/change) se actualicen
+  try{
+    var ev=document.createEvent('HTMLEvents');
+    ev.initEvent('input',true,false);
+    inp.dispatchEvent(ev);
+  }catch(e){}
 }
 window.campAutoFillName=campAutoFillName;
 
@@ -12893,26 +12915,43 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
     priceFmt=nxComputeSellPrice(parent.buy,defMargin);
   }
   var actualQty=selected.length;
+  // v9.42: detecta New/Km 0 a partir del título generado (la lógica está en nxBuildOfferTitle)
+  var titleLow=fullTitle.toLowerCase();
+  var isNewOrKm0=/^(new|km\s*0)\s/.test(titleLow);
+  // v9.42: gestione units = "Varias" / "Several" → "several units"
+  function resolveUnitsLabel(rawUnits,fallbackQty){
+    var u=String(rawUnits||'').trim().toLowerCase();
+    if(u==='varias'||u==='several'||u==='varios')return 'several units';
+    if(u&&!isNaN(parseInt(u,10)))return String(parseInt(u,10));
+    return String(fallbackQty||1);
+  }
   if(actualQty===1){
     // 1 unidad: detalles completos del coche espec\u00edfico (con VIN)
+    // v9.42: si el coche es New/Km0, fuerza kms=0 y damages=0 €
+    var unitKms=isNewOrKm0?'0':(first.kms?(typeof first.kms==='number'?first.kms.toLocaleString('es-ES'):first.kms):'');
+    var unitDmg=isNewOrKm0?'0 \u20ac':(first.damage?(typeof first.damage==='number'?first.damage.toLocaleString('es-ES'):first.damage)+' \u20ac':(parent.damages?parent.damages+' \u20ac':''));
+    // Si parent.units es "Varias" → "several units", si es número → respeta. Para 1 uds normal: '1'
+    var unitsLabel=resolveUnitsLabel(parent.units,'1');
     return {
       stockId:first.id||first.parentId,
       title:fullTitle,
-      brandName:parent.brand||'',  // \u2190 NUEVO: para que el render pruebe variantes
+      brandName:parent.brand||'',
       price:priceFmt,
       vin:first.vin||first.unit||parent.unit||'',
       firstReg:first.reg||parent.regDate||'',
-      avgKms:first.kms?(typeof first.kms==='number'?first.kms.toLocaleString('es-ES'):first.kms):'',
-      avgDamages:first.damage?(typeof first.damage==='number'?first.damage.toLocaleString('es-ES'):first.damage)+' \u20ac':(parent.damages?parent.damages+' \u20ac':''),
+      avgKms:unitKms,
+      avgDamages:unitDmg,
       extColor:first.color||parent.color||'',
-      availableUnits:'1',
+      availableUnits:unitsLabel,
       delivery:'Stock',
       equipment:cleanEquipment,
       photo1:parent.photo1||'',
       photo2:parent.photo2||'',
       photo3:parent.photo3||'',
       brandLogo:brandLogo,
-      offerId:(_campEditing&&_campEditing.offerId)||''
+      offerId:(_campEditing&&_campEditing.offerId)||'',
+      isNewOrKm0:isNewOrKm0,  // v9.42: flag per render labels
+      isAvgLote:false  // 1 unità → no Avg
     };
   }
   // LOTE: calcula valores agregados
@@ -12939,24 +12978,31 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
     if(c)colorSet[c]=true;
   });
   var colorList=Object.keys(colorSet).join(', ');
+  // v9.42: per New/Km 0 forza kms=0 e damages=0 €
+  var finalKms=isNewOrKm0?'0':kmsLabel;
+  var finalDmg=isNewOrKm0?'0 \u20ac':(avgDamages?avgDamages.toLocaleString('es-ES')+' \u20ac':'');
+  // v9.42: gestione units = "Varias" → "several units"; altrimenti usa actualQty
+  var loteUnitsLabel=resolveUnitsLabel(parent.units,actualQty);
   return {
     stockId:'group_'+groupKey,
     title:fullTitle,
-    brandName:parent.brand||'',  // \u2190 NUEVO: para que el render pruebe variantes
+    brandName:parent.brand||'',
     price:priceFmt,
     vin:'',
     firstReg:parent.regDate||first.reg||'',
-    avgKms:kmsLabel,
-    avgDamages:avgDamages?avgDamages.toLocaleString('es-ES')+' \u20ac':'',
+    avgKms:finalKms,
+    avgDamages:finalDmg,
     extColor:colorList,
-    availableUnits:String(actualQty),
+    availableUnits:loteUnitsLabel,
     delivery:'Stock',
     equipment:cleanEquipment,
     photo1:parent.photo1||'',
     photo2:parent.photo2||'',
     photo3:parent.photo3||'',
     brandLogo:brandLogo,
-    offerId:(_campEditing&&_campEditing.offerId)||''
+    offerId:(_campEditing&&_campEditing.offerId)||'',
+    isNewOrKm0:isNewOrKm0,
+    isAvgLote:!isNewOrKm0&&actualQty>1  // se è un lote di Used → media
   };
 }
 
@@ -14023,13 +14069,19 @@ function tplRenderBlockHTML(block){
       }
       // Datos b\u00e1sicos + Equipment todo pegado (sin gaps de Apple Mail)
       var eqText=(c.equipment||'').trim()||'Standard';
+      // v9.42: label dinamiche — para New/Km 0 (1 unidad) o singolo Used → 'Kms'/'Damages'
+      // para Lote Used (avg) → 'Average Kms'/'Avg. Damages'
+      var kmsLabel=c.isAvgLote?'Average Kms':'Kms';
+      var dmgLabel=c.isAvgLote?'Avg. Damages':'Damages';
+      // v9.42: 'Available Units' label change to 'Units available' for several units phrasing
+      var unitsLabel=(String(c.availableUnits||'').toLowerCase().indexOf('several')>=0)?'Units available':'Available Units';
       ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.6;margin:0 0 14px 0;padding:0">';
       if(c.vin)ah+='<div style="margin:0;padding:0"><strong>Ex. VIN:</strong> '+esc(c.vin)+'</div>';
       if(c.firstReg)ah+='<div style="margin:0;padding:0"><strong>1st Reg:</strong> '+esc(c.firstReg)+'</div>';
-      if(c.avgKms)ah+='<div style="margin:0;padding:0"><strong>Average Kms:</strong> '+esc(c.avgKms)+'</div>';
-      if(c.avgDamages)ah+='<div style="margin:0;padding:0"><strong>Avg. Damages:</strong> '+esc(c.avgDamages)+'</div>';
+      if(c.avgKms!==undefined&&c.avgKms!=='')ah+='<div style="margin:0;padding:0"><strong>'+kmsLabel+':</strong> '+esc(c.avgKms)+'</div>';
+      if(c.avgDamages!==undefined&&c.avgDamages!=='')ah+='<div style="margin:0;padding:0"><strong>'+dmgLabel+':</strong> '+esc(c.avgDamages)+'</div>';
       if(c.extColor)ah+='<div style="margin:0;padding:0"><strong>Available Colors:</strong> '+esc(c.extColor)+'</div>';
-      if(c.availableUnits)ah+='<div style="margin:0;padding:0"><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
+      if(c.availableUnits)ah+='<div style="margin:0;padding:0"><strong>'+unitsLabel+':</strong> '+esc(c.availableUnits)+'</div>';
       if(c.delivery)ah+='<div style="margin:0;padding:0"><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
       // Equipment header (azul, bold) directamente despu\u00e9s del Delivery
       ah+='<div style="margin:0;padding:0;font-size:14px;font-weight:600;color:#0000F5"><strong>Equipment:</strong></div>';
