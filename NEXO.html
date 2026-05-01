@@ -685,6 +685,7 @@ En que te puedo ayudar hoy?</div></div>
         <div class="fc g8">
           <button class="btn bs" onclick="mkDownloadTemplate()" style="font-size:12px" title="Descargar plantilla CSV vac&iacute;a"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Plantilla CSV</button>
           <button class="btn bs" onclick="mkBulkEnrich()" style="font-size:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border:none" title="Auto-rellenar pa&iacute;s y empresa de los contactos vac&iacute;os usando el dominio del email">&#10024; Enriquecer datos</button>
+          <button class="btn bs" id="mk-infer-ip-btn" onclick="mkBulkInferCountryByIP()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Inferir pa&iacute;s por IP geolocation (DNS + ipwho.is). Util para dominios .com">&#127760; Inferir pa&iacute;s (IP)</button>
           <button class="btn bs" onclick="mkExportCSV()" style="font-size:12px">&#9111; Exportar</button>
           <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
           <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
@@ -1703,6 +1704,20 @@ En que te puedo ayudar hoy?</div></div>
       <div style="font-size:10px;color:var(--t3);margin-top:4px">Tip: Aplica los filtros que quieras desde la pesta&ntilde;a Contactos antes de guardar como lista din&aacute;mica.</div>
     </div>
     <button class="btn bp" style="width:100%" onclick="mkSaveList()">Guardar lista</button>
+  </div>
+</div>
+
+<!-- MARKETING: IP INFER REVIEW -->
+<div class="ovl" id="m-mk-ipinfer">
+  <div class="modal" style="max-width:880px">
+    <div class="fbet mb14"><div class="mt">&#127760; Revisar resultados IP Geolocation</div><button class="btn bg" onclick="closeM('m-mk-ipinfer')" style="padding:5px 10px">X</button></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Revisa los pa&iacute;ses detectados antes de aplicarlos. Los sitios en Cloudflare/AWS pueden mostrar USA aunque la empresa sea europea \u2014 desmarca los incorrectos.</div>
+    <div id="mk-ipinfer-summary"></div>
+    <div id="mk-ipinfer-content"></div>
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-mk-ipinfer')" style="flex:1">Cancelar</button>
+      <button class="btn bp" onclick="mkApplyIPInferResults()" style="flex:2">&#9889; Aplicar seleccionados</button>
+    </div>
   </div>
 </div>
 <script>
@@ -8964,7 +8979,7 @@ function mkRender(){
       +'<td style="font-size:11px">'+esc(c.companyName||'--')+'</td>'
       +'<td style="font-size:11px;color:var(--acc)">'+esc(c.email||'')+'</td>'
       +'<td style="font-family:monospace;font-size:10px">'+esc(c.phone||'')+'</td>'
-      +'<td style="font-size:11px;white-space:nowrap">'+(c.country?(mkCountryInfo(c.country).flag+' '):'')+esc(c.country||'')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap;padding:2px 6px"><select class="mk-country-inline" data-id="'+esc(c.id)+'" style="font-size:11px;padding:3px 4px;border:1px solid var(--border);background:var(--bg2);color:var(--t1);border-radius:5px;max-width:140px;cursor:pointer"><option value="">--</option></select></td>'
       +'<td style="font-size:10px">'+esc(MK_TYPE_LABEL[c.customerType]||c.customerType||'')+'</td>'
       +'<td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(ints)+'">'+esc(ints)+'</td>'
       +'<td style="font-size:10px;color:var(--t3)">'+esc(MK_ORIGIN_LABEL[c.origin]||c.origin||'')+'</td>'
@@ -9000,6 +9015,36 @@ function mkRender(){
       if(!confirm('Re-suscribir "'+(c.firstName||c.email)+'"?\n\nSolo confirmar si el contacto explicitamente pidio re-inscripcion.'))return;
       mkResubscribe(c.id);
       renderMarketing();
+    });
+  });
+
+  // INLINE COUNTRY EDIT: popola tutti i select inline + event listener change
+  body.querySelectorAll('.mk-country-inline').forEach(function(sel){
+    var cid=sel.getAttribute('data-id');
+    var c=mkContacts.find(function(x){return String(x.id)===String(cid);});
+    if(!c)return;
+    // Popola opzioni con bandiere
+    var curVal=c.country||'';
+    var html='<option value="">--</option>';
+    MK_COUNTRIES.forEach(function(co){
+      var s=(co.label===curVal)?' selected':'';
+      html+='<option value="'+esc(co.label)+'"'+s+'>'+co.flag+' '+esc(co.label)+'</option>';
+    });
+    sel.innerHTML=html;
+    // Stop propagation click (no triggera la riga)
+    sel.addEventListener('click',function(e){e.stopPropagation();});
+    sel.addEventListener('change',function(){
+      var newVal=this.value;
+      var idx=mkContacts.findIndex(function(x){return String(x.id)===String(cid);});
+      if(idx<0)return;
+      mkContacts[idx].country=newVal;
+      mkContacts[idx].updatedAt=new Date().toISOString();
+      SS('mkContacts',mkContacts);
+      // Toast leggero
+      if(typeof showToast==='function'){
+        var info=newVal?mkCountryInfo(newVal):null;
+        showToast('\u2713 '+(info?info.flag+' ':'')+(newVal||'(vac\u00edo)'));
+      }
     });
   });
 
@@ -10224,6 +10269,226 @@ function mkUpdUndoBtn(){
 }
 
 // END MARKETING TOOLBAR ACTIONS
+// ===========================================================================
+
+// ===========================================================================
+// MARKETING — IP Geolocation per dominio email (Opzione B)
+// Usa Google DNS-over-HTTPS + ip-api.com (entrambi gratis, no API key)
+// ===========================================================================
+
+// Mapping ISO country code (ip-api restituisce ISO2) -> label canonica MK_COUNTRIES
+var MK_ISO2_TO_LABEL={
+  AT:'Austria',BE:'B\u00e9lgica',BG:'Bulgaria',HR:'Croacia',CY:'Chipre',
+  CZ:'Rep\u00fablica Checa',DK:'Dinamarca',EE:'Estonia',FI:'Finlandia',FR:'Francia',
+  DE:'Alemania',GR:'Grecia',HU:'Hungr\u00eda',IE:'Irlanda',IT:'Italia',
+  LV:'Letonia',LT:'Lituania',LU:'Luxemburgo',MT:'Malta',NL:'Pa\u00edses Bajos',
+  PL:'Polonia',PT:'Portugal',RO:'Ruman\u00eda',SK:'Eslovaquia',SI:'Eslovenia',
+  ES:'Espa\u00f1a',SE:'Suecia',GB:'Reino Unido',CH:'Suiza',NO:'Noruega',IS:'Islandia'
+};
+
+// Risolve dominio -> IP usando Google DNS-over-HTTPS (gratis, no key, CORS ok)
+async function mkResolveDomainIP(domain){
+  try{
+    var resp=await fetch('https://dns.google/resolve?name='+encodeURIComponent(domain)+'&type=A',{
+      headers:{'Accept':'application/dns-json'}
+    });
+    if(!resp.ok)throw new Error('DNS lookup failed');
+    var data=await resp.json();
+    if(!data.Answer||!data.Answer.length)return null;
+    // Prima A record disponibile
+    var aRecord=data.Answer.find(function(a){return a.type===1;});
+    return aRecord?aRecord.data:null;
+  }catch(e){
+    console.warn('[mkResolveDomainIP] '+domain+':',e.message);
+    return null;
+  }
+}
+
+// IP -> country code via ip-api.com (gratis, 45 req/min, no key, supporta HTTPS solo via piano pro
+// MA: hanno un endpoint pro-bono "ipwho.is" che funziona via HTTPS)
+async function mkGeolocateIP(ip){
+  try{
+    // Uso ipwho.is - free tier illimitato, HTTPS, CORS ok
+    var resp=await fetch('https://ipwho.is/'+encodeURIComponent(ip));
+    if(!resp.ok)throw new Error('Geolocation failed');
+    var data=await resp.json();
+    if(!data.success)return null;
+    return {
+      countryCode:data.country_code,
+      countryName:data.country
+    };
+  }catch(e){
+    console.warn('[mkGeolocateIP] '+ip+':',e.message);
+    return null;
+  }
+}
+
+// Combinato: dominio -> paese (una sola call interna)
+async function mkInferCountryFromDomain(domain){
+  var ip=await mkResolveDomainIP(domain);
+  if(!ip)return null;
+  var geo=await mkGeolocateIP(ip);
+  if(!geo)return null;
+  // Mappa ISO2 -> label canonica
+  var label=MK_ISO2_TO_LABEL[geo.countryCode];
+  return {
+    domain:domain,
+    ip:ip,
+    countryCode:geo.countryCode,
+    countryName:geo.countryName,
+    label:label||'NO UE / Resto del mundo'
+  };
+}
+
+// BULK ACTION: per tutti i contatti con paese vuoto + dominio aziendale,
+// risolve IP -> paese e mostra preview prima di applicare.
+async function mkBulkInferCountryByIP(){
+  // Filtra contatti candidati
+  var candidates=mkContacts.filter(function(c){
+    if(c.country)return false;  // solo i vuoti
+    if(!c.email)return false;
+    var dom=mkEmailDomain(c.email);
+    if(!dom)return false;
+    if(MK_FREE_DOMAINS[dom])return false; // skip gmail/hotmail/...
+    return true;
+  });
+  if(candidates.length===0){
+    alert('No hay contactos elegibles.\n\nCriterios:\n\u2022 Pa\u00eds vac\u00edo\n\u2022 Email aziendale (no gmail, hotmail, etc.)');
+    return;
+  }
+  if(!confirm('\ud83c\udf10 Inferir pa\u00eds por IP geolocation\n\n\u2022 '+candidates.length+' contactos a procesar\n\u2022 ~'+Math.ceil(candidates.length*1.5)+' segundos estimados\n\u2022 Servicios: Google DNS + ipwho.is (gratis)\n\n\u26a0\ufe0f IMPORTANTE: la precisi\u00f3n NO es 100%.\n\u2022 Sitios en Cloudflare/AWS \u2192 USA (incorrecto)\n\u2022 Sitios pequeños hostados localmente \u2192 correcto\n\nDespu\u00e9s podr\u00e1s revisar y aprobar uno por uno.\n\n\u00bfContinuar?'))return;
+
+  // Indicatore progresso
+  var btn=n('mk-infer-ip-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='\u23f3 Procesando...';}
+
+  // Raggruppa contatti per dominio (no duplicati lookup)
+  var byDomain={};
+  candidates.forEach(function(c){
+    var dom=mkEmailDomain(c.email);
+    if(!byDomain[dom])byDomain[dom]={domain:dom,contactIds:[],result:null};
+    byDomain[dom].contactIds.push(c.id);
+  });
+  var domains=Object.keys(byDomain);
+
+  console.log('[mkBulkInferCountryByIP] Processing '+domains.length+' unique domains for '+candidates.length+' contacts...');
+
+  // Esegui lookups (con piccolo throttling per evitare rate limit ipwho.is)
+  for(var i=0;i<domains.length;i++){
+    var dom=domains[i];
+    if(btn)btn.innerHTML='\u23f3 '+(i+1)+'/'+domains.length+': '+dom;
+    try{
+      byDomain[dom].result=await mkInferCountryFromDomain(dom);
+    }catch(e){
+      byDomain[dom].result=null;
+    }
+    // Throttle: 200ms tra le chiamate
+    if(i<domains.length-1)await new Promise(function(r){setTimeout(r,200);});
+  }
+
+  if(btn){btn.disabled=false;btn.innerHTML='\ud83c\udf10 Inferir pa\u00eds (IP)';}
+
+  // Apri modal di review
+  mkOpenIPInferReview(byDomain);
+}
+
+// Modal di review: mostra i risultati e permette di approvare/scartare
+function mkOpenIPInferReview(byDomain){
+  var rows=[];
+  Object.keys(byDomain).forEach(function(dom){
+    var entry=byDomain[dom];
+    var contactsList=entry.contactIds.map(function(id){
+      var c=mkContacts.find(function(x){return x.id===id;});
+      return c?(c.email):id;
+    });
+    rows.push({
+      domain:dom,
+      contactIds:entry.contactIds,
+      contactEmails:contactsList,
+      result:entry.result
+    });
+  });
+
+  // Costruisci HTML modal
+  var html='<div style="max-height:60vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
+  html+='<table style="width:100%;font-size:11px;border-collapse:collapse">';
+  html+='<thead><tr style="background:var(--bg3);position:sticky;top:0">'
+    +'<th style="padding:8px;text-align:left">Dominio</th>'
+    +'<th style="padding:8px;text-align:left">Contactos</th>'
+    +'<th style="padding:8px;text-align:left">IP</th>'
+    +'<th style="padding:8px;text-align:left">Pa\u00eds detectado</th>'
+    +'<th style="padding:8px;text-align:center">Aplicar</th>'
+    +'</tr></thead><tbody>';
+  rows.forEach(function(r,idx){
+    var bg=idx%2===0?'var(--bg4)':'var(--bg2)';
+    var statusBadge='';
+    var labelText='';
+    var checked='';
+    if(!r.result){
+      statusBadge='<span style="color:var(--red);font-size:10px">\u2716 Lookup fallido</span>';
+      labelText='--';
+    }else{
+      var info=mkCountryInfo(r.result.label);
+      labelText=info.flag+' '+r.result.label+' <span style="color:var(--t4)">('+r.result.countryCode+')</span>';
+      checked=' checked';
+    }
+    html+='<tr style="background:'+bg+';border-top:1px solid var(--border)">'
+      +'<td style="padding:6px 8px;font-family:monospace;font-size:10px">'+esc(r.domain)+'</td>'
+      +'<td style="padding:6px 8px;font-size:10px;color:var(--t3)">'+r.contactEmails.length+' contacto'+(r.contactEmails.length!==1?'s':'')+'<br><span style="font-size:9px;color:var(--t4)">'+r.contactEmails.slice(0,2).map(esc).join(', ')+(r.contactEmails.length>2?', +'+(r.contactEmails.length-2):'')+'</span></td>'
+      +'<td style="padding:6px 8px;font-family:monospace;font-size:10px;color:var(--t3)">'+(r.result?esc(r.result.ip):'--')+'</td>'
+      +'<td style="padding:6px 8px;font-size:11px">'+(r.result?labelText:statusBadge)+'</td>'
+      +'<td style="padding:6px 8px;text-align:center">'+(r.result?'<input type="checkbox" class="mk-infer-apply" data-domain="'+esc(r.domain)+'"'+checked+'>':'')+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+
+  var stats={total:rows.length,success:rows.filter(function(r){return r.result;}).length,fail:rows.filter(function(r){return !r.result;}).length};
+  var summary='<div style="font-size:12px;color:var(--t3);margin-bottom:10px">'
+    +'<strong>'+stats.total+'</strong> dominios, '
+    +'<span style="color:var(--green)"><strong>'+stats.success+'</strong> resueltos</span>, '
+    +'<span style="color:var(--red)"><strong>'+stats.fail+'</strong> fallidos</span>'
+    +'</div>';
+  // Sostituisci contenuto modal
+  n('mk-ipinfer-summary').innerHTML=summary;
+  n('mk-ipinfer-content').innerHTML=html;
+
+  // Salva i dati per applicare poi
+  window._mkInferData=byDomain;
+
+  openM('m-mk-ipinfer');
+}
+
+function mkApplyIPInferResults(){
+  var data=window._mkInferData;
+  if(!data){alert('No hay datos.');return;}
+  var checked=document.querySelectorAll('.mk-infer-apply:checked');
+  if(checked.length===0){alert('No has seleccionado ning\u00fan dominio para aplicar.');return;}
+  var applied=0;
+  checked.forEach(function(cb){
+    var dom=cb.getAttribute('data-domain');
+    var entry=data[dom];
+    if(!entry||!entry.result)return;
+    entry.contactIds.forEach(function(cid){
+      var c=mkContacts.find(function(x){return String(x.id)===String(cid);});
+      if(c&&!c.country){
+        c.country=entry.result.label;
+        c.updatedAt=new Date().toISOString();
+        // Salva anche metadata (per tracciabilit\u00e0)
+        c.countryInferredVia='ip_geolocation';
+        c.countryInferredFromIP=entry.result.ip;
+        applied++;
+      }
+    });
+  });
+  SS('mkContacts',mkContacts);
+  closeM('m-mk-ipinfer');
+  window._mkInferData=null;
+  renderMarketing();
+  if(typeof showToast==='function')showToast('\u2713 '+applied+' contactos actualizados');
+  alert('\u2705 Aplicado a '+applied+' contactos.\n\nLos pa\u00edses inferidos por IP geolocation est\u00e1n marcados internamente. Si alguno es incorrecto, puedes cambiarlo desde el dropdown en la tabla.');
+}
+
+// END MARKETING IP GEOLOCATION
 // ===========================================================================
 
 // -- MODALS ---------------------------------------------------
