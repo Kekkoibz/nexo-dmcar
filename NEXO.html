@@ -785,7 +785,7 @@ En que te puedo ayudar hoy?</div></div>
               <button class="btn bg" onclick="mkClrSel()" style="font-size:11px">Deseleccionar</button>
               <button class="btn bs" onclick="mkBulkSetStatus()" style="font-size:11px">Cambiar estado</button>
               <button class="btn bs" onclick="mkBulkAddToList()" style="font-size:11px">A&ntilde;adir a lista</button>
-              <button class="btn bd" onclick="mkBulkDel()" style="font-size:11px">&#128465; Eliminar</button>
+              <button class="btn bg" onclick="mkBulkSoftDelete()" style="font-size:11px" title="No elimina \u2014 solo cambia status a unsubscribed">&#128274; Unsubscribe</button>
             </div>
           </div>
         </div>
@@ -1655,6 +1655,7 @@ En que te puedo ayudar hoy?</div></div>
           <option value="unsubscribed">Unsubscribed</option>
           <option value="bounced">Bounced</option>
         </select>
+        <div style="font-size:9px;color:var(--t4);margin-top:3px;line-height:1.4">\ud83d\udca1 Una vez unsubscribed, el contacto NO se elimina pero NO recibe m\u00e1s emails. Estado global: vale para todas las listas.</div>
       </div>
     </div>
     <div class="g2 mb10">
@@ -5999,6 +6000,13 @@ function saveCont(){
     // For brand new contacts, run automation if any non-default stage chosen
     try{runStageAutomation(c,newTag,null);}catch(e){}
   }
+  // AUTO-SYNC: registra il contatto B2B anche in Marketing (Direct Mail)
+  // Solo se ha email valida. Status default 'subscribed' (rispetta unsubscribe esistenti).
+  try{
+    if(c.email&&typeof mkSyncFromB2B==='function'){
+      mkSyncFromB2B(c,'b2b_contact');
+    }
+  }catch(e){console.warn('[NEXO] mkSyncFromB2B error:',e);}
   n('m-contact').removeAttribute('data-edit-id');
   closeM('m-contact');
   // Reset form
@@ -6315,6 +6323,12 @@ function saveLead(){
     leads.push(data);
   }
   SS('leads',leads);
+  // AUTO-SYNC: registra il lead anche in Marketing (se ha email valida)
+  try{
+    if(data.email&&typeof mkSyncFromB2B==='function'){
+      mkSyncFromB2B(data,'lead');
+    }
+  }catch(e){console.warn('[NEXO] mkSyncFromB2B error (lead):',e);}
   closeM('m-lead-edit');
   renderLeads();renderDash();
 }
@@ -8927,7 +8941,9 @@ function mkRender(){
       +'<td style="font-size:10px;color:var(--t3)">'+fmtD(c.createdAt)+'</td>'
       +'<td><div class="fc g4">'
         +'<button class="btn bs mk-edit-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">&#9998;</button>'
-        +'<button class="btn bd mk-del-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">x</button>'
+        +(c.status==='unsubscribed'
+          ?'<button class="btn bs mk-resub-btn" data-id="'+esc(c.id)+'" title="Re-suscribir (solo si el contacto pidi\u00f3 re-inscripci\u00f3n)" style="padding:2px 7px;font-size:10px;color:var(--green)">\u2705</button>'
+          :'<button class="btn bg mk-unsub-btn" data-id="'+esc(c.id)+'" title="Unsubscribe (no se elimina, status \u2192 unsubscribed)" style="padding:2px 7px;font-size:10px">\ud83d\udd12</button>')
       +'</div></td>'
     +'</tr>';
   }).join('');
@@ -8944,8 +8960,17 @@ function mkRender(){
   body.querySelectorAll('.mk-edit-btn').forEach(function(b){
     b.addEventListener('click',function(){mkOpenEdit(this.getAttribute('data-id'));});
   });
-  body.querySelectorAll('.mk-del-btn').forEach(function(b){
-    b.addEventListener('click',function(){mkDelContact(this.getAttribute('data-id'));});
+  body.querySelectorAll('.mk-unsub-btn').forEach(function(b){
+    b.addEventListener('click',function(){mkSoftDelete(this.getAttribute('data-id'));});
+  });
+  body.querySelectorAll('.mk-resub-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      var c=mkContacts.find(function(x){return String(x.id)===String(b.getAttribute('data-id'));});
+      if(!c)return;
+      if(!confirm('Re-suscribir "'+(c.firstName||c.email)+'"?\n\nSolo confirmar si el contacto explicitamente pidio re-inscripcion.'))return;
+      mkResubscribe(c.id);
+      renderMarketing();
+    });
   });
 
   mkUpdSelBar();
@@ -9352,7 +9377,7 @@ function mkRenderLists(){
   if(empty)empty.style.display='none';
 
   grid.innerHTML=mkLists.map(function(l){
-    var count=mkCountListContacts(l);
+    var stats=mkCountListContactsDetailed(l);
     var typeColor=l.type==='dynamic'?{bg:'rgba(37,99,235,.15)',fg:'var(--acc)'}:{bg:'rgba(245,158,11,.15)',fg:'#92400e'};
     var typeLabel=l.type==='dynamic'?'\u26a1 Din\u00e1mica':'\ud83d\udcc4 Est\u00e1tica';
     var rulesPreview='';
@@ -9368,7 +9393,11 @@ function mkRenderLists(){
       +(l.desc?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(l.desc)+'</div>':'')
       +'<div style="font-size:10px;color:var(--t4);margin-bottom:10px;font-family:monospace;background:var(--bg3);padding:6px;border-radius:5px">'+rulesPreview+'</div>'
       +'<div class="fbet">'
-        +'<div><span style="font-size:18px;font-weight:700;color:var(--green)">'+count+'</span> <span style="font-size:11px;color:var(--t3)">contactos</span></div>'
+        +'<div>'
+          +'<span style="font-size:18px;font-weight:700;color:var(--green)">'+stats.active+'</span>'
+          +' <span style="font-size:11px;color:var(--t3)">activos</span>'
+          +(stats.unsubscribed?'<br><span style="font-size:10px;color:var(--orange);font-weight:600">+ '+stats.unsubscribed+' unsub</span>':'')
+        +'</div>'
         +'<div class="fc g6">'
           +'<button class="btn bs" onclick="mkOpenList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">Ver</button>'
           +'<button class="btn bd" onclick="mkDelList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">x</button>'
@@ -9376,6 +9405,24 @@ function mkRenderLists(){
       +'</div>'
     +'</div>';
   }).join('');
+}
+
+// Conteggio dettagliato: activos (subscribed) vs unsubscribed/bounced
+function mkCountListContactsDetailed(l){
+  var ids=null;
+  if(l.type==='static')ids=l.contactIds||[];
+  else if(l.type==='dynamic'&&l.filters){
+    ids=mkContacts.filter(function(c){return mkContactMatchesFilters(c,l.filters);}).map(function(c){return c.id;});
+  }else ids=[];
+  var active=0,unsub=0,bounced=0;
+  ids.forEach(function(id){
+    var c=mkContacts.find(function(x){return String(x.id)===String(id);});
+    if(!c)return;
+    if(c.status==='subscribed')active++;
+    else if(c.status==='unsubscribed')unsub++;
+    else if(c.status==='bounced')bounced++;
+  });
+  return {active:active,unsubscribed:unsub,bounced:bounced,total:ids.length};
 }
 
 function mkCountListContacts(l){
@@ -9487,6 +9534,158 @@ function mkOpenList(id){
 }
 
 // END MARKETING MODULE
+// ===========================================================================
+
+// ===========================================================================
+// MARKETING — Sync con altri moduli + Status management (no-delete)
+// ===========================================================================
+
+// AUTO-SYNC da B2B Contacts / Leads verso Marketing
+// Chiamata da saveCont (B2B) e saveLead (Leads) quando il record ha email valida.
+// - Match per email: se gi\u00e0 esiste, aggiorna campi vuoti (no overwrite). NON tocca lo status.
+// - Se non esiste, crea nuovo contatto Marketing (status: subscribed di default).
+// - source: 'b2b_contact' | 'lead' | 'manual' | ecc.
+function mkSyncFromB2B(rec,source){
+  if(!rec||!rec.email)return null;
+  var email=mkNormEmail(rec.email);
+  if(!mkValidEmail(email))return null;
+  var existing=mkFindByEmail(email);
+  // Determina origin Marketing in base al source B2B
+  var mkOrigin=source==='lead'?'otro':(rec.source||'otro');
+  // Estrai interests da labels/category/vtype (quando disponibili)
+  var interests=[];
+  if(rec.category)interests.push(String(rec.category));
+  if(rec.vtype)interests.push(String(rec.vtype));
+  if(Array.isArray(rec.labels))interests=interests.concat(rec.labels);
+  interests=interests.filter(function(s,i,a){return s&&a.indexOf(s)===i;});
+
+  if(existing){
+    // Update SOLO campi vuoti dell'esistente (non sovrascrivere quello che il marketer ha gi\u00e0 curato)
+    // CRITICO: NON cambiare status (rispetta unsubscribe)
+    if(!existing.firstName&&rec.name)existing.firstName=rec.name;
+    if(!existing.companyName&&rec.company)existing.companyName=rec.company;
+    if(!existing.phone&&rec.phone)existing.phone=rec.phone;
+    if(!existing.country&&rec.country)existing.country=rec.country;
+    // Merge interests (non sovrascrive)
+    if(interests.length){
+      var cur=existing.interest||[];
+      interests.forEach(function(it){if(cur.indexOf(it)<0)cur.push(it);});
+      existing.interest=cur;
+    }
+    // Aggiorna sorgenti (tracking)
+    if(!existing.linkedSources)existing.linkedSources=[];
+    if(existing.linkedSources.indexOf(source)<0)existing.linkedSources.push(source);
+    existing.updatedAt=new Date().toISOString();
+    SS('mkContacts',mkContacts);
+    return existing;
+  }else{
+    // Crea nuovo contatto Marketing
+    var newRec={
+      id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      firstName:rec.name||'',
+      companyName:rec.company||'',
+      email:email,
+      phone:rec.phone||'',
+      country:rec.country||'',
+      customerType:(rec.type||rec.clientType||'').toLowerCase().replace(/\s+/g,'_')||'',
+      status:'subscribed',  // sempre subscribed di default
+      interest:interests,
+      origin:mkOrigin||'otro',
+      notes:'Auto-importado de '+(source==='b2b_contact'?'Contactos B2B':source==='lead'?'Leads':source)+(rec.notes?' \u2014 '+rec.notes:''),
+      linkedSources:[source],
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString()
+    };
+    mkContacts.push(newRec);
+    mkCntCounter++;
+    SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
+    if(typeof showToast==='function')showToast('\u2709 Contacto registrado en Marketing');
+    // Re-render se siamo nella vista Marketing
+    if(typeof renderMarketing==='function'&&n('view-marketing')&&n('view-marketing').classList.contains('on'))renderMarketing();
+    return newRec;
+  }
+}
+
+// UNSUBSCRIBE GLOBALE (no-delete policy)
+// Pu\u00f2 essere chiamato:
+// - dalla UI manuale (bottone su singolo contatto o bulk)
+// - in futuro da un webhook (TurboSMTP/SMTP server)
+// - da un endpoint API (Cloudflare Worker)
+// L'effetto \u00e8 sempre lo stesso: status='unsubscribed', NIENTE rimozione, NIENTE perdita di storico.
+function mkUnsubscribe(emailOrId,reason){
+  // Accetta sia email che id
+  var c;
+  if(typeof emailOrId==='string'&&emailOrId.indexOf('@')>=0){
+    c=mkFindByEmail(emailOrId);
+  }else{
+    c=mkContacts.find(function(x){return String(x.id)===String(emailOrId);});
+  }
+  if(!c){console.warn('[mkUnsubscribe] Contacto no encontrado:',emailOrId);return false;}
+  if(c.status==='unsubscribed')return c; // gi\u00e0 unsub, no-op
+  c.status='unsubscribed';
+  c.unsubscribedAt=new Date().toISOString();
+  if(reason)c.unsubscribeReason=reason;
+  c.updatedAt=new Date().toISOString();
+  SS('mkContacts',mkContacts);
+  console.log('[NEXO] \ud83d\udd12 Unsubscribed:',c.email,'reason:',reason||'manual');
+  return c;
+}
+
+// RESUBSCRIBE (caso particolare: solo se il contatto si re-iscrive volontariamente)
+function mkResubscribe(emailOrId){
+  var c;
+  if(typeof emailOrId==='string'&&emailOrId.indexOf('@')>=0)c=mkFindByEmail(emailOrId);
+  else c=mkContacts.find(function(x){return String(x.id)===String(emailOrId);});
+  if(!c)return false;
+  if(c.status==='subscribed')return c;
+  c.status='subscribed';
+  c.unsubscribedAt=null;
+  c.unsubscribeReason=null;
+  c.updatedAt=new Date().toISOString();
+  SS('mkContacts',mkContacts);
+  console.log('[NEXO] \u2705 Resubscribed:',c.email);
+  return c;
+}
+
+// SOFT DELETE = Unsubscribe (UI sostituisce delete con unsubscribe)
+// Hard delete (GDPR right-to-be-forgotten) viene chiesto separatamente con conferma extra.
+function mkSoftDelete(id){
+  var c=mkContacts.find(function(x){return String(x.id)===String(id);});
+  if(!c)return;
+  if(c.status==='unsubscribed'){
+    // Era gi\u00e0 unsub: chiede se vuole HARD DELETE (GDPR)
+    if(confirm('Este contacto ya est\u00e1 unsubscribed.\n\n\u00bfEliminar DEFINITIVAMENTE? (irreversible, GDPR)\n\nNormalmente no es necesario \u2014 los unsubscribed quedan congelados sin recibir emails.'))
+      mkHardDelete(id);
+    return;
+  }
+  if(!confirm('Marcar "'+(c.firstName||c.email)+'" como UNSUBSCRIBED?\n\n\u2705 Permanece en la base de datos\n\u2705 Permanece en sus listas\n\u274c No recibir\u00e1 m\u00e1s emails\n\n(El contacto NO se elimina \u2014 esto es la pol\u00edtica de Direct Mail)'))return;
+  mkUnsubscribe(id,'manual_admin');
+  renderMarketing();
+}
+function mkHardDelete(id){
+  // Solo per casi GDPR estremi
+  var c=mkContacts.find(function(x){return String(x.id)===String(id);});
+  if(!c)return;
+  if(!confirm('\u26a0\ufe0f ELIMINACI\u00d3N DEFINITIVA de "'+(c.firstName||c.email)+'"\n\nEsto BORRA todo rastro del contacto. Solo usar para cumplimiento GDPR.\n\n\u00bfConfirmar?'))return;
+  mkContacts=mkContacts.filter(function(x){return String(x.id)!==String(id);});
+  mkSel.delete(id);
+  SS('mkContacts',mkContacts);
+  renderMarketing();
+}
+
+// BULK SOFT DELETE = Bulk Unsubscribe
+function mkBulkSoftDelete(){
+  if(!mkSel.size)return;
+  if(!confirm('Marcar '+mkSel.size+' contactos como UNSUBSCRIBED?\n\n\u2705 Permanecen en la base de datos\n\u2705 Permanecen en sus listas\n\u274c No recibir\u00e1n m\u00e1s emails'))return;
+  var count=0;
+  mkSel.forEach(function(id){var c=mkUnsubscribe(id,'bulk_admin');if(c)count++;});
+  mkSel.clear();
+  SS('mkContacts',mkContacts);
+  if(typeof showToast==='function')showToast('\ud83d\udd12 '+count+' contactos unsubscribed');
+  renderMarketing();
+}
+
+// END MARKETING SYNC + STATUS
 // ===========================================================================
 
 // -- MODALS ---------------------------------------------------
