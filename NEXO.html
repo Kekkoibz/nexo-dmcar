@@ -8905,7 +8905,62 @@ function mkPopulateCountriesDropdowns(){
       if(c.label===cur)op.selected=true;
       sel.appendChild(op);
     });
+    // Attacca type-ahead (idempotente: marker dataset evita doppio bind)
+    if(!sel.dataset.mkTypeaheadBound){
+      mkAttachTypeahead(sel);
+      sel.dataset.mkTypeaheadBound='1';
+    }
   });
+}
+
+// Type-ahead intelligente per i select paesi
+// Quando l'utente digita "IT" \u2192 va a Italia, "FR" \u2192 Francia, "ESP" \u2192 Espa\u00f1a, ecc.
+// Match prioritario: codice ISO esatto > prefisso label > sottostringa
+var _mkTypeBuf='';
+var _mkTypeTimer=null;
+function mkAttachTypeahead(sel){
+  sel.addEventListener('keydown',function(e){
+    // Ignora tasti di navigazione (Arrow, Enter, Tab, ecc.)
+    if(e.key.length!==1)return;
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
+    // Solo lettere
+    if(!/[a-zA-Z]/.test(e.key))return;
+    e.preventDefault(); // Evita comportamento default del browser (single-char match)
+    // Append al buffer
+    _mkTypeBuf+=e.key.toLowerCase();
+    // Reset buffer dopo 800ms di inattivit\u00e0
+    if(_mkTypeTimer)clearTimeout(_mkTypeTimer);
+    _mkTypeTimer=setTimeout(function(){_mkTypeBuf='';},800);
+    // Cerca match
+    var match=mkFindCountryByPrefix(_mkTypeBuf);
+    if(match){
+      sel.value=match.label;
+      // Trigger event change per attivare salvataggio (in inline edit)
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+  });
+  // Reset buffer quando focus esce dal select
+  sel.addEventListener('blur',function(){_mkTypeBuf='';if(_mkTypeTimer){clearTimeout(_mkTypeTimer);_mkTypeTimer=null;}});
+}
+
+// Trova il primo paese che matcha il prefisso digitato (priorit\u00e0: code ISO > label prefix)
+function mkFindCountryByPrefix(buf){
+  if(!buf||!buf.length)return null;
+  var b=buf.toLowerCase();
+  // 1) Match esatto sul code ISO2 (es. "IT" \u2192 Italia, "FR" \u2192 Francia)
+  if(b.length>=2){
+    var byCode=MK_COUNTRIES.find(function(c){return c.code.toLowerCase()===b.slice(0,2);});
+    if(byCode&&b.length<=2)return byCode;
+  }
+  // 2) Match prefisso sulla label (es. "ita" \u2192 Italia, "esp" \u2192 Espa\u00f1a)
+  // Normalizzo accenti per match flessibile (es. "espa" matcha "Espa\u00f1a")
+  function normalize(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+  var bn=normalize(b);
+  var byLabel=MK_COUNTRIES.find(function(c){return normalize(c.label).indexOf(bn)===0;});
+  if(byLabel)return byLabel;
+  // 3) Sottostringa anywhere
+  var bySub=MK_COUNTRIES.find(function(c){return normalize(c.label).indexOf(bn)>=0;});
+  return bySub||null;
 }
 
 function mkSwitchTab(t){
@@ -9046,6 +9101,8 @@ function mkRender(){
         showToast('\u2713 '+(info?info.flag+' ':'')+(newVal||'(vac\u00edo)'));
       }
     });
+    // Attacco type-ahead (digitando "IT" va a Italia, "FR" \u2192 Francia, ecc.)
+    if(typeof mkAttachTypeahead==='function')mkAttachTypeahead(sel);
   });
 
   mkUpdSelBar();
