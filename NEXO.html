@@ -1913,15 +1913,29 @@ En que te puedo ayudar hoy?</div></div>
 <div class="ovl" id="m-tpl-edit">
   <div class="modal" style="max-width:1280px;width:96vw;max-height:94vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
     <!-- Header del editor -->
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2)">
-      <div style="display:flex;align-items:center;gap:14px;flex:1">
-        <div style="font-size:16px;font-weight:700;color:var(--t1)">&#128196; Editor template</div>
-        <input type="text" id="tpl-name" placeholder="Nombre del template (ej: Newsletter Mayo 2026)" style="flex:1;max-width:320px;font-size:13px">
-        <input type="text" id="tpl-subject" placeholder="Asunto por defecto (ej: Nuevas ofertas...)" style="flex:1;max-width:320px;font-size:13px">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);background:var(--bg2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+        <div style="font-size:16px;font-weight:700;color:var(--t1);white-space:nowrap">&#128196; Editor template</div>
+        <div class="fc g6">
+          <button class="btn bg" onclick="closeM('m-tpl-edit')" style="font-size:12px">Cancelar</button>
+          <button class="btn bp" onclick="tplSave()" style="font-size:12px">&#128190; Guardar template</button>
+        </div>
       </div>
-      <div class="fc g6">
-        <button class="btn bg" onclick="closeM('m-tpl-edit')" style="font-size:12px">Cancelar</button>
-        <button class="btn bp" onclick="tplSave()" style="font-size:12px">&#128190; Guardar template</button>
+      <div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px;margin-top:10px">
+        <div>
+          <label style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">Nombre *</label>
+          <input type="text" id="tpl-name" placeholder="ej: Template Francesco" style="font-size:13px;margin-top:2px">
+        </div>
+        <div>
+          <label style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">Asunto por defecto</label>
+          <input type="text" id="tpl-subject" placeholder="ej: Nuevas ofertas..." style="font-size:13px;margin-top:2px">
+        </div>
+        <div>
+          <label style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">&#9997;&#65039; Firma asociada</label>
+          <select id="tpl-defaultFirmaId" style="font-size:13px;margin-top:2px">
+            <option value="">-- Sin firma --</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -2006,10 +2020,13 @@ En que te puedo ayudar hoy?</div></div>
           </select>
           <div style="font-size:10px;color:var(--t4);margin-top:3px">El bloque 'Card Auto' del template act\u00faa como placeholder \u2014 los coches seleccionados abajo se inyectar\u00e1n autom\u00e1ticamente.</div>
         </div>
-        <!-- 4. Firma -->
+        <!-- 4. Firma asociada (info, no selector) -->
         <div class="mb14">
-          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">4. Firma comercial</label>
-          <select id="camp-firmaId">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">4. &#9997;&#65039; Firma asociada al template</label>
+          <div id="camp-firma-info" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:11px;color:var(--t3)">
+            <em>Selecciona un template arriba para ver la firma asociada.</em>
+          </div>
+          <select id="camp-firmaId" style="display:none">
             <option value="">-- Selecciona una firma --</option>
           </select>
         </div>
@@ -11628,6 +11645,7 @@ function campOpenNew(preselectedCarIds){
   // Renderiza
   campRenderCarsList();
   campRenderRecipients();
+  campRenderFirmaInfo();
   campUpdSummary();
   openM('m-camp-new');
 }
@@ -11654,6 +11672,7 @@ function campOpenEdit(id){
   if(n('camp-listId'))n('camp-listId').value=_campEditing.listId;
   campRenderCarsList();
   campRenderRecipients();
+  campRenderFirmaInfo();
   campUpdSummary();
   openM('m-camp-new');
 }
@@ -11715,15 +11734,48 @@ function campPopulateSelects(){
 
 function campOnTemplateChg(){
   _campEditing.tplId=n('camp-tplId').value;
-  // Auto-fill subject si est\u00e1 vac\u00edo y el template tiene uno
-  if(!n('camp-subject').value){
-    var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
-    if(t&&t.subject){
-      n('camp-subject').value=t.subject;
-      _campEditing.subject=t.subject;
-    }
+  // Auto-fill firma desde el template
+  var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+  if(t&&t.defaultFirmaId){
+    _campEditing.firmaId=t.defaultFirmaId;
+    var firSel=n('camp-firmaId');
+    if(firSel)firSel.value=t.defaultFirmaId;
+  }else{
+    _campEditing.firmaId='';
   }
+  // Auto-fill subject si est\u00e1 vac\u00edo y el template tiene uno
+  if(!n('camp-subject').value&&t&&t.subject){
+    n('camp-subject').value=t.subject;
+    _campEditing.subject=t.subject;
+  }
+  campRenderFirmaInfo();
   campUpdSummary();
+}
+
+// Renderiza info de la firma asociada al template (en lugar del selector)
+function campRenderFirmaInfo(){
+  var div=n('camp-firma-info');
+  if(!div)return;
+  if(!_campEditing.tplId){
+    div.innerHTML='<em>Selecciona un template arriba para ver la firma asociada.</em>';
+    return;
+  }
+  var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+  if(!t){
+    div.innerHTML='<em style="color:#dc2626">\u26a0\ufe0f Template no encontrado.</em>';
+    return;
+  }
+  if(!t.defaultFirmaId){
+    div.innerHTML='<div style="color:#f59e0b;font-size:11px">\u26a0\ufe0f Este template no tiene firma asociada.<br><span style="font-size:10px;color:var(--t4)">Edita el template y asigna una firma para enviar.</span></div>';
+    return;
+  }
+  var f=mkFirmas.find(function(x){return x.id===t.defaultFirmaId;});
+  if(!f){
+    div.innerHTML='<div style="color:#dc2626;font-size:11px">\u26a0\ufe0f La firma asociada ya no existe (fue eliminada).</div>';
+    return;
+  }
+  var flag=FIR_LANG_FLAG[f.lang]||'';
+  div.innerHTML='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px">'+flag+'</span><div><div style="font-weight:600;color:var(--t1);font-size:12px">'+esc(f.name)+'</div><div style="font-size:10px;color:var(--t3)">'+esc(f.email||'')+'</div></div></div>';
 }
 
 function campOnListChg(){
@@ -11948,10 +12000,41 @@ function campUpdSummary(){
   }
 }
 
-// Listeners para inputs nombre/asunto
+// Listeners para inputs nombre/asunto + selects (firma, lista, template)
 document.addEventListener('input',function(e){
   if(e.target.id==='camp-name')_campEditing.name=e.target.value;
   if(e.target.id==='camp-subject')_campEditing.subject=e.target.value;
+});
+document.addEventListener('change',function(e){
+  if(e.target.id==='camp-firmaId'){
+    _campEditing.firmaId=e.target.value;
+    campUpdSummary();
+  }
+  if(e.target.id==='camp-tplId'){
+    _campEditing.tplId=e.target.value;
+    // Si el template tiene una firma asociada, la carga automaticamente
+    var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+    if(t&&t.defaultFirmaId){
+      _campEditing.firmaId=t.defaultFirmaId;
+      var firSel=n('camp-firmaId');
+      if(firSel)firSel.value=t.defaultFirmaId;
+    }else{
+      _campEditing.firmaId='';
+    }
+    // Auto-fill subject si el template tiene uno y no hay subject ya
+    if(t&&t.subject&&!n('camp-subject').value){
+      n('camp-subject').value=t.subject;
+      _campEditing.subject=t.subject;
+    }
+    campRenderFirmaInfo();
+    campUpdSummary();
+  }
+  if(e.target.id==='camp-listId'){
+    _campEditing.listId=e.target.value;
+    _campEditing.excludedRecipientIds={};
+    campRenderRecipients();
+    campUpdSummary();
+  }
 });
 
 // === GUARDAR / ENVIAR ===
@@ -12712,10 +12795,24 @@ function tplRenderBlockForm(block){
 
 // === FUNCIONES PRINCIPALES DEL EDITOR ===
 
+// Popula el dropdown de firmas (asociaci\u00f3n al template)
+function tplPopulateFirmaSelect(selectedId){
+  var sel=n('tpl-defaultFirmaId');
+  if(!sel)return;
+  var html='<option value="">-- Sin firma --</option>';
+  mkFirmas.forEach(function(f){
+    var s=(selectedId===f.id)?' selected':'';
+    var flag=FIR_LANG_FLAG[f.lang]||'';
+    html+='<option value="'+esc(f.id)+'"'+s+'>'+flag+' '+esc(f.name)+'</option>';
+  });
+  sel.innerHTML=html;
+}
+
 function tplOpenNew(){
-  _tplEditing={id:null,name:'',subject:'',blocks:[],editingBlockIdx:-1};
+  _tplEditing={id:null,name:'',subject:'',defaultFirmaId:'',blocks:[],editingBlockIdx:-1};
   if(n('tpl-name'))n('tpl-name').value='';
   if(n('tpl-subject'))n('tpl-subject').value='';
+  tplPopulateFirmaSelect('');
   tplRenderEditor();
   openM('m-tpl-edit');
 }
@@ -12727,11 +12824,13 @@ function tplOpenEdit(id){
     id:t.id,
     name:t.name||'',
     subject:t.subject||'',
+    defaultFirmaId:t.defaultFirmaId||'',
     blocks:JSON.parse(JSON.stringify(t.blocks||[])),  // deep clone
     editingBlockIdx:-1
   };
   if(n('tpl-name'))n('tpl-name').value=_tplEditing.name;
   if(n('tpl-subject'))n('tpl-subject').value=_tplEditing.subject;
+  tplPopulateFirmaSelect(_tplEditing.defaultFirmaId);
   tplRenderEditor();
   openM('m-tpl-edit');
 }
@@ -13000,10 +13099,12 @@ function tplSave(){
   if(!name){alert('El nombre del template es obligatorio.');return;}
   if(_tplEditing.blocks.length===0){alert('A\u00f1ade al menos un bloque al template.');return;}
   var subject=(n('tpl-subject')&&n('tpl-subject').value||'').trim();
+  var defaultFirmaId=(n('tpl-defaultFirmaId')&&n('tpl-defaultFirmaId').value||'').trim();
   var data={
     name:name,
     description:'',
     subject:subject,
+    defaultFirmaId:defaultFirmaId,
     blocks:_tplEditing.blocks,
     updatedAt:new Date().toISOString()
   };
@@ -13027,6 +13128,9 @@ function tplSave(){
 document.addEventListener('input',function(e){
   if(e.target.id==='tpl-name')_tplEditing.name=e.target.value;
   if(e.target.id==='tpl-subject')_tplEditing.subject=e.target.value;
+});
+document.addEventListener('change',function(e){
+  if(e.target.id==='tpl-defaultFirmaId')_tplEditing.defaultFirmaId=e.target.value;
 });
 
 // Construye el HTML completo de un template para envio email
