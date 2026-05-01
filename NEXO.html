@@ -351,9 +351,11 @@ En que te puedo ayudar hoy?</div></div>
           <table id="stk-tbl">
             <thead><tr>
               <th style="width:36px"><input type="checkbox" id="sel-all" onchange="selAll(this)"></th>
+              <th style="width:50px;text-align:center" title="Oferta enviada">Env.</th>
               <th>ID</th><th>Fecha</th><th>Proveedor</th><th>Marca</th><th>Modelo</th><th>Version</th>
               <th>1a Reg</th><th>Uds</th><th>Kms</th><th>Colores</th><th>Danos</th>
               <th>Equipamiento</th><th>P.Compra</th>
+              <th>P.Venta</th><th>Margen</th>
               <th>Pick Up</th><th>Status</th><th>Notas</th><th style="width:100px"></th>
             </tr></thead>
             <tbody id="stk-body"></tbody>
@@ -3047,6 +3049,8 @@ function renderStkTbl(){
 
     html+='<tr id="tr-'+sid+'"'+(sel?' style="background:rgba(37,99,235,.07)"':'')+'>';
     html+='<td style="text-align:center"><input type="checkbox" class="rchk" data-id="'+item.id+'"'+(sel?' checked':'')+'></td>';
+    // Casella "Oferta enviada" (auto al click Generar Word, ma editabile manualmente)
+    html+='<td style="text-align:center"><input type="checkbox" class="env-chk" data-id="'+item.id+'"'+(item.sent?' checked':'')+' title="'+(item.sentAt?'Enviada el '+esc(item.sentAt):'Marcar como enviada')+'" style="cursor:pointer;accent-color:#10b981;width:18px;height:18px"></td>';
     html+='<td style="font-size:10px;color:var(--t4);white-space:nowrap">'+esc(item.internalId)+'</td>';
     html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.date)+'</td>';
     html+='<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(item.supplier)+'</td>';
@@ -3062,6 +3066,12 @@ function renderStkTbl(){
     html+='<td><button class="btn bg eq-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 7px;max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(item.equip||'')+'">'+
     (item.equip&&item.equip!=='--'?ep:'--')+'</button></td>';
     html+='<td style="text-align:right;color:var(--t3);white-space:nowrap">'+esc(item.buy)+'</td>';
+    // P.Venta (auto-popolato al Generar Word)
+    var sellDisp=item.sell&&item.sell!=='--'?esc(item.sell):'<span style="color:var(--t4);font-size:10px">--</span>';
+    html+='<td style="text-align:right;white-space:nowrap;font-weight:600;color:'+(item.sell?'var(--green)':'var(--t4)')+'">'+sellDisp+'</td>';
+    // Margen (calcolato auto)
+    var marginDisp=item.marginAmount?'<span style="color:var(--green);font-weight:700">+'+esc(String(item.marginAmount).replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'))+' \u20ac</span>':'<span style="color:var(--t4);font-size:10px">--</span>';
+    html+='<td style="text-align:right;white-space:nowrap">'+marginDisp+'</td>';
     html+='<td style="font-size:11px;white-space:nowrap">'+pickupDisp+'</td>';
     // Status: editable inline. Click on the tag to toggle the dropdown.
     html+='<td style="white-space:nowrap"><select class="status-sel tag '+stCls+'" data-id="'+item.id+'" style="border:none;cursor:pointer;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px;border-radius:6px">';
@@ -3123,6 +3133,21 @@ function renderStkTbl(){
       var tr=n('tr-'+String(id).replace(/[^a-z0-9]/gi,'_'));
       if(tr) tr.style.background=this.checked?'rgba(37,99,235,.07)':'';
       updSelBar();
+    });
+  });
+
+  // Checkbox "Oferta enviada" — manuale toggle (auto-spunta su Generar Word)
+  tbody.querySelectorAll('.env-chk').forEach(function(chk){
+    chk.addEventListener('click',function(e){e.stopPropagation();});
+    chk.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+      if(idx<0)return;
+      stock[idx].sent=this.checked;
+      stock[idx].sentAt=this.checked?new Date().toLocaleDateString('es-ES'):null;
+      SS('stock',stock);
+      // Update tooltip
+      this.title=this.checked&&stock[idx].sentAt?'Enviada el '+stock[idx].sentAt:'Marcar como enviada';
     });
   });
 
@@ -3380,8 +3405,8 @@ function delItem(id){
 
 function exportStock(){
   if(!stock.length){alert('Stock Vivo vacio');return;}
-  var h=['ID','FECHA','PROVEEDOR','MARCA','MODELO','VERSION','1 REG','UDS','KMS','COLORES','DANOS','EQUIPAMIENTO','P.COMPRA','P.VENTA','MARGEN','PICK UP','STATUS','NOTAS'];
-  var rows=stock.map(function(r){var b=fnum(r.buy);var sv=fnum(r.sell);return[r.internalId,r.date,r.supplier,r.brand,r.model,r.version,r.reg,r.units||'1',r.kms,r.colors,r.damage,r.equip,r.buy,r.sell,(b&&sv)?(sv-b).toFixed(0):'',fmtPickup(r.pickup),r.status,r.notes];});
+  var h=['ID','FECHA','PROVEEDOR','MARCA','MODELO','VERSION','1 REG','UDS','KMS','COLORES','DANOS','EQUIPAMIENTO','P.COMPRA','P.VENTA','MARGEN','ENVIADA','FECHA ENVIO','PICK UP','STATUS','NOTAS'];
+  var rows=stock.map(function(r){var b=fnum(r.buy);var sv=fnum(r.sell);return[r.internalId,r.date,r.supplier,r.brand,r.model,r.version,r.reg,r.units||'1',r.kms,r.colors,r.damage,r.equip,r.buy,r.sell,(b&&sv)?(sv-b).toFixed(0):'',(r.sent?'SI':'NO'),(r.sentAt||''),fmtPickup(r.pickup),r.status,r.notes];});
   var csv=[h].concat(rows).map(function(row){return row.map(function(c){return'"'+(c||'').toString().replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));a.download='NEXO_StockVivo_'+new Date().toISOString().split('T')[0]+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);
 }
@@ -3955,12 +3980,30 @@ function genFrmStk(){
         } else {
           generated++;
           offerHist.push(Object.assign({},ctx.offer,{id:Date.now()+Math.floor(Math.random()*9999),savedAt:new Date().toISOString()}));
+          // AUTO-marca lo stock-item come "Enviada" + popola P.Venta + Margen
+          try{
+            var sIdx=stock.findIndex(function(s){return s.id===ctx.stockId;});
+            if(sIdx>=0){
+              stock[sIdx].sent=true;
+              stock[sIdx].sentAt=new Date().toLocaleDateString('es-ES');
+              stock[sIdx].sell=ctx.offer.price||'';
+              // Calcola margine: P.Venta - P.Compra
+              var buyN=fnum(stock[sIdx].buy);
+              var sellN=fnum(stock[sIdx].sell);
+              if(buyN&&sellN){
+                stock[sIdx].marginAmount=String(Math.round(sellN-buyN));
+              }
+              SS('stock',stock);
+            }
+          }catch(e){console.warn('[NEXO] Error updating stock after offer:',e);}
         }
         setTimeout(processNext,500);
       });
     });
   }
   processNext();
+  // Refresh stock view dopo tutte le offerte
+  setTimeout(function(){if(typeof fStk==='function')fStk();},1000);
 }
 
 // -- PRE-OFFER MODAL (VIN + missing equipment) ------------------------------
