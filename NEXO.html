@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.37 — DMCAR GROUP CRM | 2026-05-01 | Offer ID global counter (001,002,...), prezzo da buy+margin, auto-fill nome campagna, pulsanti Pegar Equipamiento + Adjuntar Fotos in dialog campagna -->
+<!-- NEXO v9.38 — DMCAR GROUP CRM | 2026-05-01 | Pulsante Margen + warning sell mancante, fix gap Net Price/1st Reg, fix parser numerico ES (18.500 → 18500) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2045,6 +2045,7 @@ En que te puedo ayudar hoy?</div></div>
               <button class="btn bs" onclick="campOpenStockPicker()" style="font-size:10px;padding:3px 9px">+ A&ntilde;adir del Stock Vivo</button>
               <button class="btn bs" onclick="campOpenAddEquip()" title="Pegar / extraer equipamiento del primer coche seleccionado (se guarda en Stock)" style="font-size:10px;padding:3px 9px;background:#0ea5e9;color:#fff;border-color:#0284c7">&#128203; Equipamiento</button>
               <button class="btn bs" onclick="campOpenAddPhotos()" title="Adjuntar hasta 3 fotos al primer coche seleccionado (se guardan en Stock)" style="font-size:10px;padding:3px 9px;background:#8b5cf6;color:#fff;border-color:#7c3aed">&#128247; Fotos</button>
+              <button class="btn bs" onclick="campOpenAddMargin()" title="Definir margen de venta (se aplica al precio compra y se guarda en Stock)" style="font-size:10px;padding:3px 9px;background:#10b981;color:#fff;border-color:#059669">&#128176; Margen</button>
             </div>
           </div>
           <div id="camp-cars-list" style="background:var(--bg3);border-radius:7px;padding:10px;min-height:60px;font-size:11px;color:var(--t3)">
@@ -2084,6 +2085,34 @@ En que te puedo ayudar hoy?</div></div>
         <button class="btn bs" onclick="campSendTest()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none">&#128231; Test a m&iacute;</button>
         <button class="btn bp" onclick="campSendNow()" style="font-size:12px">&#9889; Enviar ahora</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MARGEN desde campaña (se guarda en Stock) -->
+<div class="ovl" id="m-camp-add-margin">
+  <div class="modal" style="max-width:560px">
+    <div class="fbet mb14"><div class="mt">&#128176; Definir margen de venta</div><button class="btn bg" onclick="closeM('m-camp-add-margin')" style="padding:5px 10px">X</button></div>
+    <div id="cm-target" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:12px;color:var(--t2);margin-bottom:12px"></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">El margen se sumar&aacute; al precio de compra para calcular el precio de venta. Se guardar&aacute; tanto el margen como el precio calculado en el Stock Vivo.</div>
+    <div class="g2 mb10">
+      <div>
+        <label style="font-size:11px;font-weight:600">Tipo de margen</label>
+        <select id="cm-type" onchange="campUpdMarginPreview()" style="font-size:13px">
+          <option value="flat">Cantidad fija (EUR)</option>
+          <option value="pct">Porcentaje (%)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600">Valor</label>
+        <input type="text" id="cm-value" placeholder="500" oninput="campUpdMarginPreview()" style="font-size:13px">
+      </div>
+    </div>
+    <div id="cm-preview" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:12px;margin-top:10px;font-size:13px;color:var(--t1);text-align:center"></div>
+    <div id="cm-status" style="font-size:11px;color:var(--acc);margin-top:8px;min-height:14px"></div>
+    <div class="fbet" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-camp-add-margin')" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="campSaveMarginFromModal()" style="font-size:12px">&#128190; Guardar en Stock + Aplicar</button>
     </div>
   </div>
 </div>
@@ -3440,20 +3469,46 @@ window.nxPeekOfferId=nxPeekOfferId;
 // Calcula precio de venta a partir de buy + margin (mismo método que el Word).
 // margin acepta formatos: "+500 EUR", "500", "+5%", "5%". Default: +500 EUR.
 function nxComputeSellPrice(buy,margin){
-  function fnumLocal(s){
+  // Parser robusto formato ES (ej: "18.500", "18.500,50", "18500", "18,5")
+  function parseNum(s){
     if(typeof s==='number')return s;
-    if(!s)return 0;
-    return parseFloat(String(s).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
+    if(s==null||s==='')return 0;
+    var str=String(s).replace(/[^0-9.,]/g,'');
+    if(!str)return 0;
+    // Si tiene ambos: punto=miles, coma=decimales (formato ES "18.500,50")
+    if(str.indexOf('.')>=0&&str.indexOf(',')>=0){
+      str=str.replace(/\./g,'').replace(',','.');
+    }
+    // Solo coma → decimal (ej "18,5")
+    else if(str.indexOf(',')>=0){
+      str=str.replace(',','.');
+    }
+    // Solo punto → si hay >=3 dígitos después es separador miles
+    else if(str.indexOf('.')>=0){
+      var afterDot=str.split('.').pop();
+      if(afterDot.length>=3)str=str.replace(/\./g,'');
+    }
+    return parseFloat(str)||0;
   }
-  var buyN=fnumLocal(buy);
+  var buyN=parseNum(buy);
   if(!buyN)return '';
   var m=margin||'+500 EUR';
-  var mN=parseFloat(String(m).replace(/[^0-9.]/g,''))||500;
+  var mN=parseNum(m);
+  if(!mN)mN=500;
   var isPct=String(m).indexOf('%')>=0;
   var sellN=isPct?buyN*(1+mN/100):buyN+mN;
   return Math.round(sellN).toLocaleString('es-ES')+' \u20ac';
 }
 window.nxComputeSellPrice=nxComputeSellPrice;
+
+// Devuelve el valor numérico del margin (sin signo, sin EUR/€)
+function nxParseMargin(margin){
+  if(!margin)return {value:500,isPct:false};
+  var raw=String(margin);
+  var n=parseFloat(raw.replace(/[^0-9.]/g,''))||0;
+  return {value:n,isPct:raw.indexOf('%')>=0};
+}
+window.nxParseMargin=nxParseMargin;
 var contacts=LS('contacts',[
   {id:1,name:'Klaus Muller',company:'BavariaAuto GmbH',country:'Alemania',role:'Comprador',myCompany:'DMCAR GROUP',phone:'+49 89 123456',notes:'Interesado en lote BMW Serie 5.',tag:'hot',lastContact:'2026-04-18'},
   {id:2,name:'Jean Dupont',company:'AutoFrance SAS',country:'Francia',role:'Proveedor',myCompany:'DMCAR GROUP',phone:'+33 1 987654',notes:'Ofrece Peugeot 308 diesel.',tag:'pend',lastContact:'2026-04-15'},
@@ -12949,6 +13004,9 @@ function campCheckMissingData(){
     if(!hasVins)missing.push('vin');
     // 3) Fotos ausentes (photo1 vacía)
     if(!s.photo1)missing.push('photo');
+    // 4) v9.38: Precio de venta vacío (regla DMCAR — debe haber margin definido)
+    var sellN=fnum(s.sell);
+    if(!sellN)missing.push('sell');
     if(missing.length>0){
       problems.push({stockId:s.id,groupKey:groupKey,brand:brand,model:model,missing:missing});
     }
@@ -12966,9 +13024,12 @@ function campShowMissingWarning(problems){
     if(p.missing.indexOf('equip')>=0)miss.push('equipamiento');
     if(p.missing.indexOf('vin')>=0)miss.push('VIN');
     if(p.missing.indexOf('photo')>=0)miss.push('fotos');
+    if(p.missing.indexOf('sell')>=0)miss.push('precio venta (margen)');
     msg+='\u2022 '+p.brand+' '+p.model+': falta '+miss.join(', ')+'\n';
   });
-  msg+='\nNota: si no a\u00f1ades equipamiento, el email mostrar\u00e1 \"Standard\" (regla DMCAR).\n\n';
+  msg+='\nNotas:\n';
+  msg+='\u2022 Sin equipamiento \u2192 el email mostrar\u00e1 \"Standard\".\n';
+  msg+='\u2022 Sin precio venta \u2192 usa el bot\u00f3n \ud83d\udcb0 Margen para definirlo.\n\n';
   msg+='\u00bfQu\u00e9 quieres hacer?\n\n';
   msg+='[OK]      Continuar y enviar igualmente\n';
   msg+='[Cancel]  Cancelar y editar el Stock primero';
@@ -13091,6 +13152,90 @@ function campSavePhotosFromModal(){
   if(typeof campRenderCarsList==='function')campRenderCarsList();
 }
 window.campSavePhotosFromModal=campSavePhotosFromModal;
+
+// === ADD MARGEN desde modal campaña (v9.38) ===
+function campOpenAddMargin(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('\u26a0\ufe0f Primero selecciona al menos 1 coche en el paso 5.');return;}
+  var buyN=fnum(s.buy);
+  var sellN=fnum(s.sell);
+  var info='<strong>Coche destino:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:''));
+  info+='<div style="font-size:11px;color:var(--t3);margin-top:6px">';
+  info+='Precio compra: <strong>'+(buyN?buyN.toLocaleString('es-ES')+' \u20ac':'<span style=\"color:var(--red)\">no definido</span>')+'</strong>';
+  if(sellN)info+=' \u00b7 Precio venta actual: <strong>'+sellN.toLocaleString('es-ES')+' \u20ac</strong>';
+  info+='</div>';
+  n('cm-target').innerHTML=info;
+  // Pre-rellena: si ya hay margen en _campEditing, úsalo
+  var curMargin=_campEditing.margin||LS('campDefaultMargin','+500 EUR');
+  var pm=nxParseMargin(curMargin);
+  n('cm-type').value=pm.isPct?'pct':'flat';
+  n('cm-value').value=String(pm.value||500);
+  n('cm-status').textContent='';
+  if(!buyN){
+    n('cm-status').innerHTML='<span style="color:var(--red)">\u26a0\ufe0f El coche no tiene precio de compra. Edita primero el Stock Vivo.</span>';
+  }
+  campUpdMarginPreview();
+  openM('m-camp-add-margin');
+}
+window.campOpenAddMargin=campOpenAddMargin;
+
+function campUpdMarginPreview(){
+  var s=campResolveFirstSelectedStock();
+  var prev=n('cm-preview');if(!prev)return;
+  if(!s){prev.textContent='';return;}
+  var type=n('cm-type').value;
+  var val=parseFloat((n('cm-value').value||'').replace(/[^0-9.]/g,''))||0;
+  var marginStr=(type==='pct')?('+'+val+'%'):('+'+val+' EUR');
+  var sell=nxComputeSellPrice(s.buy,marginStr);
+  var buyN=fnum(s.buy);
+  if(!buyN){
+    prev.innerHTML='<span style="color:var(--red)">Sin precio de compra \u2192 no se puede calcular.</span>';
+    return;
+  }
+  if(!sell){
+    prev.innerHTML='<span style="color:var(--t3)">Introduce un valor de margen v\u00e1lido.</span>';
+    return;
+  }
+  prev.innerHTML='<div style="font-size:11px;color:var(--t3);margin-bottom:4px">Precio venta calculado:</div>'+
+    '<div style="font-size:20px;font-weight:700;color:var(--green)">'+esc(sell)+'</div>'+
+    '<div style="font-size:10px;color:var(--t4);margin-top:4px">'+buyN.toLocaleString('es-ES')+' \u20ac '+(type==='pct'?'+ '+val+'%':'+ '+val.toLocaleString('es-ES')+' \u20ac')+'</div>';
+}
+window.campUpdMarginPreview=campUpdMarginPreview;
+
+function campSaveMarginFromModal(){
+  var s=campResolveFirstSelectedStock();
+  if(!s){alert('Coche no encontrado.');return;}
+  var buyN=fnum(s.buy);
+  if(!buyN){alert('\u26a0\ufe0f Este coche no tiene precio de compra (campo Buy en Stock Vivo).\n\nEdita primero el Stock Vivo y luego vuelve aqu\u00ed.');return;}
+  var type=n('cm-type').value;
+  var val=parseFloat((n('cm-value').value||'').replace(/[^0-9.]/g,''))||0;
+  if(!val){alert('Introduce un valor de margen mayor que 0.');return;}
+  var marginStr=(type==='pct')?('+'+val+'%'):('+'+val+' EUR');
+  var sellPrice=nxComputeSellPrice(s.buy,marginStr);
+  // Extrae solo la parte numérica para guardar en stock.sell (sin "€")
+  var sellN=parseFloat(sellPrice.replace(/[^0-9]/g,''))||0;
+  // Actualiza Stock
+  var idx=stock.findIndex(function(x){return x.id===s.id;});
+  if(idx<0){alert('Stock no encontrado.');return;}
+  stock[idx].margin=marginStr;
+  stock[idx].sell=String(sellN);
+  // Calcula también el campo marginAmount para coherencia con Word (sumando)
+  if(type==='flat'){
+    stock[idx].marginAmount=String(val);
+  }else{
+    stock[idx].marginAmount=String(Math.round(buyN*val/100));
+  }
+  SS('stock',stock);
+  // Guarda como margen por defecto para próximas campañas
+  SS('campDefaultMargin',marginStr);
+  // Actualiza también _campEditing
+  if(_campEditing)_campEditing.margin=marginStr;
+  if(typeof fStk==='function')fStk();
+  closeM('m-camp-add-margin');
+  if(typeof showToast==='function')showToast('\u2713 Margen guardado: '+sellPrice);
+  if(typeof campRenderCarsList==='function')campRenderCarsList();
+}
+window.campSaveMarginFromModal=campSaveMarginFromModal;
 
 // VERSION SYNC: para preview r\u00e1pida (sin esperar logos)
 // Devuelve HTML construido sin pre-resolve de logos
@@ -13823,9 +13968,9 @@ function tplRenderBlockHTML(block){
       if(c.title){
         ah+='<div style="text-align:center;font-size:22px;font-weight:700;color:#0000F5;margin-bottom:8px;line-height:1.2">'+esc(c.title)+'</div>';
       }
-      // Net Price (centrado, bold, negro)
+      // Net Price (centrado, bold, negro) — sin margin-bottom para pegarlo a 1st Reg
       if(c.price){
-        ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px"><strong>Net Price:</strong> '+esc(c.price)+'</div>';
+        ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin:0;padding:0"><strong>Net Price:</strong> '+esc(c.price)+'</div>';
       }
       // Datos b\u00e1sicos + Equipment todo pegado (sin gaps de Apple Mail)
       var eqText=(c.equipment||'').trim()||'Standard';
