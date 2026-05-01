@@ -847,6 +847,9 @@ En que te puedo ayudar hoy?</div></div>
         <button class="btn bg" id="camp-tab-borr" onclick="campSwitchTab('borradores')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128221; Borradores <span id="camp-cnt-borr" style="font-size:10px;color:var(--t4)">(0)</span></button>
         <button class="btn bg" id="camp-tab-env" onclick="campSwitchTab('enviadas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#9989; Enviadas <span id="camp-cnt-env" style="font-size:10px;color:var(--t4)">(0)</span></button>
         <button class="btn bg" id="camp-tab-prog" onclick="campSwitchTab('programadas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128338; Programadas <span id="camp-cnt-prog" style="font-size:10px;color:var(--t4)">(0)</span></button>
+        <div style="flex:1;border-bottom:1px solid var(--border)"></div>
+        <button class="btn bg" id="camp-tab-tpl" onclick="campSwitchTab('templates')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128196; Templates <span id="camp-cnt-tpl" style="font-size:10px;color:var(--t4)">(0)</span></button>
+        <button class="btn bg" id="camp-tab-fir" onclick="campSwitchTab('firmas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#9997;&#65039; Firmas <span id="camp-cnt-fir" style="font-size:10px;color:var(--t4)">(0)</span></button>
       </div>
 
       <!-- TAB: Borradores -->
@@ -880,14 +883,44 @@ En que te puedo ayudar hoy?</div></div>
         </div>
       </div>
 
+      <!-- TAB: Templates -->
+      <div id="camp-pane-tpl" style="display:none">
+        <div class="fbet mb12">
+          <div style="font-size:12px;color:var(--t3)">Plantillas reutilizables creadas con el editor visual a bloques. Cada template puede ser cargado en una campa&ntilde;a.</div>
+          <button class="btn bp" onclick="tplOpenNew()">+ Crear template</button>
+        </div>
+        <div id="tpl-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+        <div id="tpl-empty" style="text-align:center;padding:60px;color:var(--t3);display:none">
+          <div style="font-size:48px;margin-bottom:14px">&#128196;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay templates creados</div>
+          <div style="font-size:12px;margin-bottom:14px">Crea tu primer template arrastrando bloques: header, auto, equipment, firma, footer</div>
+          <button class="btn bp" onclick="tplOpenNew()">+ Crear primer template</button>
+        </div>
+      </div>
+
+      <!-- TAB: Firmas -->
+      <div id="camp-pane-fir" style="display:none">
+        <div class="fbet mb12">
+          <div style="font-size:12px;color:var(--t3)">Firmas comerciales reutilizables. Cada campa&ntilde;a usa la firma seleccionada al momento del env&iacute;o.</div>
+          <button class="btn bp" onclick="firOpenNew()">+ Nueva firma</button>
+        </div>
+        <div id="fir-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+        <div id="fir-empty" style="text-align:center;padding:60px;color:var(--t3);display:none">
+          <div style="font-size:48px;margin-bottom:14px">&#9997;&#65039;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay firmas creadas</div>
+          <div style="font-size:12px;margin-bottom:14px">Crea la firma de cada comercial: foto, t&iacute;tulo, tel&eacute;fono, contactos</div>
+          <button class="btn bp" onclick="firOpenNew()">+ Crear primera firma</button>
+        </div>
+      </div>
+
       <!-- Info panel sotto -->
       <div class="card" style="margin-top:20px;padding:14px;background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(245,158,11,.05));border-left:3px solid var(--acc)">
         <div style="font-weight:600;font-size:13px;color:var(--t1);margin-bottom:6px">&#128161; C&oacute;mo funciona</div>
         <div style="font-size:11px;color:var(--t3);line-height:1.6">
-          <strong>1.</strong> Crea una nueva campa&ntilde;a y selecciona la lista destinataria<br>
-          <strong>2.</strong> Compone el subject y el cuerpo HTML con variables como <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">{{nombre}}</code> <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">{{empresa}}</code><br>
-          <strong>3.</strong> Vista previa con datos reales de un contacto<br>
-          <strong>4.</strong> Dry-run: NEXO te muestra a qui&eacute;n se enviar&iacute;a antes de enviar<br>
+          <strong>1.</strong> Crea las <strong>firmas</strong> de cada comercial (foto, datos, contactos)<br>
+          <strong>2.</strong> Crea uno o m&aacute;s <strong>templates</strong> con el editor visual a bloques<br>
+          <strong>3.</strong> Crea una <strong>campa&ntilde;a</strong>: selecciona lista, template y firma<br>
+          <strong>4.</strong> Vista previa con datos reales + Dry-run<br>
           <strong>5.</strong> Confirma y NEXO env&iacute;a con throttling configurable (10-30/min) v&iacute;a TurboSMTP
         </div>
       </div>
@@ -1824,6 +1857,51 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- CAMPA\u00d1AS: NUEVA / EDITAR FIRMA -->
+<div class="ovl" id="m-fir-edit">
+  <div class="modal" style="max-width:720px">
+    <div class="fbet mb14"><div class="mt">&#9997;&#65039; Firma comercial</div><button class="btn bg" onclick="closeM('m-fir-edit')" style="padding:5px 10px">X</button></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div class="mb10"><label>Nombre completo *</label><input type="text" id="fir-name" placeholder="ej: Francesco Dell'Agli"></div>
+        <div class="mb10"><label>Cargo / T&iacute;tulo</label><input type="text" id="fir-role" placeholder="ej: CEO - GENERAL MANAGER, DMCAR GROUP"></div>
+        <div class="mb10"><label>Email</label><input type="email" id="fir-email" placeholder="info@dmcargroup.com"></div>
+        <div class="mb10"><label>Tel&eacute;fono principal</label><input type="text" id="fir-phone1" placeholder="+39 342 9624234"></div>
+        <div class="mb10"><label>Tel&eacute;fono secundario</label><input type="text" id="fir-phone2" placeholder="+34 915 43 52 28"></div>
+        <div class="mb10"><label>Sitio web</label><input type="text" id="fir-web" placeholder="dmcargroup.com"></div>
+      </div>
+      <div>
+        <div class="mb10">
+          <label>Foto / Avatar (URL)</label>
+          <input type="text" id="fir-photo" placeholder="https://..." oninput="firPreviewPhoto()">
+          <div id="fir-photo-prev" style="margin-top:8px;text-align:center;background:var(--bg3);border-radius:8px;padding:14px;min-height:80px;display:flex;align-items:center;justify-content:center">
+            <div style="font-size:10px;color:var(--t4)">Sin foto</div>
+          </div>
+        </div>
+        <div class="mb10">
+          <label>Idioma de la firma</label>
+          <select id="fir-lang">
+            <option value="es">Espa&ntilde;ol (Saludos cordiales)</option>
+            <option value="it">Italiano (Cordiali saluti)</option>
+            <option value="en">Ingl&eacute;s (Kind regards)</option>
+            <option value="fr">Franc&eacute;s (Cordialement)</option>
+            <option value="de">Alem&aacute;n (Mit freundlichen Gr&uuml;&szlig;en)</option>
+          </select>
+        </div>
+        <div class="mb10"><label>Cierre personalizado (opcional)</label><input type="text" id="fir-closing" placeholder="ej: Best regards, Francesco."></div>
+        <div class="mb10">
+          <label>Notas adicionales (opcional)</label>
+          <textarea id="fir-notes" placeholder="Direcciones de las empresas del grupo, etc..." style="min-height:60px;font-size:11px"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-fir-edit')" style="flex:1">Cancelar</button>
+      <button class="btn bp" onclick="firSave()" style="flex:2">&#128190; Guardar firma</button>
+    </div>
+  </div>
+</div>
 <script>
 // Global error handler - shows errors visually on mobile
 window.onerror = function(msg, src, line, col, err) {
@@ -1859,7 +1937,7 @@ var FIREBASE_CONFIG={
   appId:"1:642250180456:web:6bddc72a072814c360f8dd"
 };
 
-var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','mkCampaigns','mkCampaignsCounter'];
+var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','mkCampaigns','mkCampaignsCounter','mkFirmas','mkFirmasCounter','mkTemplates','mkTemplatesCounter'];
 // Mapping key -> variable globale che contiene i dati locali
 // Usato per i listener real-time per applicare cambi remoti alle vars in memoria
 var FB_KEY_VARS={
@@ -8970,7 +9048,50 @@ var mkImportData=null;        // dati staging import (rows + headers + mapping)
 // CAMPA\u00d1AS — storage
 var mkCampaigns=LS('mkCampaigns',[]);     // array di campagne (borradores + enviadas + programadas)
 var mkCampaignsCounter=LS('mkCampaignsCounter',1);
-var campActiveTab='borradores';            // 'borradores' | 'enviadas' | 'programadas'
+var campActiveTab='borradores';            // 'borradores' | 'enviadas' | 'programadas' | 'templates' | 'firmas'
+
+// FIRMAS — storage
+var mkFirmas=LS('mkFirmas',[]);            // array di firme commerciali
+var mkFirmasCounter=LS('mkFirmasCounter',1);
+
+// Schema firma (per riferimento):
+// {
+//   id: 'fir_XXX',
+//   name: 'Francesco Dell\'Agli',          // nome completo
+//   role: 'CEO - GENERAL MANAGER',         // titolo / cargo
+//   email: 'info@dmcargroup.com',
+//   phone1: '+39 342 9624234',
+//   phone2: '+34 915 43 52 28',
+//   web: 'dmcargroup.com',
+//   photo: 'https://...',                  // URL foto/avatar
+//   lang: 'es' | 'it' | 'en' | 'fr' | 'de',
+//   closing: 'Kind regards,\\nFrancesco.',  // cierre personalizado opzionale
+//   notes: '',                             // note aggiuntive (es. addresses del grupo)
+//   createdAt: '...',
+//   updatedAt: '...'
+// }
+
+// TEMPLATES — storage
+var mkTemplates=LS('mkTemplates',[]);      // array di template email
+var mkTemplatesCounter=LS('mkTemplatesCounter',1);
+
+// Schema template (per riferimento):
+// {
+//   id: 'tpl_XXX',
+//   name: 'Oferta auto singola',
+//   description: 'Template per offerte di un singolo veicolo',
+//   blocks: [                              // array di blocchi (l'editor visuale li gestisce)
+//     {type:'header', config:{logo:'...', tagline:'...'}},
+//     {type:'greeting', config:{text:'Hello {{nombre}}', refLabel:'Ref'}},
+//     {type:'auto_card', config:{stockId:null, ...}},
+//     {type:'equipment', config:{items:['...']}},
+//     {type:'signature', config:{firmaId:null}},   // firma da rubrica al render
+//     {type:'footer', config:{...}}
+//   ],
+//   subject: 'Default subject template',
+//   createdAt: '...',
+//   updatedAt: '...'
+// }
 
 // Schema campagna (per riferimento futuro):
 // {
@@ -11203,6 +11324,8 @@ function renderCampaigns(){
   if(n('camp-cnt-borr'))n('camp-cnt-borr').textContent='('+borr+')';
   if(n('camp-cnt-env'))n('camp-cnt-env').textContent='('+env+')';
   if(n('camp-cnt-prog'))n('camp-cnt-prog').textContent='('+prog+')';
+  if(n('camp-cnt-tpl'))n('camp-cnt-tpl').textContent='('+mkTemplates.length+')';
+  if(n('camp-cnt-fir'))n('camp-cnt-fir').textContent='('+mkFirmas.length+')';
   // Render tab corrente
   campSwitchTab(campActiveTab);
 }
@@ -11210,20 +11333,23 @@ function renderCampaigns(){
 function campSwitchTab(t){
   campActiveTab=t;
   // Toggle pannelli
-  ['borradores','enviadas','programadas'].forEach(function(p){
-    var pane=n('camp-pane-'+p.slice(0,4));
+  var paneMap={borradores:'borr',enviadas:'env',programadas:'prog',templates:'tpl',firmas:'fir'};
+  Object.keys(paneMap).forEach(function(p){
+    var pane=n('camp-pane-'+paneMap[p]);
     if(pane)pane.style.display=(p===t)?'':'none';
   });
   // Stile tab attivo
-  ['borr','env','prog'].forEach(function(s){
+  ['borr','env','prog','tpl','fir'].forEach(function(s){
     var tab=n('camp-tab-'+s);
     if(!tab)return;
-    var isActive=(s==='borr'&&t==='borradores')||(s==='env'&&t==='enviadas')||(s==='prog'&&t==='programadas');
+    var isActive=(s===paneMap[t]);
     tab.classList.toggle('bp',isActive);
     tab.classList.toggle('bg',!isActive);
   });
   // Render contenuto tab
-  campRenderTabContent(t);
+  if(t==='templates')tplRender();
+  else if(t==='firmas')firRender();
+  else campRenderTabContent(t);
 }
 
 function campRenderTabContent(t){
@@ -11231,6 +11357,7 @@ function campRenderTabContent(t){
   if(t==='borradores')statusFilter='draft';
   else if(t==='enviadas')statusFilter='sent';
   else if(t==='programadas')statusFilter='scheduled';
+  else return;
   var camps=mkCampaigns.filter(function(c){return c.status===statusFilter;});
   // Sort: pi\u00f9 recenti per primi
   camps.sort(function(a,b){
@@ -11238,8 +11365,9 @@ function campRenderTabContent(t){
     var db=b.sentAt||b.scheduledAt||b.createdAt||'';
     return db.localeCompare(da);
   });
-  var gridId='camp-grid-'+t.slice(0,4);
-  var emptyId='camp-empty-'+t.slice(0,4);
+  var paneMap={borradores:'borr',enviadas:'env',programadas:'prog'};
+  var gridId='camp-grid-'+paneMap[t];
+  var emptyId='camp-empty-'+paneMap[t];
   var grid=n(gridId),empty=n(emptyId);
   if(!grid)return;
   if(!camps.length){
@@ -11313,6 +11441,197 @@ function campDel(id){
   renderCampaigns();
   if(typeof showToast==='function')showToast('\u2713 Campa\u00f1a eliminada');
 }
+
+// ===========================================================================
+// FIRMAS — CRUD
+// ===========================================================================
+
+var FIR_LANG_LABEL={es:'Espa\u00f1ol',it:'Italiano',en:'Ingl\u00e9s',fr:'Franc\u00e9s',de:'Alem\u00e1n'};
+var FIR_LANG_FLAG={es:'\ud83c\uddea\ud83c\uddf8',it:'\ud83c\uddee\ud83c\uddf9',en:'\ud83c\uddec\ud83c\udde7',fr:'\ud83c\uddeb\ud83c\uddf7',de:'\ud83c\udde9\ud83c\uddea'};
+var FIR_LANG_CLOSING={
+  es:'Saludos cordiales,',
+  it:'Cordiali saluti,',
+  en:'Kind regards,',
+  fr:'Cordialement,',
+  de:'Mit freundlichen Gr\u00fc\u00dfen,'
+};
+
+function firRender(){
+  var grid=n('fir-grid'),empty=n('fir-empty');
+  if(!grid)return;
+  if(!mkFirmas.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
+  if(empty)empty.style.display='none';
+  grid.innerHTML=mkFirmas.map(function(f){
+    var photo=f.photo?'<img src="'+esc(f.photo)+'" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" onerror="this.style.display=\'none\'">':'<div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:700">'+esc((f.name||'?').charAt(0).toUpperCase())+'</div>';
+    var langFlag=FIR_LANG_FLAG[f.lang]||'';
+    return '<div class="card" style="padding:14px">'
+      +'<div class="fc g12 mb10">'
+        +'<div>'+photo+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-weight:700;font-size:13px;color:var(--t1);overflow:hidden;text-overflow:ellipsis">'+esc(f.name||'(sin nombre)')+'</div>'
+          +(f.role?'<div style="font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">'+esc(f.role)+'</div>':'')
+          +(f.lang?'<div style="font-size:10px;color:var(--t4);margin-top:3px">'+langFlag+' '+esc(FIR_LANG_LABEL[f.lang]||f.lang)+'</div>':'')
+        +'</div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--t3);background:var(--bg3);padding:8px;border-radius:6px;line-height:1.5">'
+        +(f.email?'\ud83d\udce7 '+esc(f.email)+'<br>':'')
+        +(f.phone1?'\ud83d\udcde '+esc(f.phone1)+'<br>':'')
+        +(f.phone2?'\ud83d\udcde '+esc(f.phone2)+'<br>':'')
+        +(f.web?'\ud83c\udf10 '+esc(f.web):'')
+      +'</div>'
+      +'<div class="fc g6" style="margin-top:10px">'
+        +'<button class="btn bs" onclick="firOpenEdit(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>'
+        +'<button class="btn bd" onclick="firDel(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 8px" title="Eliminar">x</button>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
+function firOpenNew(){
+  ['fir-name','fir-role','fir-email','fir-phone1','fir-phone2','fir-web','fir-photo','fir-closing','fir-notes'].forEach(function(i){if(n(i))n(i).value='';});
+  if(n('fir-lang'))n('fir-lang').value='es';
+  firPreviewPhoto();
+  n('m-fir-edit').removeAttribute('data-fir-id');
+  openM('m-fir-edit');
+}
+
+function firOpenEdit(id){
+  var f=mkFirmas.find(function(x){return x.id===id;});
+  if(!f)return;
+  if(n('fir-name'))n('fir-name').value=f.name||'';
+  if(n('fir-role'))n('fir-role').value=f.role||'';
+  if(n('fir-email'))n('fir-email').value=f.email||'';
+  if(n('fir-phone1'))n('fir-phone1').value=f.phone1||'';
+  if(n('fir-phone2'))n('fir-phone2').value=f.phone2||'';
+  if(n('fir-web'))n('fir-web').value=f.web||'';
+  if(n('fir-photo'))n('fir-photo').value=f.photo||'';
+  if(n('fir-lang'))n('fir-lang').value=f.lang||'es';
+  if(n('fir-closing'))n('fir-closing').value=f.closing||'';
+  if(n('fir-notes'))n('fir-notes').value=f.notes||'';
+  firPreviewPhoto();
+  n('m-fir-edit').setAttribute('data-fir-id',f.id);
+  openM('m-fir-edit');
+}
+
+function firPreviewPhoto(){
+  var url=(n('fir-photo')&&n('fir-photo').value||'').trim();
+  var prev=n('fir-photo-prev');
+  if(!prev)return;
+  if(url){
+    prev.innerHTML='<img src="'+esc(url)+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" onerror="this.parentNode.innerHTML=\'<div style=\\\'font-size:10px;color:var(--red)\\\'>\u26a0\ufe0f URL no v\u00e1lida</div>\'">';
+  }else{
+    prev.innerHTML='<div style="font-size:10px;color:var(--t4)">Sin foto</div>';
+  }
+}
+
+function firSave(){
+  var name=(n('fir-name').value||'').trim();
+  if(!name){alert('El nombre es obligatorio.');return;}
+  var existingId=n('m-fir-edit').getAttribute('data-fir-id');
+  var data={
+    name:name,
+    role:(n('fir-role').value||'').trim(),
+    email:(n('fir-email').value||'').trim(),
+    phone1:(n('fir-phone1').value||'').trim(),
+    phone2:(n('fir-phone2').value||'').trim(),
+    web:(n('fir-web').value||'').trim(),
+    photo:(n('fir-photo').value||'').trim(),
+    lang:n('fir-lang').value||'es',
+    closing:(n('fir-closing').value||'').trim(),
+    notes:(n('fir-notes').value||'').trim(),
+    updatedAt:new Date().toISOString()
+  };
+  if(existingId){
+    var idx=mkFirmas.findIndex(function(x){return x.id===existingId;});
+    if(idx>=0){
+      Object.assign(mkFirmas[idx],data);
+    }
+  }else{
+    data.id='fir_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    data.createdAt=new Date().toISOString();
+    mkFirmas.push(data);
+    mkFirmasCounter++;
+  }
+  SS('mkFirmas',mkFirmas);
+  SS('mkFirmasCounter',mkFirmasCounter);
+  closeM('m-fir-edit');
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Firma guardada');
+}
+
+function firDel(id){
+  var f=mkFirmas.find(function(x){return x.id===id;});
+  if(!f)return;
+  if(!confirm('\u00bfEliminar la firma "'+(f.name||'')+'"?'))return;
+  mkFirmas=mkFirmas.filter(function(x){return x.id!==id;});
+  SS('mkFirmas',mkFirmas);
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Firma eliminada');
+}
+
+// Helper: render HTML della firma per le email
+// Genera l'HTML della firma in base ai dati, simile al PDF di esempio Direct Mail
+function firRenderHTML(firma){
+  if(!firma)return '';
+  var closing=firma.closing||FIR_LANG_CLOSING[firma.lang]||'Saludos cordiales,';
+  var photoHtml=firma.photo?'<img src="'+esc(firma.photo)+'" alt="" style="width:120px;height:auto;display:block;margin:10px 0">':'';
+  var html='<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;line-height:1.6;margin-top:20px">'
+    +'<div style="margin-bottom:12px">'+esc(closing)+'</div>'
+    +photoHtml
+    +'<div style="font-weight:700;font-size:14px;color:#1a1a1a">'+esc(firma.name||'')+'</div>';
+  if(firma.role)html+='<div style="font-style:italic;font-size:12px;color:#555">'+esc(firma.role)+'</div>';
+  html+='<div style="margin-top:8px;font-size:12px">';
+  if(firma.email)html+='&#9993;&#65039; <a href="mailto:'+esc(firma.email)+'" style="color:#2563eb;text-decoration:none">'+esc(firma.email)+'</a> &nbsp; ';
+  if(firma.phone1)html+='&#128241; '+esc(firma.phone1);
+  if(firma.phone2)html+=' &nbsp; '+esc(firma.phone2);
+  html+='</div>';
+  if(firma.web)html+='<div style="font-size:12px;margin-top:4px">&#127760; <a href="https://'+esc(firma.web.replace(/^https?:\/\//,''))+'" style="color:#2563eb;text-decoration:none">'+esc(firma.web)+'</a></div>';
+  if(firma.notes)html+='<div style="margin-top:10px;font-size:11px;color:#666;line-height:1.5">'+firma.notes.replace(/\n/g,'<br>')+'</div>';
+  html+='</div>';
+  return html;
+}
+
+// ===========================================================================
+// TEMPLATES — CRUD (scheletro v9.7, editor a blocchi in v9.8)
+// ===========================================================================
+
+function tplRender(){
+  var grid=n('tpl-grid'),empty=n('tpl-empty');
+  if(!grid)return;
+  if(!mkTemplates.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
+  if(empty)empty.style.display='none';
+  grid.innerHTML=mkTemplates.map(function(t){
+    var blocksCount=Array.isArray(t.blocks)?t.blocks.length:0;
+    return '<div class="card" style="padding:14px">'
+      +'<div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:6px">'+esc(t.name||'(sin nombre)')+'</div>'
+      +(t.description?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(t.description)+'</div>':'')
+      +'<div style="font-size:10px;color:var(--t4);margin-bottom:10px">'+blocksCount+' bloque'+(blocksCount!==1?'s':'')+' \u00b7 Modif. '+fmtD(t.updatedAt||t.createdAt)+'</div>'
+      +'<div class="fc g6">'
+        +'<button class="btn bs" onclick="tplOpenEdit(\''+esc(t.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>'
+        +'<button class="btn bd" onclick="tplDel(\''+esc(t.id)+'\')" style="font-size:10px;padding:4px 8px" title="Eliminar">x</button>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
+function tplOpenNew(){
+  alert('\ud83d\udea7 Editor de templates en desarrollo \u2014 v9.8.\n\nEl editor visual a bloques estar\u00e1 disponible en la pr\u00f3xima versi\u00f3n. Bloques previstos:\n\u2022 \ud83d\uddbc\ufe0f Header (logo)\n\u2022 \ud83d\udc4b Saludo\n\u2022 \ud83d\ude97 Card auto (auto-fill desde Stock Vivo)\n\u2022 \ud83d\udccb Equipment list\n\u2022 \u270d\ufe0f Firma (selector de rubrica)\n\u2022 \ud83e\uddb6 Footer\n\nMientras tanto, ya puedes crear las firmas en la pesta\u00f1a Firmas.');
+}
+
+function tplOpenEdit(id){
+  alert('\ud83d\udea7 Editor de template en desarrollo. ID: '+id);
+}
+
+function tplDel(id){
+  var t=mkTemplates.find(function(x){return x.id===id;});
+  if(!t)return;
+  if(!confirm('\u00bfEliminar el template "'+(t.name||'')+'"?'))return;
+  mkTemplates=mkTemplates.filter(function(x){return x.id!==id;});
+  SS('mkTemplates',mkTemplates);
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Template eliminado');
+}
+
 // END CAMPA\u00d1AS SCHELETRO
 // ===========================================================================
 
