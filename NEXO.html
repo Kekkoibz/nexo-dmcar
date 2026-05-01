@@ -2012,7 +2012,26 @@ En que te puedo ayudar hoy?</div></div>
         <!-- 2. Asunto del email -->
         <div class="mb14">
           <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">2. Asunto del email</label>
-          <input type="text" id="camp-subject" placeholder="ej: Nuevas ofertas BMW desde DMCAR">
+          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+            <select id="camp-emoji" onchange="campUpdSubjectFromEmoji()" style="width:auto;min-width:60px;font-size:14px;padding:6px 8px">
+              <option value="">(sin emoji)</option>
+              <option value="\ud83d\ude97">\ud83d\ude97 Coche</option>
+              <option value="\u26a1">\u26a1 Rayo</option>
+              <option value="\ud83d\udd25">\ud83d\udd25 Fuego</option>
+              <option value="\ud83d\udcb0">\ud83d\udcb0 Dinero</option>
+              <option value="\ud83d\udc8e">\ud83d\udc8e Diamante</option>
+              <option value="\ud83c\udfc1">\ud83c\udfc1 Bandera</option>
+              <option value="\u2728">\u2728 Estrellas</option>
+              <option value="\ud83d\ude80">\ud83d\ude80 Cohete</option>
+              <option value="\ud83c\udd95">\ud83c\udd95 Nuevo</option>
+              <option value="\ud83d\udcc8">\ud83d\udcc8 Subida</option>
+              <option value="\ud83c\udf81">\ud83c\udf81 Regalo</option>
+              <option value="\u2705">\u2705 Check</option>
+            </select>
+            <input type="text" id="camp-subject" placeholder="ej: used Audi A3 Sportback S line..." style="flex:1">
+            <button type="button" class="btn bs" onclick="campAutoFillSubject()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con el t&iacute;tulo del coche">\u26a1 Auto</button>
+          </div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click \u2018Auto\u2019 para rellenar con el t&iacute;tulo del coche seleccionado (ej. \u2018used Audi A3 Sportback S line 40 TFSI...\u2019)</div>
         </div>
         <!-- 3. Template -->
         <div class="mb14">
@@ -13318,22 +13337,20 @@ function tplRenderBlockHTML(block){
       if(c.price){
         ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px"><strong>Net Price:</strong> '+esc(c.price)+'</div>';
       }
-      // Datos b\u00e1sicos (Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery)
-      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:6px">';
-      if(c.vin)ah+='<div><strong>Ex. VIN:</strong> '+esc(c.vin)+'</div>';
-      if(c.firstReg)ah+='<div><strong>1st Reg:</strong> '+esc(c.firstReg)+'</div>';
-      if(c.avgKms)ah+='<div><strong>Average Kms:</strong> '+esc(c.avgKms)+'</div>';
-      if(c.avgDamages)ah+='<div><strong>Avg. Damages:</strong> '+esc(c.avgDamages)+'</div>';
-      if(c.extColor)ah+='<div><strong>Available Colors:</strong> '+esc(c.extColor)+'</div>';
-      if(c.availableUnits)ah+='<div><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
-      if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
-      ah+='</div>';
-      // Equipment (header azul + texto) - margen reducido para pegar al Delivery
+      // Datos b\u00e1sicos + Equipment todo pegado (sin gaps de Apple Mail)
       var eqText=(c.equipment||'').trim()||'Standard';
-      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin:0 0 14px 0;padding:0">'
-        +'<span style="font-size:14px;font-weight:600;color:#0000F5;display:block;margin:0;padding:0">Equipment:</span>'
-        +esc(eqText)
-        +'</div>';
+      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.6;margin:0 0 14px 0;padding:0">';
+      if(c.vin)ah+='<div style="margin:0;padding:0"><strong>Ex. VIN:</strong> '+esc(c.vin)+'</div>';
+      if(c.firstReg)ah+='<div style="margin:0;padding:0"><strong>1st Reg:</strong> '+esc(c.firstReg)+'</div>';
+      if(c.avgKms)ah+='<div style="margin:0;padding:0"><strong>Average Kms:</strong> '+esc(c.avgKms)+'</div>';
+      if(c.avgDamages)ah+='<div style="margin:0;padding:0"><strong>Avg. Damages:</strong> '+esc(c.avgDamages)+'</div>';
+      if(c.extColor)ah+='<div style="margin:0;padding:0"><strong>Available Colors:</strong> '+esc(c.extColor)+'</div>';
+      if(c.availableUnits)ah+='<div style="margin:0;padding:0"><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
+      if(c.delivery)ah+='<div style="margin:0;padding:0"><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
+      // Equipment header (azul, bold) directamente despu\u00e9s del Delivery
+      ah+='<div style="margin:0;padding:0;font-size:14px;font-weight:600;color:#0000F5"><strong>Equipment:</strong></div>';
+      ah+='<div style="margin:0;padding:0;font-size:12px;white-space:pre-line">'+esc(eqText)+'</div>';
+      ah+='</div>';
       // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
       var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
       if(photos.length>0){
