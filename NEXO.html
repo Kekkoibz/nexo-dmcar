@@ -2840,7 +2840,33 @@ function fmtD(s){
   }catch(e){return '--';}
 }
 function isOD(s){return s&&new Date(s+'T23:59:00')<new Date();}
-function fnum(s){return parseFloat((s||'0').toString().replace(/[^0-9.]/g,''))||0;}
+function fnum(s){
+  // Gestisce formati: "26.150 €", "26,150", "26.150,50", "27500" 
+  // - Punto SENZA decimali (3+ cifre dopo) = separatore migliaia (formato ES/IT)
+  // - Virgola = separatore decimali (formato ES/IT)
+  if(s==null||s==='')return 0;
+  var str=String(s).replace(/[^0-9.,]/g,'');
+  if(!str)return 0;
+  // Caso: ha sia punto che virgola (es. "26.150,50") → punto=migliaia, virgola=decimali
+  if(str.indexOf('.')>=0&&str.indexOf(',')>=0){
+    str=str.replace(/\./g,'').replace(',','.');
+  }
+  // Caso: solo virgola (es. "26,5") → decimale
+  else if(str.indexOf(',')>=0){
+    str=str.replace(',','.');
+  }
+  // Caso: solo punto (es. "26.150" o "26.5")
+  else if(str.indexOf('.')>=0){
+    var parts=str.split('.');
+    // Se l'ultima parte ha 3 cifre = separatore migliaia (26.150 → 26150)
+    // Se ha 1-2 cifre = decimale (26.5 → 26.5)
+    if(parts[parts.length-1].length===3){
+      str=str.replace(/\./g,''); // rimuovi tutti i punti (potrebbero essere migliaia multipli: 1.234.567)
+    }
+    // Else: \u00e8 decimale, lo lascio come \u00e8
+  }
+  return parseFloat(str)||0;
+}
 
 // Total units across all stock groups (counts vehicles[] inner length when present, else 'units' field)
 function stockTotalUnits(){
