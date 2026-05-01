@@ -11909,6 +11909,26 @@ var TPL_BLOCK_TYPES={
       color:'#e5e7eb'
     }
   },
+  auto_card:{
+    type:'auto_card',
+    label:'Card Auto',
+    icon:'\ud83d\ude97',
+    description:'Tarjeta de veh\u00edculo con fotos, datos y equipment',
+    defaultConfig:{
+      stockId:'',                    // ID del veh\u00edculo en Stock Vivo (si auto-fill)
+      brandLogo:'',                  // URL logo marca (auto desde stock)
+      title:'AUDI Q5 SPORTBACK 2.0 TFSI QUATTRO',
+      price:'50.595\u20ac',
+      reference:'',                   // Ref interna (ej: 19.91)
+      firstReg:'04-2026',
+      extColor:'1x Black Mito',
+      delivery:'Stock',
+      photo1:'',                     // base64 foto 1
+      photo2:'',                     // base64 foto 2
+      photo3:'',                     // base64 foto 3
+      equipment:''                   // texto equipment (multi-l\u00ednea)
+    }
+  },
   signature:{
     type:'signature',
     label:'Firma',
@@ -11977,6 +11997,46 @@ function tplRenderBlockHTML(block){
       var style=c.style||'solid';
       var color=c.color||'#e5e7eb';
       return '<div style="padding:14px 20px"><hr style="border:none;border-top:1px '+style+' '+color+';margin:0"></div>';
+    case 'auto_card':
+      // Render email-safe con tablas (compatible Outlook/Gmail/Apple Mail)
+      var ah='<div style="padding:14px 20px">';
+      // Logo marca centrado (si existe)
+      if(c.brandLogo){
+        ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
+      }
+      // T\u00edtulo coche (azul, bold, grande)
+      if(c.title){
+        ah+='<div style="text-align:center;font-size:22px;font-weight:700;color:#1e40af;margin-bottom:8px;line-height:1.2;font-family:Arial,Helvetica,sans-serif">'+esc(c.title)+'</div>';
+      }
+      // Precio (centrado, bold, negro)
+      if(c.price){
+        ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px;font-family:Arial,Helvetica,sans-serif">Net Price: '+esc(c.price)+'</div>';
+      }
+      // Datos b\u00e1sicos (Ref, Reg, Color, Delivery)
+      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:18px;font-family:Arial,Helvetica,sans-serif">';
+      if(c.reference)ah+='<div><strong>Ref:</strong> '+esc(c.reference)+'</div>';
+      if(c.firstReg)ah+='<div><strong>1\u00ba Reg:</strong> '+esc(c.firstReg)+'</div>';
+      if(c.extColor)ah+='<div><strong>Ext.Color:</strong> '+esc(c.extColor)+'</div>';
+      if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
+      ah+='</div>';
+      // Equipment list (PRIMERO, antes de las fotos)
+      if(c.equipment){
+        ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#1e40af;margin:18px 0 8px 0;font-family:Arial,Helvetica,sans-serif">Equipment:</div>';
+        ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;font-family:Arial,Helvetica,sans-serif;white-space:pre-line;margin-bottom:18px">'+esc(c.equipment)+'</div>';
+      }
+      // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
+      var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
+      if(photos.length>0){
+        ah+='<table cellpadding="0" cellspacing="6" border="0" align="center" style="margin:0 auto;border-collapse:separate"><tr>';
+        photos.forEach(function(ph){
+          ah+='<td valign="top" align="center" style="padding:0">';
+          ah+='<img src="'+esc(ph)+'" alt="" width="220" height="165" style="width:220px;height:165px;display:block;border:0;border-radius:6px;object-fit:cover">';
+          ah+='</td>';
+        });
+        ah+='</tr></table>';
+      }
+      ah+='</div>';
+      return ah;
     case 'signature':
       // Busca la firma en mkFirmas
       if(!c.firmaId)return '<div style="padding:14px 20px;color:#dc2626;font-size:11px;font-style:italic">\u26a0\ufe0f Bloque firma sin selecci\u00f3n. Click para configurar.</div>';
@@ -12035,6 +12095,59 @@ function tplRenderBlockForm(block){
       html+='<div><label>Estilo de l\u00ednea</label><select id="bf-style"><option value="solid"'+(c.style==='solid'?' selected':'')+'>S\u00f3lida</option><option value="dashed"'+(c.style==='dashed'?' selected':'')+'>Discontinua</option><option value="dotted"'+(c.style==='dotted'?' selected':'')+'>Punteada</option></select></div>';
       html+='<div><label>Color</label><input type="color" id="bf-color" value="'+esc(c.color||'#e5e7eb')+'"></div>';
       html+='</div>';
+      break;
+    case 'auto_card':
+      // Selector auto-fill desde Stock Vivo
+      html+='<div class="mb10" style="background:var(--bg3);padding:10px;border-radius:7px;border-left:3px solid var(--acc)">';
+      html+='<label style="font-size:11px;color:var(--t1);margin-bottom:6px;display:block">\u26a1 Auto-fill desde Stock Vivo</label>';
+      html+='<select id="bf-stockId" onchange="tplAutoFillFromStock()">';
+      html+='<option value="">-- Selecciona un veh\u00edculo del stock (opcional) --</option>';
+      if(typeof stock!=='undefined'&&Array.isArray(stock)){
+        stock.forEach(function(s){
+          var lbl=(s.brand||'')+' '+(s.model||'')+(s.unit?' (Unit '+s.unit+')':'');
+          var sel=(c.stockId===s.id)?' selected':'';
+          html+='<option value="'+esc(s.id)+'"'+sel+'>'+esc(lbl.trim())+'</option>';
+        });
+      }
+      html+='</select>';
+      html+='<div style="font-size:10px;color:var(--t4);margin-top:5px">Selecciona un coche para rellenar autom\u00e1ticamente todos los campos</div>';
+      html+='</div>';
+      // Datos b\u00e1sicos
+      html+='<div class="g2 mb10">';
+      html+='<div><label>T\u00edtulo / Modelo *</label><input type="text" id="bf-title" value="'+esc(c.title||'')+'" placeholder="AUDI Q5 SPORTBACK 2.0 TFSI..."></div>';
+      html+='<div><label>Precio</label><input type="text" id="bf-price" value="'+esc(c.price||'')+'" placeholder="50.595\u20ac"></div>';
+      html+='</div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Referencia</label><input type="text" id="bf-reference" value="'+esc(c.reference||'')+'" placeholder="ej: 19.91"></div>';
+      html+='<div><label>1\u00ba Registro</label><input type="text" id="bf-firstReg" value="'+esc(c.firstReg||'')+'" placeholder="04-2026"></div>';
+      html+='</div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Color exterior</label><input type="text" id="bf-extColor" value="'+esc(c.extColor||'')+'" placeholder="1x Black Mito"></div>';
+      html+='<div><label>Delivery</label><input type="text" id="bf-delivery" value="'+esc(c.delivery||'')+'" placeholder="Stock"></div>';
+      html+='</div>';
+      // Logo marca
+      html+='<div class="mb10"><label>URL logo marca (opcional, auto desde stock)</label><input type="text" id="bf-brandLogo" value="'+esc(c.brandLogo||'')+'" placeholder="https://..."></div>';
+      // 3 fotos
+      html+='<div style="font-weight:600;font-size:12px;color:var(--t1);margin:14px 0 6px 0">\ud83d\udcf8 Fotos del veh\u00edculo (m\u00e1x 3, en fila horizontal)</div>';
+      html+='<div style="font-size:10px;color:var(--t4);margin-bottom:10px;line-height:1.5;background:var(--bg3);padding:8px 10px;border-radius:6px">\u2728 NEXO redimensiona y recorta autom\u00e1ticamente cada foto a 220\u00d7165 px (4:3) optimizadas para email. Sube cualquier tama\u00f1o, NEXO se encarga del resto.</div>';
+      ['photo1','photo2','photo3'].forEach(function(pk,i){
+        var pv=c[pk]||'';
+        html+='<div class="mb10" style="background:var(--bg3);padding:10px;border-radius:7px">';
+        html+='<div class="fbet">';
+        html+='<label style="font-size:11px;margin:0">Foto '+(i+1)+'</label>';
+        if(pv){
+          html+='<button type="button" class="btn bd" onclick="tplClearPhoto('+(i+1)+')" style="font-size:10px;padding:3px 8px">x Quitar</button>';
+        }
+        html+='</div>';
+        if(pv){
+          html+='<div style="margin-top:8px"><img src="'+esc(pv)+'" style="max-width:200px;max-height:120px;border-radius:6px;display:block"></div>';
+        }
+        html+='<input type="file" accept="image/*" onchange="tplUploadPhoto(event,'+(i+1)+')" style="margin-top:6px;font-size:11px">';
+        html+='<input type="hidden" id="bf-'+pk+'" value="'+esc(pv)+'">';
+        html+='</div>';
+      });
+      // Equipment
+      html+='<div class="mb10"><label>Equipment (una l\u00ednea por item)</label><textarea id="bf-equipment" placeholder="Audi Sport alloy wheels, 5-spoke design, 20\u201d&#10;Sports suspension (lowered by 20 mm)&#10;Tow bar preparation&#10;..." style="min-height:140px;font-family:Arial,sans-serif;font-size:12px">'+esc(c.equipment||'')+'</textarea></div>';
       break;
     case 'signature':
       html+='<div class="mb10"><label>Selecciona una firma de la r\u00fabrica</label>';
@@ -12205,6 +12318,125 @@ function tplBlockEdit(idx){
 }
 
 // Guarda los cambios del bloque que est\u00e1 en edici\u00f3n
+// === HELPERS bloque auto_card ===
+
+// Upload foto con redimension + crop centrado autom\u00e1tico
+// Target: 440x330 px (@2x para Retina, se mostrar\u00e1 a 220x165)
+// Format: JPEG q85 (~30-50 KB tras compresi\u00f3n)
+function tplUploadPhoto(event,photoNum){
+  var file=event.target.files[0];
+  if(!file)return;
+  // Limite tama\u00f1o original: 15 MB
+  if(file.size>15*1024*1024){
+    alert('La imagen es demasiado grande (m\u00e1x 15 MB).');
+    event.target.value='';
+    return;
+  }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      // Target dimensions (@2x para Retina, se ver\u00e1 a 220x165 en pantalla)
+      var TARGET_W=440;
+      var TARGET_H=330;
+      var TARGET_RATIO=TARGET_W/TARGET_H;  // 1.333 (4:3)
+      // Calcula crop centrado para mantener ratio 4:3
+      var srcRatio=img.width/img.height;
+      var sx=0,sy=0,sw=img.width,sh=img.height;
+      if(srcRatio>TARGET_RATIO){
+        // Foto m\u00e1s ancha que 4:3 \u2192 crop horizontal (lados)
+        sw=img.height*TARGET_RATIO;
+        sx=(img.width-sw)/2;
+      }else if(srcRatio<TARGET_RATIO){
+        // Foto m\u00e1s alta que 4:3 \u2192 crop vertical (arriba/abajo)
+        sh=img.width/TARGET_RATIO;
+        sy=(img.height-sh)/2;
+      }
+      // Canvas para procesar
+      var canvas=document.createElement('canvas');
+      canvas.width=TARGET_W;
+      canvas.height=TARGET_H;
+      var ctx=canvas.getContext('2d');
+      // Fondo blanco (por si la foto tiene transparencia)
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(0,0,TARGET_W,TARGET_H);
+      // Dibuja con crop+resize (drawImage src-rect + dst-rect)
+      ctx.drawImage(img,sx,sy,sw,sh,0,0,TARGET_W,TARGET_H);
+      // Convierte a JPEG q85
+      var dataUrl=canvas.toDataURL('image/jpeg',0.85);
+      // Guarda en hidden input
+      var hidden=n('bf-photo'+photoNum);
+      if(hidden)hidden.value=dataUrl;
+      // Re-render del form para mostrar preview
+      var idx=_tplEditing.editingBlockIdx;
+      if(idx>=0){
+        tplBlockSaveConfigSilent();
+        tplBlockEdit(idx);
+      }
+      var sizeKB=Math.round(dataUrl.length/1024);
+      if(typeof showToast==='function')showToast('\u2713 Foto '+photoNum+' optimizada ('+sizeKB+' KB)');
+    };
+    img.onerror=function(){
+      alert('No se pudo cargar la imagen. Verifica el formato.');
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Quita una foto del bloque actualmente en edici\u00f3n
+function tplClearPhoto(photoNum){
+  var hidden=n('bf-photo'+photoNum);
+  if(hidden)hidden.value='';
+  // Re-render
+  var idx=_tplEditing.editingBlockIdx;
+  if(idx>=0){
+    tplBlockSaveConfigSilent();
+    tplBlockEdit(idx);
+  }
+}
+
+// Auto-fill desde Stock Vivo
+function tplAutoFillFromStock(){
+  var sel=n('bf-stockId');
+  if(!sel)return;
+  var stockId=sel.value;
+  if(!stockId)return;
+  var s=stock.find(function(x){return String(x.id)===String(stockId);});
+  if(!s){alert('Veh\u00edculo no encontrado.');return;}
+  // Rellena campos b\u00e1sicos
+  if(n('bf-title'))n('bf-title').value=((s.brand||'')+' '+(s.model||'')).trim();
+  if(n('bf-price')&&s.salePrice)n('bf-price').value=(typeof s.salePrice==='number'?s.salePrice.toLocaleString('es-ES'):s.salePrice)+'\u20ac';
+  if(n('bf-reference'))n('bf-reference').value=s.unit||s.id||'';
+  if(n('bf-firstReg')&&s.regDate)n('bf-firstReg').value=s.regDate;
+  if(n('bf-extColor')&&s.color)n('bf-extColor').value=s.color;
+  if(n('bf-delivery'))n('bf-delivery').value='Stock';
+  // Equipment desde notes (si existe)
+  if(n('bf-equipment')&&s.notes)n('bf-equipment').value=s.notes;
+  // Logo marca (si tenemos LOGOS_GITHUB_BASE)
+  if(n('bf-brandLogo')&&s.brand&&typeof LOGOS_GITHUB_BASE!=='undefined'){
+    n('bf-brandLogo').value=LOGOS_GITHUB_BASE+s.brand+'.png';
+  }
+  if(typeof showToast==='function')showToast('\u2713 Datos auto-rellenados desde Stock Vivo');
+}
+
+// Salva el bloque actual sin cerrar el modal (para conservar fotos al re-render)
+function tplBlockSaveConfigSilent(){
+  var idx=_tplEditing.editingBlockIdx;
+  if(idx<0)return;
+  var block=_tplEditing.blocks[idx];
+  if(!block)return;
+  var newConfig={};
+  var formEl=n('tpl-block-form');
+  if(formEl){
+    formEl.querySelectorAll('[id^="bf-"]').forEach(function(el){
+      var key=el.id.replace(/^bf-/,'');
+      newConfig[key]=el.value;
+    });
+  }
+  block.config=Object.assign({},block.config,newConfig);
+}
+
 function tplBlockSaveConfig(){
   var idx=_tplEditing.editingBlockIdx;
   if(idx<0)return;
