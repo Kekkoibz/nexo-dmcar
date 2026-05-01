@@ -8905,11 +8905,8 @@ function mkPopulateCountriesDropdowns(){
       if(c.label===cur)op.selected=true;
       sel.appendChild(op);
     });
-    // Attacca type-ahead (idempotente: marker dataset evita doppio bind)
-    if(!sel.dataset.mkTypeaheadBound){
-      mkAttachTypeahead(sel);
-      sel.dataset.mkTypeaheadBound='1';
-    }
+    // Attacca type-ahead (idempotente: sel._mkTypeaheadBound previene doppi bind)
+    mkAttachTypeahead(sel);
   });
 }
 
@@ -8918,28 +8915,48 @@ function mkPopulateCountriesDropdowns(){
 // Match prioritario: codice ISO esatto > prefisso label > sottostringa
 var _mkTypeBuf='';
 var _mkTypeTimer=null;
+var MK_DEBUG_TYPEAHEAD=false;  // metti true per debug in console
+
 function mkAttachTypeahead(sel){
+  if(!sel||sel._mkTypeaheadBound)return;
+  sel._mkTypeaheadBound=true;
+  sel.dataset.mkTypeaheadBound='1';
+  // keydown: cattura prima del default browser per evitare il single-char match
   sel.addEventListener('keydown',function(e){
-    // Ignora tasti di navigazione (Arrow, Enter, Tab, ecc.)
-    if(e.key.length!==1)return;
+    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] keydown:',e.key,'len:',e.key.length);
+    // Solo singole lettere (a-z, A-Z) o numeri
+    if(!e.key||e.key.length!==1)return;
     if(e.ctrlKey||e.metaKey||e.altKey)return;
-    // Solo lettere
-    if(!/[a-zA-Z]/.test(e.key))return;
-    e.preventDefault(); // Evita comportamento default del browser (single-char match)
-    // Append al buffer
-    _mkTypeBuf+=e.key.toLowerCase();
-    // Reset buffer dopo 800ms di inattivit\u00e0
+    var k=e.key.toLowerCase();
+    if(!/[a-z0-9]/.test(k))return;
+    // Append al buffer + reset timer
+    _mkTypeBuf+=k;
     if(_mkTypeTimer)clearTimeout(_mkTypeTimer);
     _mkTypeTimer=setTimeout(function(){_mkTypeBuf='';},800);
+    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] buffer:',_mkTypeBuf);
     // Cerca match
     var match=mkFindCountryByPrefix(_mkTypeBuf);
+    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] match:',match?match.label:'NONE');
     if(match){
-      sel.value=match.label;
-      // Trigger event change per attivare salvataggio (in inline edit)
-      sel.dispatchEvent(new Event('change',{bubbles:true}));
+      // PREVENT default solo se troviamo match valido (evita di rompere la navigazione)
+      e.preventDefault();
+      e.stopPropagation();
+      // Imposta valore (cerco prima la option esatta per evitare problemi con le bandiere)
+      var found=false;
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value===match.label){
+          sel.selectedIndex=i;
+          found=true;
+          break;
+        }
+      }
+      if(found){
+        sel.dispatchEvent(new Event('change',{bubbles:true}));
+        if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] applied:',match.label);
+      }
     }
-  });
-  // Reset buffer quando focus esce dal select
+  },true);  // useCapture=true per intercettare prima del default
+  // Reset buffer su blur
   sel.addEventListener('blur',function(){_mkTypeBuf='';if(_mkTypeTimer){clearTimeout(_mkTypeTimer);_mkTypeTimer=null;}});
 }
 
