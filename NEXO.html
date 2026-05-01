@@ -1882,6 +1882,7 @@ En que te puedo ayudar hoy?</div></div>
       <div class="fbet" style="margin-bottom:6px">
         <label style="margin:0">Firma *</label>
         <div class="fc g4" style="font-size:11px">
+          <button type="button" class="btn bs" onclick="firPasteFromClipboard()" style="padding:3px 10px;font-size:10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none" title="Pegar desde el portapapeles (\u00fatil si Cmd+V no funciona)">&#128203; Pegar</button>
           <button type="button" class="btn bp" id="fir-mode-html" onclick="firSwitchMode('html')" style="padding:3px 10px;font-size:10px">&lt;/&gt; HTML</button>
           <button type="button" class="btn bg" id="fir-mode-md" onclick="firSwitchMode('md')" style="padding:3px 10px;font-size:10px">&#128221; Texto/Markdown</button>
         </div>
@@ -11514,6 +11515,55 @@ function firOpenEdit(id){
 
 // Toggle modo edici\u00f3n: 'html' o 'md'
 var _firMode='html';
+
+// Pegar desde el portapapeles via Clipboard API
+// \u00datil cuando Cmd+V no funciona (apps que bloquean clipboard, etc.)
+async function firPasteFromClipboard(){
+  var ta=n('fir-html');
+  if(!ta)return;
+  ta.focus();
+  try{
+    // Intento 1: clipboard.readText() (m\u00e1s simple, casi siempre funciona)
+    if(navigator.clipboard&&navigator.clipboard.readText){
+      var text=await navigator.clipboard.readText();
+      if(text){
+        ta.value=text;
+        firPreviewSig();
+        if(typeof showToast==='function')showToast('\u2713 Pegado desde portapapeles');
+        return;
+      }
+    }
+    // Intento 2: clipboard.read() (m\u00e1s avanzado, lee tambi\u00e9n HTML rico)
+    if(navigator.clipboard&&navigator.clipboard.read){
+      var items=await navigator.clipboard.read();
+      for(var i=0;i<items.length;i++){
+        var item=items[i];
+        // Prefer HTML si est\u00e1 disponible
+        if(item.types.indexOf('text/html')>=0){
+          var blob=await item.getType('text/html');
+          var html=await blob.text();
+          ta.value=html;
+          firPreviewSig();
+          if(typeof showToast==='function')showToast('\u2713 Pegado HTML desde portapapeles');
+          return;
+        }
+        if(item.types.indexOf('text/plain')>=0){
+          var blob2=await item.getType('text/plain');
+          var txt=await blob2.text();
+          ta.value=txt;
+          firPreviewSig();
+          if(typeof showToast==='function')showToast('\u2713 Pegado texto desde portapapeles');
+          return;
+        }
+      }
+    }
+    alert('No se pudo leer el portapapeles.\n\nProb\u00e1: Cmd+Shift+Option+V para pegado plano.');
+  }catch(err){
+    console.error('[firPaste] Error:',err);
+    alert('Error al leer el portapapeles:\n\n'+err.message+'\n\nProb\u00e1:\n\u2022 Cmd+Shift+Option+V (pegado plano)\n\u2022 Click derecho \u2192 Pegar\n\u2022 Verificar permisos del navegador');
+  }
+}
+
 function firSwitchMode(mode){
   _firMode=mode;
   var btnHtml=n('fir-mode-html'),btnMd=n('fir-mode-md');
