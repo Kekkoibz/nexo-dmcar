@@ -11483,6 +11483,7 @@ function firRender(){
       +'</div>'
       +'<div class="fc g6" style="margin-top:10px">'
         +'<button class="btn bs" onclick="firOpenEdit(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>'
+        +'<button class="btn bs" onclick="firSendTest(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 10px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Enviar email de prueba para ver c\u00f3mo se renderiza en tu cliente de email">&#128231; Test</button>'
         +'<button class="btn bd" onclick="firDel(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 8px" title="Eliminar">x</button>'
       +'</div>'
     +'</div>';
@@ -11686,6 +11687,57 @@ function firDel(id){
   SS('mkFirmas',mkFirmas);
   renderCampaigns();
   if(typeof showToast==='function')showToast('\u2713 Firma eliminada');
+}
+
+// Enviar email de prueba para ver c\u00f3mo se renderiza la firma en el cliente real
+function firSendTest(id){
+  var f=mkFirmas.find(function(x){return x.id===id;});
+  if(!f){alert('Firma no encontrada.');return;}
+  if(!f.html){alert('La firma no tiene contenido HTML.');return;}
+  // Verifica que NX_MS est\u00e9 listo
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){
+    alert('\u26a0\ufe0f Microsoft Graph no est\u00e1 conectado.\n\nVe a Configuraci\u00f3n y conecta tu cuenta info@dmcargroup.com primero.');
+    return;
+  }
+  // Pide email destino (default = email del vendedor de la firma o info@dmcargroup.com)
+  var defaultTo=f.email||'info@dmcargroup.com';
+  var to=prompt('\ud83d\udce7 \u00bfA qu\u00e9 email enviar la prueba?\n\nNEXO te mandar\u00e1 una email a esta direcci\u00f3n con la firma "'+f.name+'" para que veas c\u00f3mo se renderiza en tu cliente real (Apple Mail, Gmail, etc.).',defaultTo);
+  if(!to)return;
+  to=to.trim();
+  if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
+  // Construyo el body del email de test
+  var subject='[NEXO Test] Vista previa firma: '+f.name;
+  var body=''
+    +'<html><body style="font-family:Arial,sans-serif;color:#333;max-width:680px;margin:0 auto;padding:20px">'
+    +'<div style="background:#f3f4f6;border-radius:8px;padding:14px;margin-bottom:24px;border-left:3px solid #2563eb">'
+      +'<div style="font-size:13px;font-weight:700;color:#1e40af;margin-bottom:6px">\ud83e\uddea Email de prueba NEXO</div>'
+      +'<div style="font-size:11px;color:#4b5563;line-height:1.5">'
+        +'Esta es una prueba de la firma <strong>"'+esc(f.name)+'"</strong> ('+esc(f.lang||'es')+') guardada en NEXO.<br>'
+        +'Si la firma se ve correcta abajo, est\u00e1 lista para usarse en campa\u00f1as reales.'
+      +'</div>'
+    +'</div>'
+    +'<div style="font-size:14px;color:#1a1a1a;margin-bottom:20px">'
+      +'Hello,<br><br>'
+      +'Esto es un email de prueba para verificar el renderizado de la firma en tu cliente de email.<br><br>'
+      +'<em>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Praesent quis ipsum nec ipsum lobortis viverra.</em>'
+    +'</div>'
+    +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">'
+    // QU\u00cd inserto la firma tal cual
+    +f.html
+    +'</body></html>';
+
+  // Disable bot\u00f3n durante env\u00edo
+  if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
+  NX_MS.sendEmail(to,subject,body,function(ok,err){
+    if(ok){
+      if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
+      setTimeout(function(){
+        alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja de entrada (puede tardar 1-2 min).\n\nAs\u00ed ver\u00e1s c\u00f3mo se renderiza la firma realmente en Apple Mail, Gmail u Outlook.');
+      },300);
+    }else{
+      alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
+    }
+  });
 }
 
 // Helper: devuelve el HTML de la firma listo para insertar en email
