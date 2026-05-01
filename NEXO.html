@@ -219,6 +219,28 @@ body.fb-banner-on #app{padding-top:30px}
 .fb-status-dot.green{background:#10b981}
 .fb-status-dot.gray{background:#94a3b8}
 .fb-status-dot.red{background:#ef4444}
+/* Custom country dropdown */
+.cdd{position:relative;display:inline-block;width:100%}
+.cdd-trigger{width:100%;padding:8px 28px 8px 10px;background:var(--bg2);color:var(--t1);border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:space-between;min-height:36px}
+.cdd-trigger:hover{border-color:var(--acc)}
+.cdd-trigger.open{border-color:var(--acc);background:var(--bg3)}
+.cdd-trigger:after{content:'\25be';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:10px;pointer-events:none}
+.cdd-trigger-text{flex:1;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.cdd-trigger-text.empty{color:var(--t4)}
+.cdd-panel{position:absolute;top:calc(100% + 4px);left:0;width:100%;min-width:240px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);z-index:9999;display:none;overflow:hidden}
+.cdd-panel.open{display:block}
+.cdd-search{padding:8px;border-bottom:1px solid var(--border)}
+.cdd-search input{width:100%;padding:6px 10px;background:var(--bg3);color:var(--t1);border:1px solid var(--border);border-radius:6px;font-size:12px;outline:none}
+.cdd-search input:focus{border-color:var(--acc)}
+.cdd-list{max-height:280px;overflow-y:auto;padding:4px 0}
+.cdd-item{padding:7px 12px;cursor:pointer;font-size:13px;color:var(--t1);display:flex;align-items:center;gap:8px;white-space:nowrap}
+.cdd-item:hover{background:var(--bg3)}
+.cdd-item.active{background:rgba(37,99,235,.18);color:var(--acc);font-weight:600}
+.cdd-item.empty-msg{color:var(--t4);font-style:italic;cursor:default;font-size:11px;text-align:center;padding:14px}
+.cdd-item.empty-msg:hover{background:transparent}
+.cdd-item-flag{font-size:14px;line-height:1}
+.cdd-inline{font-size:11px;padding:4px 22px 4px 7px;min-height:26px;border-radius:5px}
+.cdd-inline:after{font-size:9px;right:7px}
 </style>
 </head>
 <body>
@@ -8890,94 +8912,227 @@ function renderMarketing(){
   else mkRenderLists();
 }
 
-// Popola tutti i <select> con data-mk-countries="1" con la lista paesi (con bandiere)
-function mkPopulateCountriesDropdowns(){
-  document.querySelectorAll('select[data-mk-countries="1"]').forEach(function(sel){
-    // Conserva il valore selezionato corrente (se c'\u00e8)
-    var cur=sel.value;
-    var firstOptionLabel=sel.options.length>0?sel.options[0].textContent:'--';
-    var firstOptionValue=sel.options.length>0?sel.options[0].value:'';
-    sel.innerHTML='<option value="'+esc(firstOptionValue)+'">'+esc(firstOptionLabel)+'</option>';
-    MK_COUNTRIES.forEach(function(c){
-      var op=document.createElement('option');
-      op.value=c.label;
-      op.textContent=c.flag+' '+c.label;
-      if(c.label===cur)op.selected=true;
-      sel.appendChild(op);
-    });
-    // Attacca type-ahead (idempotente: sel._mkTypeaheadBound previene doppi bind)
-    mkAttachTypeahead(sel);
-  });
+// ===========================================================================
+// CUSTOM COUNTRY DROPDOWN — sostituisce <select> nativo con tipo-ahead vero
+// ===========================================================================
+
+// Ogni dropdown custom ha:
+//   - Un <input type="hidden"> che contiene il valore (per compatibilit\u00e0)
+//   - Un trigger (.cdd-trigger) cliccabile
+//   - Un panel (.cdd-panel) con search input + lista filtrabile
+//   - Eventi: click apre/chiude, digitazione filtra, Enter conferma, Esc chiude
+
+function mkNormalize(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+
+// Filtra paesi in base alla query
+function mkFilterCountries(query){
+  if(!query)return MK_COUNTRIES.slice();
+  var q=mkNormalize(query);
+  // Priorit\u00e0:
+  // 1) Codice ISO2 esatto
+  // 2) Prefisso label
+  // 3) Sottostringa label
+  var iso=MK_COUNTRIES.filter(function(c){return c.code.toLowerCase()===q;});
+  var prefix=MK_COUNTRIES.filter(function(c){return mkNormalize(c.label).indexOf(q)===0&&iso.indexOf(c)<0;});
+  var sub=MK_COUNTRIES.filter(function(c){return mkNormalize(c.label).indexOf(q)>0&&iso.indexOf(c)<0&&prefix.indexOf(c)<0;});
+  return iso.concat(prefix).concat(sub);
 }
 
-// Type-ahead intelligente per i select paesi
-// Quando l'utente digita "IT" \u2192 va a Italia, "FR" \u2192 Francia, "ESP" \u2192 Espa\u00f1a, ecc.
-// Match prioritario: codice ISO esatto > prefisso label > sottostringa
-var _mkTypeBuf='';
-var _mkTypeTimer=null;
-var MK_DEBUG_TYPEAHEAD=false;  // metti true per debug in console
+// Crea un dropdown custom (chiamata da renderMarketing e mkRender)
+// onChange: callback(newValue) chiamata al cambio valore
+function mkCreateCountryDropdown(opts){
+  var container=opts.container;     // elemento DOM dove inserire il dropdown
+  var initialValue=opts.value||'';
+  var inline=opts.inline||false;    // se true, stile pi\u00f9 compatto
+  var onChange=opts.onChange||function(){};
+  var allowEmpty=opts.allowEmpty!==false;
+  // Genera ID univoco per scope eventi
+  var uid='cdd_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  var triggerCls='cdd-trigger'+(inline?' cdd-inline':'');
+  var html=''
+    +'<div class="cdd" id="'+uid+'">'
+      +'<div class="'+triggerCls+'" data-uid="'+uid+'">'
+        +'<span class="cdd-trigger-text'+(initialValue?'':' empty')+'">'+(initialValue?(mkCountryInfo(initialValue).flag+' '+esc(initialValue)):'--')+'</span>'
+      +'</div>'
+      +'<div class="cdd-panel" data-uid="'+uid+'">'
+        +'<div class="cdd-search"><input type="text" placeholder="Buscar pa\u00eds..." data-cdd-search="'+uid+'" autocomplete="off"></div>'
+        +'<div class="cdd-list" data-cdd-list="'+uid+'"></div>'
+      +'</div>'
+      +'<input type="hidden" data-cdd-value="'+uid+'" value="'+esc(initialValue)+'">'
+    +'</div>';
+  container.innerHTML=html;
 
-function mkAttachTypeahead(sel){
-  if(!sel||sel._mkTypeaheadBound)return;
-  sel._mkTypeaheadBound=true;
-  sel.dataset.mkTypeaheadBound='1';
-  // keydown: cattura prima del default browser per evitare il single-char match
-  sel.addEventListener('keydown',function(e){
-    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] keydown:',e.key,'len:',e.key.length);
-    // Solo singole lettere (a-z, A-Z) o numeri
-    if(!e.key||e.key.length!==1)return;
-    if(e.ctrlKey||e.metaKey||e.altKey)return;
-    var k=e.key.toLowerCase();
-    if(!/[a-z0-9]/.test(k))return;
-    // Append al buffer + reset timer
-    _mkTypeBuf+=k;
-    if(_mkTypeTimer)clearTimeout(_mkTypeTimer);
-    _mkTypeTimer=setTimeout(function(){_mkTypeBuf='';},800);
-    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] buffer:',_mkTypeBuf);
-    // Cerca match
-    var match=mkFindCountryByPrefix(_mkTypeBuf);
-    if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] match:',match?match.label:'NONE');
-    if(match){
-      // PREVENT default solo se troviamo match valido (evita di rompere la navigazione)
+  var trigger=container.querySelector('.cdd-trigger');
+  var panel=container.querySelector('.cdd-panel');
+  var searchInput=container.querySelector('[data-cdd-search]');
+  var list=container.querySelector('[data-cdd-list]');
+  var hidden=container.querySelector('[data-cdd-value]');
+  var triggerText=container.querySelector('.cdd-trigger-text');
+
+  var state={open:false,value:initialValue,query:'',activeIdx:-1,filtered:[]};
+
+  function renderList(){
+    state.filtered=mkFilterCountries(state.query);
+    if(allowEmpty&&!state.query){
+      // Inserisco opzione "--" all'inizio
+      state.filtered=[{code:'',label:'',flag:'',_isEmpty:true}].concat(state.filtered);
+    }
+    if(!state.filtered.length){
+      list.innerHTML='<div class="cdd-item empty-msg">No hay coincidencias</div>';
+      return;
+    }
+    list.innerHTML=state.filtered.map(function(c,i){
+      if(c._isEmpty){
+        return '<div class="cdd-item'+(i===state.activeIdx?' active':'')+'" data-idx="'+i+'" data-val=""><span class="cdd-item-flag" style="visibility:hidden">\ud83c\udf0d</span><span style="color:var(--t4)">--</span></div>';
+      }
+      var sel=(c.label===state.value)?' active':'';
+      var act=(i===state.activeIdx)?' active':'';
+      return '<div class="cdd-item'+sel+act+'" data-idx="'+i+'" data-val="'+esc(c.label)+'"><span class="cdd-item-flag">'+c.flag+'</span><span>'+esc(c.label)+'</span></div>';
+    }).join('');
+    // Click sui list items
+    list.querySelectorAll('.cdd-item:not(.empty-msg)').forEach(function(el){
+      el.addEventListener('mousedown',function(e){
+        e.preventDefault(); e.stopPropagation();
+        var v=this.getAttribute('data-val');
+        selectValue(v);
+      });
+    });
+    // Scroll al primo activo
+    var act=list.querySelector('.cdd-item.active');
+    if(act&&act.scrollIntoView)act.scrollIntoView({block:'nearest'});
+  }
+
+  function selectValue(newVal){
+    state.value=newVal;
+    hidden.value=newVal;
+    // Update trigger display
+    if(newVal){
+      var info=mkCountryInfo(newVal);
+      triggerText.innerHTML=info.flag+' '+esc(newVal);
+      triggerText.classList.remove('empty');
+    }else{
+      triggerText.innerHTML='--';
+      triggerText.classList.add('empty');
+    }
+    closePanel();
+    try{onChange(newVal);}catch(e){console.warn('[cdd] onChange error:',e);}
+  }
+
+  function openPanel(){
+    if(state.open)return;
+    state.open=true;
+    state.query='';
+    searchInput.value='';
+    state.activeIdx=0; // primo elemento active (per Enter immediato)
+    panel.classList.add('open');
+    trigger.classList.add('open');
+    renderList();
+    setTimeout(function(){searchInput.focus();},50);
+  }
+  function closePanel(){
+    if(!state.open)return;
+    state.open=false;
+    panel.classList.remove('open');
+    trigger.classList.remove('open');
+    state.query='';
+    state.activeIdx=-1;
+  }
+
+  // Trigger: click apre/chiude
+  trigger.addEventListener('click',function(e){
+    e.preventDefault();e.stopPropagation();
+    if(state.open)closePanel();
+    else openPanel();
+  });
+
+  // Search input: filtra in tempo reale
+  searchInput.addEventListener('input',function(){
+    state.query=this.value;
+    state.activeIdx=0;
+    renderList();
+  });
+
+  // Search input: keydown per navigation + Enter
+  searchInput.addEventListener('keydown',function(e){
+    if(e.key==='ArrowDown'){
       e.preventDefault();
-      e.stopPropagation();
-      // Imposta valore (cerco prima la option esatta per evitare problemi con le bandiere)
-      var found=false;
-      for(var i=0;i<sel.options.length;i++){
-        if(sel.options[i].value===match.label){
-          sel.selectedIndex=i;
-          found=true;
-          break;
+      state.activeIdx=Math.min(state.activeIdx+1,state.filtered.length-1);
+      renderList();
+    }else if(e.key==='ArrowUp'){
+      e.preventDefault();
+      state.activeIdx=Math.max(state.activeIdx-1,0);
+      renderList();
+    }else if(e.key==='Enter'){
+      e.preventDefault();
+      if(state.activeIdx>=0&&state.activeIdx<state.filtered.length){
+        var item=state.filtered[state.activeIdx];
+        if(item._isEmpty)selectValue('');
+        else selectValue(item.label);
+      }
+    }else if(e.key==='Escape'){
+      e.preventDefault();
+      closePanel();
+    }
+  });
+
+  // Click fuori per chiudere
+  document.addEventListener('mousedown',function(e){
+    if(!state.open)return;
+    if(container.contains(e.target))return;
+    closePanel();
+  });
+
+  return {
+    container:container,
+    setValue:function(v){selectValue(v);},
+    getValue:function(){return state.value;}
+  };
+}
+
+// Popola TUTTI i select con data-mk-countries="1" sostituendoli con dropdown custom
+function mkPopulateCountriesDropdowns(){
+  // Per i <select> con data-mk-countries, li sostituisco con un wrapper div + custom dropdown
+  document.querySelectorAll('select[data-mk-countries="1"]').forEach(function(sel){
+    if(sel._cddReplaced)return;  // gi\u00e0 fatto
+    var curVal=sel.value||'';
+    var allowEmpty=true;
+    var firstOpt=sel.options[0];
+    if(firstOpt&&firstOpt.value!=='')allowEmpty=false;
+    // Nome variabile da usare per il valore (sostituisce sel.value)
+    var origId=sel.id;
+    var origName=sel.name||'';
+    var origOnChange=sel.getAttribute('onchange')||'';
+    // Crea wrapper div
+    var wrapper=document.createElement('div');
+    wrapper.style.cssText=sel.style.cssText;
+    wrapper.id=origId+'_wrapper';
+    sel.parentNode.replaceChild(wrapper,sel);
+    // Crea dropdown custom
+    mkCreateCountryDropdown({
+      container:wrapper,
+      value:curVal,
+      allowEmpty:allowEmpty,
+      onChange:function(newVal){
+        // Aggiorna anche un input hidden con l'id originale (cos\u00ec il codice esistente continua a funzionare)
+        var hidden=wrapper.querySelector('[data-cdd-value]');
+        if(hidden){
+          hidden.id=origId;
+          hidden.name=origName;
+          // Trigger onchange originale (il filtro mkRender)
+          if(origOnChange){
+            try{eval(origOnChange);}catch(e){console.warn('[cdd] onchange eval error:',e);}
+          }
         }
       }
-      if(found){
-        sel.dispatchEvent(new Event('change',{bubbles:true}));
-        if(MK_DEBUG_TYPEAHEAD)console.log('[typeahead] applied:',match.label);
-      }
+    });
+    // Imposta id sull'hidden per coerenza con i punti che fanno n('mke-country').value, ecc.
+    var hidden=wrapper.querySelector('[data-cdd-value]');
+    if(hidden){
+      hidden.id=origId;
+      if(origName)hidden.name=origName;
     }
-  },true);  // useCapture=true per intercettare prima del default
-  // Reset buffer su blur
-  sel.addEventListener('blur',function(){_mkTypeBuf='';if(_mkTypeTimer){clearTimeout(_mkTypeTimer);_mkTypeTimer=null;}});
-}
-
-// Trova il primo paese che matcha il prefisso digitato (priorit\u00e0: code ISO > label prefix)
-function mkFindCountryByPrefix(buf){
-  if(!buf||!buf.length)return null;
-  var b=buf.toLowerCase();
-  // 1) Match esatto sul code ISO2 (es. "IT" \u2192 Italia, "FR" \u2192 Francia)
-  if(b.length>=2){
-    var byCode=MK_COUNTRIES.find(function(c){return c.code.toLowerCase()===b.slice(0,2);});
-    if(byCode&&b.length<=2)return byCode;
-  }
-  // 2) Match prefisso sulla label (es. "ita" \u2192 Italia, "esp" \u2192 Espa\u00f1a)
-  // Normalizzo accenti per match flessibile (es. "espa" matcha "Espa\u00f1a")
-  function normalize(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
-  var bn=normalize(b);
-  var byLabel=MK_COUNTRIES.find(function(c){return normalize(c.label).indexOf(bn)===0;});
-  if(byLabel)return byLabel;
-  // 3) Sottostringa anywhere
-  var bySub=MK_COUNTRIES.find(function(c){return normalize(c.label).indexOf(bn)>=0;});
-  return bySub||null;
+    wrapper._cddReplaced=true;
+  });
 }
 
 function mkSwitchTab(t){
@@ -9051,7 +9206,7 @@ function mkRender(){
       +'<td style="font-size:11px">'+esc(c.companyName||'--')+'</td>'
       +'<td style="font-size:11px;color:var(--acc)">'+esc(c.email||'')+'</td>'
       +'<td style="font-family:monospace;font-size:10px">'+esc(c.phone||'')+'</td>'
-      +'<td style="font-size:11px;white-space:nowrap;padding:2px 6px"><select class="mk-country-inline" data-id="'+esc(c.id)+'" style="font-size:11px;padding:3px 4px;border:1px solid var(--border);background:var(--bg2);color:var(--t1);border-radius:5px;max-width:140px;cursor:pointer"><option value="">--</option></select></td>'
+      +'<td style="font-size:11px;white-space:nowrap;padding:2px 6px"><div class="mk-country-inline" data-id="'+esc(c.id)+'" style="max-width:160px"></div></td>'
       +'<td style="font-size:10px">'+esc(MK_TYPE_LABEL[c.customerType]||c.customerType||'')+'</td>'
       +'<td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(ints)+'">'+esc(ints)+'</td>'
       +'<td style="font-size:10px;color:var(--t3)">'+esc(MK_ORIGIN_LABEL[c.origin]||c.origin||'')+'</td>'
@@ -9090,36 +9245,30 @@ function mkRender(){
     });
   });
 
-  // INLINE COUNTRY EDIT: popola tutti i select inline + event listener change
-  body.querySelectorAll('.mk-country-inline').forEach(function(sel){
-    var cid=sel.getAttribute('data-id');
+  // INLINE COUNTRY EDIT: crea dropdown custom in ogni cella País
+  body.querySelectorAll('.mk-country-inline').forEach(function(div){
+    var cid=div.getAttribute('data-id');
     var c=mkContacts.find(function(x){return String(x.id)===String(cid);});
     if(!c)return;
-    // Popola opzioni con bandiere
     var curVal=c.country||'';
-    var html='<option value="">--</option>';
-    MK_COUNTRIES.forEach(function(co){
-      var s=(co.label===curVal)?' selected':'';
-      html+='<option value="'+esc(co.label)+'"'+s+'>'+co.flag+' '+esc(co.label)+'</option>';
-    });
-    sel.innerHTML=html;
-    // Stop propagation click (no triggera la riga)
-    sel.addEventListener('click',function(e){e.stopPropagation();});
-    sel.addEventListener('change',function(){
-      var newVal=this.value;
-      var idx=mkContacts.findIndex(function(x){return String(x.id)===String(cid);});
-      if(idx<0)return;
-      mkContacts[idx].country=newVal;
-      mkContacts[idx].updatedAt=new Date().toISOString();
-      SS('mkContacts',mkContacts);
-      // Toast leggero
-      if(typeof showToast==='function'){
-        var info=newVal?mkCountryInfo(newVal):null;
-        showToast('\u2713 '+(info?info.flag+' ':'')+(newVal||'(vac\u00edo)'));
+    // Crea dropdown custom inline
+    mkCreateCountryDropdown({
+      container:div,
+      value:curVal,
+      inline:true,
+      allowEmpty:true,
+      onChange:function(newVal){
+        var idx=mkContacts.findIndex(function(x){return String(x.id)===String(cid);});
+        if(idx<0)return;
+        mkContacts[idx].country=newVal;
+        mkContacts[idx].updatedAt=new Date().toISOString();
+        SS('mkContacts',mkContacts);
+        if(typeof showToast==='function'){
+          var info=newVal?mkCountryInfo(newVal):null;
+          showToast('\u2713 '+(info?info.flag+' ':'')+(newVal||'(vac\u00edo)'));
+        }
       }
     });
-    // Attacco type-ahead (digitando "IT" va a Italia, "FR" \u2192 Francia, ecc.)
-    if(typeof mkAttachTypeahead==='function')mkAttachTypeahead(sel);
   });
 
   mkUpdSelBar();
@@ -9139,10 +9288,24 @@ function mkClrSel(){mkSel.clear();var sa=n('mk-sel-all');if(sa)sa.checked=false;
 
 // -- CRUD CONTATTI --------------------------------------------------------
 function mkOpenManual(){
-  ['mke-name','mke-co','mke-email','mke-phone','mke-country','mke-interest','mke-notes'].forEach(function(i){if(n(i))n(i).value='';});
+  ['mke-name','mke-co','mke-email','mke-phone','mke-interest','mke-notes'].forEach(function(i){if(n(i))n(i).value='';});
   if(n('mke-type'))n('mke-type').value='';
   if(n('mke-status'))n('mke-status').value='subscribed';
   if(n('mke-origin'))n('mke-origin').value='manual';
+  // Reset dropdown custom country
+  var wrapper=n('mke-country_wrapper');
+  if(wrapper){
+    mkCreateCountryDropdown({
+      container:wrapper,
+      value:'',
+      allowEmpty:true,
+      onChange:function(newVal){
+        var hid=n('mke-country');if(hid)hid.value=newVal;
+      }
+    });
+    var hid=wrapper.querySelector('[data-cdd-value]');
+    if(hid)hid.id='mke-country';
+  }
   n('m-mk-edit').removeAttribute('data-edit-id');
   openM('m-mk-edit');
 }
@@ -9153,7 +9316,24 @@ function mkOpenEdit(id){
   n('mke-co').value=c.companyName||'';
   n('mke-email').value=c.email||'';
   n('mke-phone').value=c.phone||'';
-  n('mke-country').value=c.country||'';
+  // Per il dropdown custom paese: ricostruisco il dropdown nel wrapper
+  var wrapper=n('mke-country_wrapper');
+  if(wrapper){
+    mkCreateCountryDropdown({
+      container:wrapper,
+      value:c.country||'',
+      allowEmpty:true,
+      onChange:function(newVal){
+        var hid=n('mke-country');if(hid)hid.value=newVal;
+      }
+    });
+    // Riassegna id all'hidden per coerenza
+    var hid=wrapper.querySelector('[data-cdd-value]');
+    if(hid)hid.id='mke-country';
+  }else{
+    // fallback (caso edge)
+    if(n('mke-country'))n('mke-country').value=c.country||'';
+  }
   n('mke-type').value=c.customerType||'';
   n('mke-status').value=c.status||'subscribed';
   n('mke-interest').value=Array.isArray(c.interest)?c.interest.join(', '):(c.interest||'');
