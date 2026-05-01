@@ -372,7 +372,8 @@ En que te puedo ayudar hoy?</div></div>
           <div class="fc g8">
             <button class="btn bg" onclick="clrSel()" style="font-size:11px">Deseleccionar</button>
             <button class="btn bd" onclick="delSel()" style="font-size:11px">&#128465; Eliminar</button>
-            <button class="btn bp" onclick="openGenStk()">&#9889; Generar Oferta</button>
+            <button class="btn bp" onclick="openGenStk()">&#9889; Generar Word</button>
+            <button class="btn bs" onclick="campNewFromStockSel()" style="background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none;padding:6px 14px">&#128231; Crear campa&ntilde;a NEXO</button>
           </div>
         </div>
       </div>
@@ -3433,6 +3434,9 @@ if(!savedLabels||!savedLabels.length){
 }
 var chatHist=[];
 var stkSel=new Set();
+// Selecci\u00f3n individual de unidades dentro de los lotes (vehicles[]) para campa\u00f1as Direct Mail
+// Format: "stockId::vehicleIndex" \u2192 ej. "DMCAR-0078::0", "DMCAR-0078::1"
+var stkVehSel=new Set();
 var stkFlt=[];
 var curOffer=null;
 var sbOpen=true;
@@ -3941,6 +3945,7 @@ function renderStkTbl(){
       html+='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
       html+='<table style="width:100%;min-width:900px;border-collapse:collapse">';
       html+='<thead><tr style="background:var(--bg3)">';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3);width:40px" title="Selecciona unidad para campa&ntilde;a">Sel.</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3);width:40px" title="Oferta enviada">Env.</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">VIN</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Color</th>';
@@ -3974,6 +3979,10 @@ function renderStkTbl(){
         var buyDisp=esc(vBuy)+(inheritedBuy?'<span style="font-size:9px;color:var(--t4);margin-left:3px" title="Heredado del grupo">\u22ef</span>':'');
         var sellDispEdited=sellDisp+(inheritedSell&&item.sell?'<span style="font-size:9px;color:var(--t4);margin-left:3px" title="Heredado del grupo">\u22ef</span>':'');
         html+='<tr style="background:'+(vi%2===0?'var(--bg4)':'var(--bg2)')+'">';
+        // SEL checkbox para selecci\u00f3n campa\u00f1a Direct Mail
+        var vehKey=String(item.id)+'::'+vi;
+        var vSel=stkVehSel.has(vehKey);
+        html+='<td style="padding:6px 10px;text-align:center"><input type="checkbox" class="veh-sel-chk" data-sid="'+esc(item.id)+'" data-vi="'+vi+'"'+(vSel?' checked':'')+' title="Seleccionar para campa&ntilde;a Direct Mail" style="cursor:pointer;accent-color:#06b6d4;width:16px;height:16px"></td>';
         // Env. checkbox
         html+='<td style="padding:6px 10px;text-align:center"><input type="checkbox" class="veh-env-chk" data-sid="'+esc(item.id)+'" data-vi="'+vi+'"'+(vSent?' checked':'')+' title="'+(vSentAt?'Enviada el '+esc(vSentAt):'Marcar como enviada')+'" style="cursor:pointer;accent-color:#10b981;width:16px;height:16px"></td>';
         html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+esc(v.vin||'--')+'</td>';
@@ -4022,6 +4031,19 @@ function renderStkTbl(){
       // Update tooltip e color
       this.style.accentColor=this.checked?'#10b981':'#10b981';
       this.title=this.checked&&stock[idx].sentAt?'Oferta de grupo enviada el '+stock[idx].sentAt:'Marcar como enviada';
+    });
+  });
+
+  // Checkbox "Sel." per singola unit\u00e0 dentro del lote (per campa\u00f1as Direct Mail)
+  tbody.querySelectorAll('.veh-sel-chk').forEach(function(chk){
+    chk.addEventListener('click',function(e){e.stopPropagation();});
+    chk.addEventListener('change',function(){
+      var sid=this.getAttribute('data-sid');
+      var vi=this.getAttribute('data-vi');
+      var key=sid+'::'+vi;
+      if(this.checked)stkVehSel.add(key);
+      else stkVehSel.delete(key);
+      updSelBar();
     });
   });
 
@@ -4125,10 +4147,31 @@ function renderStkTbl(){
 
 function updSelBar(){
   var bar=n('sel-bar');var cnt=n('sel-cnt');
+  // Cuenta filas padre + sub-unidades de lote
   var num=stkSel.size;
-  if(bar) bar.style.display=num>0?'block':'none';
-  if(cnt) cnt.textContent=num+' vehiculo'+(num!==1?'s':'')+' sel.';
+  var vehNum=stkVehSel.size;
+  var total=num+vehNum;
+  if(bar) bar.style.display=total>0?'block':'none';
+  if(cnt){
+    if(num&&vehNum){
+      cnt.textContent=num+' modelo'+(num!==1?'s':'')+' + '+vehNum+' uds del lote sel.';
+    }else if(vehNum){
+      cnt.textContent=vehNum+' unidad'+(vehNum!==1?'es':'')+' sel.';
+    }else{
+      cnt.textContent=num+' veh\u00edculo'+(num!==1?'s':'')+' sel.';
+    }
+  }
 }
+
+// Limpia tambi\u00e9n las selecciones de unidades del lote
+var _origClrSel=window.clrSel;
+window.clrSel=function(){
+  stkSel.clear();
+  stkVehSel.clear();
+  var sa=n('sel-all');if(sa)sa.checked=false;
+  updSelBar();
+  if(typeof renderStkTbl==='function')renderStkTbl();
+};
 
 function selAll(cb){
   if(cb.checked) stkFlt.forEach(function(i){stkSel.add(i.id);});
@@ -11817,8 +11860,14 @@ function campRenderCarsList(){
     var groups=campGroupStockByModel();
     var grp=groups.find(function(g){return g.key===key;});
     var available=grp?grp.count:1;
-    var qtyLbl=(qty===available)?'todas las '+available+' unidades':qty+' de '+available+' unidades';
-    var modeLbl=qty===1?'\ud83d\udd2c detalles individuales':'\ud83d\udcca medias del lote';
+    var hasSpecific=Array.isArray(item.specificIndices)&&item.specificIndices.length>0;
+    var qtyLbl;
+    if(hasSpecific){
+      qtyLbl=item.specificIndices.length+' unidades espec\u00edficas seleccionadas';
+    }else{
+      qtyLbl=(qty===available)?'todas las '+available+' unidades':qty+' de '+available+' unidades';
+    }
+    var modeLbl=qty===1?'\ud83d\udd2c detalles individuales':'\ud83d\udcca medias '+(hasSpecific?'de las '+item.specificIndices.length+' marcadas':'del lote');
     return '<div class="fbet" style="background:var(--bg2);padding:8px 10px;border-radius:5px;margin-bottom:4px">'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:11px;color:var(--t1);font-weight:600">\ud83d\ude97 '+esc((brand+' '+model).trim())+'</div>'
@@ -12395,11 +12444,32 @@ function campCleanEquipment(notes){
 // SIGUE LAS MISMAS REGLAS DEL GENERADOR DE OFERTAS WORD
 // Si qty=1 \u2192 toma los detalles completos de la primera unidad (incluyendo VIN)
 // Si qty>1 \u2192 calcula medias del lote (rangos de kms, da\u00f1os medios) + lista colores SIN conteo
-function campBuildCardConfigFromGroup(groupKey,qty){
+function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
   var groups=campGroupStockByModel();
   var group=groups.find(function(g){return g.key===groupKey;});
   if(!group||!group.units||group.units.length===0)return null;
-  var selected=group.units.slice(0,qty);
+  var selected;
+  // Si vienen indices espec\u00edficos, toma esas unidades exactas
+  if(Array.isArray(specificIndices)&&specificIndices.length>0){
+    selected=[];
+    specificIndices.forEach(function(idx){
+      // idx = {stockId, vi}
+      var parent=stock.find(function(s){return String(s.id)===String(idx.stockId);});
+      if(!parent)return;
+      if(Array.isArray(parent.vehicles)&&parent.vehicles[idx.vi]){
+        // Hereda campos del padre + sobrescribe con los del vehicle
+        selected.push(Object.assign({},parent,parent.vehicles[idx.vi],{parentId:parent.id}));
+      }else{
+        // No hay vehicles[] \u2192 usa el padre
+        selected.push(Object.assign({},parent,{parentId:parent.id}));
+      }
+    });
+    // Si no encontramos nada, fallback al comportamiento por defecto
+    if(selected.length===0)selected=group.units.slice(0,qty);
+  }else{
+    // Sin indices espec\u00edficos: toma las primeras qty unidades
+    selected=group.units.slice(0,qty);
+  }
   var first=selected[0];
   var parent=group.parentStock&&group.parentStock[0]?group.parentStock[0]:first;
   var brandLogo=campBrandLogoUrl(parent.brand);
@@ -12408,7 +12478,8 @@ function campBuildCardConfigFromGroup(groupKey,qty){
   var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
   // Precio
   var priceFmt=parent.salePrice?(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+' \u20ac':'';
-  if(qty===1){
+  var actualQty=selected.length;
+  if(actualQty===1){
     // 1 unidad: detalles completos del coche espec\u00edfico (con VIN)
     return {
       stockId:first.id||first.parentId,
@@ -12464,7 +12535,7 @@ function campBuildCardConfigFromGroup(groupKey,qty){
     avgKms:kmsLabel,
     avgDamages:avgDamages?avgDamages.toLocaleString('es-ES')+' \u20ac':'',
     extColor:colorList,
-    availableUnits:String(qty),
+    availableUnits:String(actualQty),
     delivery:'Stock',
     equipment:cleanEquipment,
     photo1:parent.photo1||'',
@@ -12501,7 +12572,7 @@ function campBuildTemplate(){
           cardConfig=campBuildCardConfigFromGroup(legacyKey,1);
         }
       }else if(item&&item.groupKey){
-        cardConfig=campBuildCardConfigFromGroup(item.groupKey,item.qty||1);
+        cardConfig=campBuildCardConfigFromGroup(item.groupKey,item.qty||1,item.specificIndices);
       }
       if(cardConfig){
         injectedBlocks.push({
@@ -12602,6 +12673,74 @@ function campSendNow(){
 }
 
 // === HOOKS DE ACCESO ===
+
+// Hook desde Stock Vivo (barra flotante): toma las unidades seleccionadas y abre Crear Campa\u00f1a
+function campNewFromStockSel(){
+  if(mkTemplates.length===0){
+    if(!confirm('\u26a0\ufe0f No hay templates creados todav\u00eda.\n\n\u00bfIr a Campa\u00f1as \u2192 Templates ahora?'))return;
+    go('campaigns');setTimeout(function(){campSwitchTab('templates');},200);
+    return;
+  }
+  if(mkFirmas.length===0){
+    if(!confirm('\u26a0\ufe0f No hay firmas creadas todav\u00eda.\n\n\u00bfIr a Campa\u00f1as \u2192 Firmas ahora?'))return;
+    go('campaigns');setTimeout(function(){campSwitchTab('firmas');},200);
+    return;
+  }
+  // Construye selectedCarIds desde stkSel (filas padre) + stkVehSel (unidades de lote)
+  var selectedCarIds=[];
+  // Procesa filas padre: por cada filtro padre, agrupa por brand+model+qty=units
+  var groupsByKey={};  // key \u2192 {qty, vehIndices:[indices espec\u00edficos del lote]}
+  // 1) Filas padre: mete todas las unidades del modelo
+  Array.from(stkSel).forEach(function(stockId){
+    var s=stock.find(function(x){return String(x.id)===String(stockId);});
+    if(!s)return;
+    var key=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+    if(!groupsByKey[key])groupsByKey[key]={qty:0,specificIndices:[]};
+    if(Array.isArray(s.vehicles)&&s.vehicles.length>0){
+      groupsByKey[key].qty+=s.vehicles.length;
+      // Marca todas las indices
+      for(var k=0;k<s.vehicles.length;k++){
+        groupsByKey[key].specificIndices.push({stockId:s.id,vi:k});
+      }
+    }else{
+      var u=String(s.units||'1').toLowerCase();
+      var qty=(u==='varias'||u==='several')?1:(parseInt(u,10)||1);
+      groupsByKey[key].qty+=qty;
+    }
+  });
+  // 2) Sub-unidades de lote: las a\u00f1ade individualmente
+  Array.from(stkVehSel).forEach(function(vehKey){
+    var parts=vehKey.split('::');
+    var stockId=parts[0];
+    var vi=parseInt(parts[1],10);
+    var s=stock.find(function(x){return String(x.id)===String(stockId);});
+    if(!s||!s.vehicles||!s.vehicles[vi])return;
+    var key=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+    if(!groupsByKey[key])groupsByKey[key]={qty:0,specificIndices:[]};
+    // Si el padre ya estaba en stkSel, ya est\u00e1n contadas. Skip duplicate
+    if(stkSel.has(stockId))return;
+    groupsByKey[key].qty+=1;
+    groupsByKey[key].specificIndices.push({stockId:s.id,vi:vi});
+  });
+  // Convierte groups en formato selectedCarIds
+  Object.keys(groupsByKey).forEach(function(key){
+    var g=groupsByKey[key];
+    selectedCarIds.push({
+      groupKey:key,
+      qty:g.qty,
+      specificIndices:g.specificIndices  // \u2190 NUEVO: indices espec\u00edficos del lote a usar
+    });
+  });
+  if(selectedCarIds.length===0){
+    alert('\u26a0\ufe0f No has seleccionado ning\u00fan veh\u00edculo.\n\nMarca al menos uno con la casilla SEL.');
+    return;
+  }
+  // Abre el modal con los grupos preseleccionados
+  campOpenNew([]);
+  _campEditing.selectedCarIds=selectedCarIds;
+  campRenderCarsList();
+  campUpdSummary();
+}
 
 // Hook desde Stock Vivo: env\u00edo r\u00e1pido de UN coche
 function campNewFromStockSingle(stockId){
