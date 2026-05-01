@@ -11854,13 +11854,27 @@ var _tplEditing={
 // Definici\u00f3n de tipos de bloques disponibles
 // Cada tipo tiene: type, label, icon, defaultConfig, renderHTML(config), renderForm(config)
 var TPL_BLOCK_TYPES={
+  viewonline:{
+    type:'viewonline',
+    label:'View Online',
+    icon:'\ud83d\udd17',
+    description:'Link "Si no puedes ver este email correctamente"',
+    defaultConfig:{
+      text:'If you are unable to view the content of this email correctly,',
+      linkText:'View Online',
+      linkUrl:'{{view_online_url}}',
+      align:'center'
+    }
+  },
   header:{
     type:'header',
     label:'Header',
     icon:'\ud83d\uddbc\ufe0f',
     description:'Logo + tagline en la parte superior',
     defaultConfig:{
-      logoUrl:'https://kekkoibz.github.io/nexo-dmcar/logos/dmcar.png',
+      logoUrl:'https://kekkoibz.github.io/nexo-dmcar/logos/dmcar-logo.png',
+      logoUrl2x:'https://kekkoibz.github.io/nexo-dmcar/logos/dmcar-logo@2x.png',
+      logoWidth:'300',
       tagline:'DMCARGROUP \u2013 Your Trusted Partner in Automotive Trading',
       bgColor:'#ffffff'
     }
@@ -11922,12 +11936,31 @@ function tplRenderBlockHTML(block){
   if(!block)return '';
   var c=block.config||{};
   switch(block.type){
+    case 'viewonline':
+      var align=c.align||'center';
+      var txt=esc(c.text||'If you are unable to view the content of this email correctly,');
+      var linkTxt=esc(c.linkText||'View Online');
+      var linkUrl=c.linkUrl||'{{view_online_url}}';
+      return '<div style="padding:14px 20px 6px 20px;text-align:'+align+';font-size:11px;color:#888">'
+        +txt+' <a href="'+esc(linkUrl)+'" style="color:#2563eb;text-decoration:underline">'+linkTxt+'</a>'
+      +'</div>';
     case 'header':
       var bg=c.bgColor||'#ffffff';
-      return '<div style="text-align:center;background:'+esc(bg)+';padding:20px 14px">'
-        +(c.logoUrl?'<img src="'+esc(c.logoUrl)+'" alt="Logo" style="max-width:300px;height:auto;display:inline-block">':'')
-        +(c.tagline?'<div style="font-size:14px;font-weight:600;color:#333;margin-top:14px">'+esc(c.tagline)+'</div>':'')
-      +'</div>';
+      var logoUrl=c.logoUrl||'';
+      var logoUrl2x=c.logoUrl2x||logoUrl;
+      var logoWidth=c.logoWidth||'300';
+      var html='<div style="text-align:center;background:'+esc(bg)+';padding:24px 14px">';
+      if(logoUrl){
+        // Uso srcset para retina si tenemos @2x
+        html+='<img src="'+esc(logoUrl)+'"';
+        if(logoUrl2x&&logoUrl2x!==logoUrl){
+          html+=' srcset="'+esc(logoUrl)+' 1x, '+esc(logoUrl2x)+' 2x"';
+        }
+        html+=' alt="Logo" width="'+esc(logoWidth)+'" style="max-width:'+esc(logoWidth)+'px;width:100%;height:auto;display:inline-block;border:0">';
+      }
+      if(c.tagline)html+='<div style="font-size:14px;font-weight:600;color:#333;margin-top:14px;font-family:Arial,Helvetica,sans-serif">'+esc(c.tagline)+'</div>';
+      html+='</div>';
+      return html;
     case 'greeting':
       var greeting=esc(c.template||'Hello,');
       var html='<div style="padding:14px 20px;font-size:14px;color:#333">';
@@ -11968,10 +12001,23 @@ function tplRenderBlockForm(block){
   var t=block.type;
   var html='';
   switch(t){
+    case 'viewonline':
+      html+='<div class="mb10"><label>Texto introductorio</label><input type="text" id="bf-text" value="'+esc(c.text||'')+'" placeholder="If you are unable to view..."></div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Texto del link</label><input type="text" id="bf-linkText" value="'+esc(c.linkText||'')+'" placeholder="View Online"></div>';
+      html+='<div><label>Alineaci\u00f3n</label><select id="bf-align"><option value="center"'+(c.align==='center'?' selected':'')+'>Centro</option><option value="left"'+(c.align==='left'?' selected':'')+'>Izquierda</option><option value="right"'+(c.align==='right'?' selected':'')+'>Derecha</option></select></div>';
+      html+='</div>';
+      html+='<div class="mb10"><label>URL del link</label><input type="text" id="bf-linkUrl" value="'+esc(c.linkUrl||'')+'" placeholder="{{view_online_url}}"></div>';
+      html+='<div style="font-size:10px;color:var(--t4);line-height:1.5">\u2139\ufe0f Variable disponible: <code>{{view_online_url}}</code> (NEXO la reemplaza autom\u00e1ticamente con el link \u00fanico de cada destinatario)</div>';
+      break;
     case 'header':
-      html+='<div class="mb10"><label>URL del logo</label><input type="text" id="bf-logoUrl" value="'+esc(c.logoUrl||'')+'" placeholder="https://..."></div>';
+      html+='<div class="mb10"><label>URL del logo (normal)</label><input type="text" id="bf-logoUrl" value="'+esc(c.logoUrl||'')+'" placeholder="https://..."></div>';
+      html+='<div class="mb10"><label>URL del logo @2x (Retina, opcional)</label><input type="text" id="bf-logoUrl2x" value="'+esc(c.logoUrl2x||'')+'" placeholder="https://...@2x.png"></div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Ancho del logo (px)</label><input type="text" id="bf-logoWidth" value="'+esc(c.logoWidth||'300')+'" placeholder="300"></div>';
+      html+='<div><label>Color de fondo</label><input type="color" id="bf-bgColor" value="'+esc(c.bgColor||'#ffffff')+'"></div>';
+      html+='</div>';
       html+='<div class="mb10"><label>Tagline</label><input type="text" id="bf-tagline" value="'+esc(c.tagline||'')+'" placeholder="DMCARGROUP \u2013 Your Trusted Partner..."></div>';
-      html+='<div class="mb10"><label>Color de fondo</label><input type="color" id="bf-bgColor" value="'+esc(c.bgColor||'#ffffff')+'"></div>';
       break;
     case 'greeting':
       html+='<div class="mb10"><label>Saludo (puede usar {{nombre}})</label><input type="text" id="bf-template" value="'+esc(c.template||'')+'" placeholder="Hello {{nombre}},"></div>';
@@ -12113,7 +12159,7 @@ function tplRenderPreview(){
   // Ensambla todos los bloques + sustituye variables con valores de ejemplo
   var html=_tplEditing.blocks.map(function(b){return tplRenderBlockHTML(b);}).join('');
   // Variables de ejemplo (para preview)
-  html=html.replace(/\{\{nombre\}\}/g,'Francesco').replace(/\{\{empresa\}\}/g,'DMCAR Group').replace(/\{\{pais\}\}/g,'Espa\u00f1a').replace(/\{\{email\}\}/g,'cliente@ejemplo.com').replace(/\{\{unsubscribe_url\}\}/g,'#');
+  html=html.replace(/\{\{nombre\}\}/g,'Francesco').replace(/\{\{empresa\}\}/g,'DMCAR Group').replace(/\{\{pais\}\}/g,'Espa\u00f1a').replace(/\{\{email\}\}/g,'cliente@ejemplo.com').replace(/\{\{unsubscribe_url\}\}/g,'#').replace(/\{\{view_online_url\}\}/g,'#');
   prev.innerHTML=html;
 }
 
@@ -12227,7 +12273,8 @@ function tplBuildHTML(template,vars){
                    .replace(/\{\{empresa\}\}/g,esc(vars.empresa||''))
                    .replace(/\{\{pais\}\}/g,esc(vars.pais||''))
                    .replace(/\{\{email\}\}/g,esc(vars.email||''))
-                   .replace(/\{\{unsubscribe_url\}\}/g,esc(vars.unsubscribe_url||'#'));
+                   .replace(/\{\{unsubscribe_url\}\}/g,esc(vars.unsubscribe_url||'#'))
+                   .replace(/\{\{view_online_url\}\}/g,esc(vars.view_online_url||'#'));
   // Wrap en HTML completo de email
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>'
     +'<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">'
@@ -12259,7 +12306,8 @@ function tplSendTest(id){
     empresa:'DMCAR Group (TEST)',
     pais:'Espa\u00f1a',
     email:to,
-    unsubscribe_url:'https://example.com/unsubscribe'
+    unsubscribe_url:'https://example.com/unsubscribe',
+    view_online_url:'https://example.com/view-online/test'
   });
   var subject='[NEXO Test] '+(t.subject||t.name||'Vista previa template');
   // Indicaci\u00f3n visual
