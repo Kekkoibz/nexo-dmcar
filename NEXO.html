@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.39 — DMCAR GROUP CRM | 2026-05-01 | nxBuildOfferTitle: detecta auto New/Used/Km 0; nombre campaña + asunto + card title todos con el mismo título -->
+<!-- NEXO v9.40 — DMCAR GROUP CRM | 2026-05-01 | Nome campagna #ID PRIMA del titolo, Note warning condizionali (solo se mancano realmente), auto-fix retroattivo borradores legacy -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -12000,10 +12000,10 @@ function campAutoFillName(){
     });
   }
   if(!s)return;
-  // v9.39: usa el mismo titulo de la oferta (con New/Used/Km 0)
+  // v9.40: ID PRIMA, poi titolo (es: "#001 New DACIA DUSTER Expression Eco-G 120 AUT")
   var fullTitle=nxBuildOfferTitle(s);
   var oid=_campEditing.offerId||nxPeekOfferId();
-  inp.value=fullTitle+' #'+oid;
+  inp.value='#'+oid+' '+fullTitle;
   _campEditing.name=inp.value;
 }
 window.campAutoFillName=campAutoFillName;
@@ -12024,6 +12024,11 @@ function campOpenEdit(id){
     excludedRecipientIds:c.excludedRecipientIds?Object.assign({},c.excludedRecipientIds):{},
     status:c.status||'draft'
   };
+  // v9.40: fix retroattivo per borradores legacy:
+  // - Se el nombre NO empieza con "#NNN " → rigenera (formato viejo o vacío)
+  // - Si el subject parece un email (contiene @) → rigenera dalla version
+  var nameNeedsFix=!/^#\d{3}\s/.test(_campEditing.name||'');
+  var subjectIsBroken=/@/.test(_campEditing.subject||'')||!_campEditing.subject;
   if(n('camp-name'))n('camp-name').value=_campEditing.name;
   if(n('camp-subject'))n('camp-subject').value=_campEditing.subject;
   campPopulateSelects();
@@ -12033,6 +12038,13 @@ function campOpenEdit(id){
   campRenderCarsList();
   campRenderRecipients();
   campRenderFirmaInfo();
+  // v9.40: auto-fix nome/subject obsoleti (solo se hay coches seleccionados)
+  if(_campEditing.selectedCarIds.length>0){
+    setTimeout(function(){
+      if(nameNeedsFix&&typeof campAutoFillName==='function')campAutoFillName();
+      if(subjectIsBroken&&typeof campAutoFillSubject==='function')campAutoFillSubject();
+    },50);
+  }
   campUpdSummary();
   openM('m-camp-new');
 }
@@ -13041,6 +13053,14 @@ window.campCheckMissingData=campCheckMissingData;
 // Devuelve true si el usuario confirma continuar, false si cancela.
 function campShowMissingWarning(problems){
   if(!problems||problems.length===0)return true;
+  // v9.40: aggregar quali tipi de problemas hay para mostrar SOLO las notas relevantes
+  var hasEquipMissing=false,hasSellMissing=false,hasVinMissing=false,hasPhotoMissing=false;
+  problems.forEach(function(p){
+    if(p.missing.indexOf('equip')>=0)hasEquipMissing=true;
+    if(p.missing.indexOf('sell')>=0)hasSellMissing=true;
+    if(p.missing.indexOf('vin')>=0)hasVinMissing=true;
+    if(p.missing.indexOf('photo')>=0)hasPhotoMissing=true;
+  });
   var msg='\u26a0\ufe0f DATOS FALTANTES en '+problems.length+' coche'+(problems.length!==1?'s':'')+':\n\n';
   problems.forEach(function(p){
     var miss=[];
@@ -13050,10 +13070,16 @@ function campShowMissingWarning(problems){
     if(p.missing.indexOf('sell')>=0)miss.push('precio venta (margen)');
     msg+='\u2022 '+p.brand+' '+p.model+': falta '+miss.join(', ')+'\n';
   });
-  msg+='\nNotas:\n';
-  msg+='\u2022 Sin equipamiento \u2192 el email mostrar\u00e1 \"Standard\".\n';
-  msg+='\u2022 Sin precio venta \u2192 usa el bot\u00f3n \ud83d\udcb0 Margen para definirlo.\n\n';
-  msg+='\u00bfQu\u00e9 quieres hacer?\n\n';
+  // Notas SOLO si es relevante (no spam de notas inútiles)
+  var notes=[];
+  if(hasEquipMissing)notes.push('\u2022 Sin equipamiento \u2192 el email mostrar\u00e1 \"Standard\".');
+  if(hasSellMissing)notes.push('\u2022 Sin precio venta \u2192 usa el bot\u00f3n \ud83d\udcb0 Margen para definirlo.');
+  if(hasVinMissing)notes.push('\u2022 Sin VIN \u2192 el email no mostrar\u00e1 el campo "Ex. VIN".');
+  if(hasPhotoMissing)notes.push('\u2022 Sin fotos \u2192 el email mostrar\u00e1 solo datos t\u00e9cnicos.');
+  if(notes.length>0){
+    msg+='\nNotas:\n'+notes.join('\n')+'\n';
+  }
+  msg+='\n\u00bfQu\u00e9 quieres hacer?\n\n';
   msg+='[OK]      Continuar y enviar igualmente\n';
   msg+='[Cancel]  Cancelar y editar el Stock primero';
   return confirm(msg);
