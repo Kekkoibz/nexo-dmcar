@@ -273,6 +273,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cr" id="cnt-prov-inbox" style="display:none;cursor:pointer" title="Bandeja de ofertas Provider" onclick="event.stopPropagation();provInboxOpen()">0</span><span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
     <div class="ni" id="n-leads" onclick="go('leads')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v8a7 7 0 0014 0V4M5 4h4v8a3 3 0 006 0V4h4M4 4h1M19 4h1"/></svg></span>Leads<span class="ni-cnt co" id="cnt-leads">0</span></div>
     <div class="ni" id="n-marketing" onclick="go('marketing')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l9-5 9 5"/></svg></span>Marketing<span class="ni-cnt cg" id="cnt-marketing" style="display:none">0</span></div>
+    <div class="ni" id="n-campaigns" onclick="go('campaigns')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-7 18-2-8-9-2z"/></svg></span>Campa&ntilde;as<span class="ni-cnt cg" id="cnt-campaigns" style="display:none">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M9 12l1.5 1.5L13 11M9 16l1.5 1.5L13 15" stroke-linecap="round"/></svg></span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
     <div class="sb-sec">Sistema</div>
     <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 11-2.6 2.6l-7.5 7.5a2 2 0 102.8 2.8l7.5-7.5a4 4 0 002.6-2.6z"/></svg></span>Configuracion</div>
@@ -830,6 +831,64 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:32px;margin-bottom:10px">&#128221;</div>
           <div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:5px">No hay listas a&uacute;n</div>
           <div style="font-size:12px">Aplica filtros y guarda como lista din&aacute;mica, o crea una est&aacute;tica desde "+ Lista"</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMPA\u00d1AS -->
+    <div class="view" id="view-campaigns">
+      <div class="fbet mb14">
+        <div><div class="st">Campa&ntilde;as Email</div><div class="ss">Env&iacute;o masivo de emails a tus listas con tracking de aperturas</div></div>
+        <button class="btn bp" onclick="campOpenNew()" id="camp-new-btn">+ Nueva campa&ntilde;a</button>
+      </div>
+
+      <!-- Tab navigator -->
+      <div class="fc g4 mb14" style="border-bottom:1px solid var(--border);padding-bottom:0">
+        <button class="btn bg" id="camp-tab-borr" onclick="campSwitchTab('borradores')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128221; Borradores <span id="camp-cnt-borr" style="font-size:10px;color:var(--t4)">(0)</span></button>
+        <button class="btn bg" id="camp-tab-env" onclick="campSwitchTab('enviadas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#9989; Enviadas <span id="camp-cnt-env" style="font-size:10px;color:var(--t4)">(0)</span></button>
+        <button class="btn bg" id="camp-tab-prog" onclick="campSwitchTab('programadas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128338; Programadas <span id="camp-cnt-prog" style="font-size:10px;color:var(--t4)">(0)</span></button>
+      </div>
+
+      <!-- TAB: Borradores -->
+      <div id="camp-pane-borr">
+        <div id="camp-grid-borr" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+        <div id="camp-empty-borr" style="text-align:center;padding:60px;color:var(--t3);display:none">
+          <div style="font-size:48px;margin-bottom:14px">&#128241;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay campa&ntilde;as en borrador</div>
+          <div style="font-size:12px;margin-bottom:14px">Crea una nueva campa&ntilde;a para empezar a enviar emails a tus listas</div>
+          <button class="btn bp" onclick="campOpenNew()">+ Crear primera campa&ntilde;a</button>
+        </div>
+      </div>
+
+      <!-- TAB: Enviadas -->
+      <div id="camp-pane-env" style="display:none">
+        <div id="camp-grid-env" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+        <div id="camp-empty-env" style="text-align:center;padding:60px;color:var(--t3);display:none">
+          <div style="font-size:48px;margin-bottom:14px">&#128238;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay campa&ntilde;as enviadas</div>
+          <div style="font-size:12px">Las campa&ntilde;as enviadas aparecen aqu&iacute; con stats de apertura</div>
+        </div>
+      </div>
+
+      <!-- TAB: Programadas -->
+      <div id="camp-pane-prog" style="display:none">
+        <div id="camp-grid-prog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+        <div id="camp-empty-prog" style="text-align:center;padding:60px;color:var(--t3);display:none">
+          <div style="font-size:48px;margin-bottom:14px">&#128338;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay campa&ntilde;as programadas</div>
+          <div style="font-size:12px">Programa el env&iacute;o para una fecha y hora futura</div>
+        </div>
+      </div>
+
+      <!-- Info panel sotto -->
+      <div class="card" style="margin-top:20px;padding:14px;background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(245,158,11,.05));border-left:3px solid var(--acc)">
+        <div style="font-weight:600;font-size:13px;color:var(--t1);margin-bottom:6px">&#128161; C&oacute;mo funciona</div>
+        <div style="font-size:11px;color:var(--t3);line-height:1.6">
+          <strong>1.</strong> Crea una nueva campa&ntilde;a y selecciona la lista destinataria<br>
+          <strong>2.</strong> Compone el subject y el cuerpo HTML con variables como <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">{{nombre}}</code> <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">{{empresa}}</code><br>
+          <strong>3.</strong> Vista previa con datos reales de un contacto<br>
+          <strong>4.</strong> Dry-run: NEXO te muestra a qui&eacute;n se enviar&iacute;a antes de enviar<br>
+          <strong>5.</strong> Confirma y NEXO env&iacute;a con throttling configurable (10-30/min) v&iacute;a TurboSMTP
         </div>
       </div>
     </div>
@@ -1800,7 +1859,7 @@ var FIREBASE_CONFIG={
   appId:"1:642250180456:web:6bddc72a072814c360f8dd"
 };
 
-var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
+var FB_SYNC_KEYS=['leads','savedLabels','stock','stkCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','mkCampaigns','mkCampaignsCounter'];
 // Mapping key -> variable globale che contiene i dati locali
 // Usato per i listener real-time per applicare cambi remoti alle vars in memoria
 var FB_KEY_VARS={
@@ -3147,7 +3206,7 @@ function fmtPickup(loc){
 }
 
 // -- NAV ------------------------------------------------------
-var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',tareas:'Tareas',config:'Configuracion'};
+var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',campaigns:'Campa\u00f1as',tareas:'Tareas',config:'Configuracion'};
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
@@ -3164,6 +3223,7 @@ function go(v){
   if(v==='tareas') renderTareas();
   if(v==='leads') renderLeads();
   if(v==='marketing') renderMarketing();
+  if(v==='campaigns') renderCampaigns();
   if(v==='config') renderConfig();
   if(window.innerWidth<=768) document.getElementById('sb').classList.remove('mob');
 }
@@ -8907,6 +8967,35 @@ var mkFlt=[];                 // contatti filtrati (post applicazione filtri)
 var mkActiveTab='contactos';  // tab corrente: 'contactos' | 'listas'
 var mkImportData=null;        // dati staging import (rows + headers + mapping)
 
+// CAMPA\u00d1AS — storage
+var mkCampaigns=LS('mkCampaigns',[]);     // array di campagne (borradores + enviadas + programadas)
+var mkCampaignsCounter=LS('mkCampaignsCounter',1);
+var campActiveTab='borradores';            // 'borradores' | 'enviadas' | 'programadas'
+
+// Schema campagna (per riferimento futuro):
+// {
+//   id: 'camp_XXX',
+//   name: 'Newsletter Mayo 2026',
+//   status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'paused',
+//   listId: 'mkl_XXX',                  // lista destinataria
+//   subject: 'Nuevas ofertas...',
+//   bodyHtml: '<html>...{{nombre}}...',
+//   bodyText: 'Versione testo plain (auto-generata)',
+//   senderName: 'DMCAR Group',
+//   senderEmail: 'info@dmcargroup.com',
+//   replyTo: 'info@dmcargroup.com',
+//   throttle: 15,                       // email/min
+//   createdAt: '2026-05-01T...',
+//   scheduledAt: null | '2026-06-01T...',
+//   sentAt: null | '2026-05-01T...',
+//   stats: {
+//     totalRecipients: 41,
+//     sent: 0, failed: 0,
+//     opened: 0, clicked: 0, bounced: 0, unsubscribed: 0
+//   },
+//   recipients: [{contactId, status, sentAt, openedAt, clickedAt, error}]
+// }
+
 // -- HELPERS --------------------------------------------------------------
 var MK_TYPE_LABEL={dealer:'Dealer',broker:'Broker',cliente_final:'Cliente final',importador:'Importador',rent_a_car:'Rent a car',otro:'Otro'};
 var MK_ORIGIN_LABEL={web:'Web',instagram:'Instagram',fiera:'Fiera',lista_vieja:'Lista vieja',manual:'Manual',pegar_texto:'Pegar texto',otro:'Otro'};
@@ -11095,6 +11184,136 @@ function mkApplyIPInferResults(){
 }
 
 // END MARKETING IP GEOLOCATION
+// ===========================================================================
+
+// ===========================================================================
+// CAMPA\u00d1AS MODULE — invio massivo email
+// SCHELETRO v9.6: solo struttura UI, no funzionalit\u00e0 invio (in arrivo)
+// ===========================================================================
+
+function renderCampaigns(){
+  // Update sidebar counter (campagne attive: borradores + programmate)
+  var activeCount=mkCampaigns.filter(function(c){return c.status==='draft'||c.status==='scheduled';}).length;
+  var ce=n('cnt-campaigns');
+  if(ce){ce.textContent=activeCount;ce.style.display=mkCampaigns.length?'':'none';}
+  // Update tab counters
+  var borr=mkCampaigns.filter(function(c){return c.status==='draft';}).length;
+  var env=mkCampaigns.filter(function(c){return c.status==='sent';}).length;
+  var prog=mkCampaigns.filter(function(c){return c.status==='scheduled';}).length;
+  if(n('camp-cnt-borr'))n('camp-cnt-borr').textContent='('+borr+')';
+  if(n('camp-cnt-env'))n('camp-cnt-env').textContent='('+env+')';
+  if(n('camp-cnt-prog'))n('camp-cnt-prog').textContent='('+prog+')';
+  // Render tab corrente
+  campSwitchTab(campActiveTab);
+}
+
+function campSwitchTab(t){
+  campActiveTab=t;
+  // Toggle pannelli
+  ['borradores','enviadas','programadas'].forEach(function(p){
+    var pane=n('camp-pane-'+p.slice(0,4));
+    if(pane)pane.style.display=(p===t)?'':'none';
+  });
+  // Stile tab attivo
+  ['borr','env','prog'].forEach(function(s){
+    var tab=n('camp-tab-'+s);
+    if(!tab)return;
+    var isActive=(s==='borr'&&t==='borradores')||(s==='env'&&t==='enviadas')||(s==='prog'&&t==='programadas');
+    tab.classList.toggle('bp',isActive);
+    tab.classList.toggle('bg',!isActive);
+  });
+  // Render contenuto tab
+  campRenderTabContent(t);
+}
+
+function campRenderTabContent(t){
+  var statusFilter='';
+  if(t==='borradores')statusFilter='draft';
+  else if(t==='enviadas')statusFilter='sent';
+  else if(t==='programadas')statusFilter='scheduled';
+  var camps=mkCampaigns.filter(function(c){return c.status===statusFilter;});
+  // Sort: pi\u00f9 recenti per primi
+  camps.sort(function(a,b){
+    var da=a.sentAt||a.scheduledAt||a.createdAt||'';
+    var db=b.sentAt||b.scheduledAt||b.createdAt||'';
+    return db.localeCompare(da);
+  });
+  var gridId='camp-grid-'+t.slice(0,4);
+  var emptyId='camp-empty-'+t.slice(0,4);
+  var grid=n(gridId),empty=n(emptyId);
+  if(!grid)return;
+  if(!camps.length){
+    grid.innerHTML='';
+    if(empty)empty.style.display='';
+    return;
+  }
+  if(empty)empty.style.display='none';
+  grid.innerHTML=camps.map(function(c){return campRenderCardHTML(c);}).join('');
+}
+
+function campRenderCardHTML(c){
+  var lst=mkLists.find(function(l){return l.id===c.listId;});
+  var listName=lst?mkDecorateListName(lst.name):'(lista eliminada)';
+  var statusBadge='';
+  if(c.status==='draft')statusBadge='<span style="background:rgba(245,158,11,.15);color:#92400e;padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">\ud83d\udcdd BORRADOR</span>';
+  else if(c.status==='sent')statusBadge='<span style="background:rgba(16,185,129,.15);color:#065f46;padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">\u2705 ENVIADA</span>';
+  else if(c.status==='scheduled')statusBadge='<span style="background:rgba(37,99,235,.15);color:var(--acc);padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">\ud83d\udd52 PROGRAMADA</span>';
+  else if(c.status==='sending')statusBadge='<span style="background:rgba(168,85,247,.15);color:#6b21a8;padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">\u23f3 ENVIANDO...</span>';
+  else if(c.status==='failed')statusBadge='<span style="background:rgba(239,68,68,.15);color:#991b1b;padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">\u274c FALLIDA</span>';
+  // Stats per le inviate
+  var statsHtml='';
+  if(c.status==='sent'&&c.stats){
+    var s=c.stats;
+    var openRate=s.totalRecipients?Math.round((s.opened||0)/s.totalRecipients*100):0;
+    statsHtml='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0;padding:8px;background:var(--bg3);border-radius:6px;font-size:10px">'
+      +'<div><div style="color:var(--t4);font-size:9px">ENVIADAS</div><div style="font-weight:700;font-size:14px;color:var(--t1)">'+(s.sent||0)+'/'+(s.totalRecipients||0)+'</div></div>'
+      +'<div><div style="color:var(--t4);font-size:9px">ABIERTAS</div><div style="font-weight:700;font-size:14px;color:var(--green)">'+(s.opened||0)+' <span style="font-size:9px;font-weight:400">('+openRate+'%)</span></div></div>'
+      +'<div><div style="color:var(--t4);font-size:9px">CLICKS</div><div style="font-weight:700;font-size:14px;color:var(--acc)">'+(s.clicked||0)+'</div></div>'
+      +'<div><div style="color:var(--t4);font-size:9px">BOUNCE</div><div style="font-weight:700;font-size:14px;color:var(--orange)">'+(s.bounced||0)+'</div></div>'
+      +'</div>';
+  }
+  return '<div class="card" style="padding:14px">'
+    +'<div class="fbet mb6"><div style="font-weight:700;font-size:14px;color:var(--t1);overflow:hidden;text-overflow:ellipsis">'+esc(c.name||'(sin nombre)')+'</div>'+statusBadge+'</div>'
+    +'<div style="font-size:11px;color:var(--t3);margin-bottom:6px"><strong>Asunto:</strong> '+esc(c.subject||'(sin asunto)')+'</div>'
+    +'<div style="font-size:11px;color:var(--t3);margin-bottom:8px"><strong>Lista:</strong> '+esc(listName)+(c.stats&&c.stats.totalRecipients?' \u00b7 '+c.stats.totalRecipients+' destinatarios':'')+'</div>'
+    +statsHtml
+    +'<div style="font-size:10px;color:var(--t4);margin-bottom:8px">'
+      +(c.status==='sent'?'Enviada el '+fmtD(c.sentAt):
+        c.status==='scheduled'?'Programada para '+fmtD(c.scheduledAt):
+        'Creada el '+fmtD(c.createdAt))
+    +'</div>'
+    +'<div class="fc g6">'
+      +(c.status==='draft'?'<button class="btn bp" onclick="campOpenEdit(\''+esc(c.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Continuar</button>':'')
+      +(c.status==='sent'?'<button class="btn bs" onclick="campOpenStats(\''+esc(c.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#128202; Ver stats</button>':'')
+      +(c.status==='scheduled'?'<button class="btn bs" onclick="campOpenEdit(\''+esc(c.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>':'')
+      +'<button class="btn bd" onclick="campDel(\''+esc(c.id)+'\')" style="font-size:10px;padding:4px 8px" title="Eliminar">x</button>'
+    +'</div>'
+  +'</div>';
+}
+
+// PLACEHOLDER FUNCTIONS (saranno implementate nelle prossime versioni)
+function campOpenNew(){
+  alert('\ud83d\udea7 Funcionalidad en desarrollo.\n\nLa creaci\u00f3n de campa\u00f1as se implementar\u00e1 en la pr\u00f3xima versi\u00f3n (v9.7) cuando integremos:\n\u2022 Editor del template HTML\n\u2022 Selector de lista destinataria\n\u2022 Sistema de variables {{nombre}} {{empresa}} ...\n\u2022 Vista previa con datos reales\n\u2022 Dry-run antes del env\u00edo\n\u2022 Throttling configurable v\u00eda TurboSMTP\n\nFrancesco, manda el template Direct Mail HTML para empezar.');
+}
+
+function campOpenEdit(id){
+  alert('\ud83d\udea7 Editor de campa\u00f1a en desarrollo.\n\nID: '+id);
+}
+
+function campOpenStats(id){
+  alert('\ud83d\udea7 Stats en desarrollo.\n\nID: '+id);
+}
+
+function campDel(id){
+  var c=mkCampaigns.find(function(x){return x.id===id;});
+  if(!c)return;
+  if(!confirm('\u00bfEliminar la campa\u00f1a "'+(c.name||'sin nombre')+'"?\n\nEsta acci\u00f3n no se puede deshacer.'))return;
+  mkCampaigns=mkCampaigns.filter(function(x){return x.id!==id;});
+  SS('mkCampaigns',mkCampaigns);
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Campa\u00f1a eliminada');
+}
+// END CAMPA\u00d1AS SCHELETRO
 // ===========================================================================
 
 // -- MODALS ---------------------------------------------------
