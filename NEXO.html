@@ -13135,18 +13135,14 @@ function tplRenderBlockHTML(block){
       // Render email-safe con etiquetas IDENTICAS al Word/PDF (Generador Ofertas)
       // Etiquetas: Net Price, Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery, Equipment
       var ah='<div style="padding:14px 20px;text-align:center;font-family:Arial,Helvetica,sans-serif">';
-      // Logo marca centrado (si existe) - prueba m\u00faltiples variantes con onerror chain
-      if(c.brandLogo){
-        // Si tenemos brandName guardado, usamos el helper de variantes
-        // Si no, simple img con la URL (legacy)
-        var brandFromConfig=c.brandName||'';
-        if(!brandFromConfig){
-          // Fallback simple
-          ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
-        }else{
-          ah+='<div style="text-align:center;margin-bottom:14px">'+campBrandLogoImgHTML(brandFromConfig,120)+'</div>';
-        }
+      // Logo marca centrado (si existe Y es base64 v\u00e1lido)
+      // No mostrar img si la URL falla \u2014 mejor nada que un cuadradito ?
+      if(c.brandLogo&&c.brandLogo.indexOf('data:image/')===0){
+        // Es base64 incrustado \u2192 muestra siempre
+        ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
       }
+      // Si es URL externa, no la mostramos (Apple Mail bloquea, mostrar\u00eda cuadrado ?)
+      // El logo se incrusta autom\u00e1ticamente al usar campSendTest/campSendNow
       // T\u00edtulo coche (azul #0000F5, bold, grande - como Word)
       if(c.title){
         ah+='<div style="text-align:center;font-size:22px;font-weight:700;color:#0000F5;margin-bottom:8px;line-height:1.2">'+esc(c.title)+'</div>';
@@ -13165,10 +13161,12 @@ function tplRenderBlockHTML(block){
       if(c.availableUnits)ah+='<div><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
       if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
       ah+='</div>';
-      // Equipment (header azul + texto) - siempre se muestra (regla DMCAR: si vac\u00edo \u2192 "Standard")
+      // Equipment (header azul + texto) - todo en UN solo bloque para evitar espacios extra
       var eqText=(c.equipment||'').trim()||'Standard';
-      ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 2px 0">Equipment:</div>';
-      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px;margin-top:0">'+esc(eqText)+'</div>';
+      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin:18px 0;padding:0">'
+        +'<span style="font-size:14px;font-weight:600;color:#0000F5;display:block;margin:0;padding:0">Equipment:</span>'
+        +esc(eqText)
+        +'</div>';
       // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
       var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
       if(photos.length>0){
