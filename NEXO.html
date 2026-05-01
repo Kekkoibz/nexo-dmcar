@@ -1879,8 +1879,20 @@ En que te puedo ayudar hoy?</div></div>
     </div>
     <div class="mb10"><label>Email del vendedor (Reply-To)</label><input type="email" id="fir-email" placeholder="info@dmcargroup.com"></div>
     <div class="mb6">
-      <label>Firma HTML *</label>
-      <textarea id="fir-html" placeholder="<table>...</table>  o  texto plano con HTML simple" style="min-height:200px;font-family:monospace;font-size:11px" oninput="firPreviewSig()"></textarea>
+      <div class="fbet" style="margin-bottom:6px">
+        <label style="margin:0">Firma *</label>
+        <div class="fc g4" style="font-size:11px">
+          <button type="button" class="btn bp" id="fir-mode-html" onclick="firSwitchMode('html')" style="padding:3px 10px;font-size:10px">&lt;/&gt; HTML</button>
+          <button type="button" class="btn bg" id="fir-mode-md" onclick="firSwitchMode('md')" style="padding:3px 10px;font-size:10px">&#128221; Texto/Markdown</button>
+        </div>
+      </div>
+      <div id="fir-mode-html-help" style="font-size:10px;color:var(--t4);margin-bottom:5px;line-height:1.5">
+        Pega aqu&iacute; HTML directo (de View Source de Direct Mail, Outlook, etc.)
+      </div>
+      <div id="fir-mode-md-help" style="font-size:10px;color:var(--t4);margin-bottom:5px;line-height:1.5;display:none">
+        Pega aqu&iacute; el texto con formato Markdown (links como <code>[texto](url)</code>). NEXO lo convierte autom&aacute;ticamente a HTML al guardar.
+      </div>
+      <textarea id="fir-html" placeholder="Pega aqu&iacute; el HTML de la firma..." style="min-height:200px;font-family:monospace;font-size:11px" oninput="firPreviewSig()"></textarea>
     </div>
     <div class="mb10">
       <label style="font-size:11px;color:var(--t3)">&#128064; Vista previa (c&oacute;mo aparecer&aacute; en los emails)</label>
@@ -11479,6 +11491,7 @@ function firRender(){
 function firOpenNew(){
   ['fir-name','fir-email','fir-html'].forEach(function(i){if(n(i))n(i).value='';});
   if(n('fir-lang'))n('fir-lang').value='es';
+  firSwitchMode('html');  // default
   firPreviewSig();
   n('m-fir-edit').removeAttribute('data-fir-id');
   openM('m-fir-edit');
@@ -11489,36 +11502,111 @@ function firOpenEdit(id){
   if(!f)return;
   if(n('fir-name'))n('fir-name').value=f.name||'';
   if(n('fir-email'))n('fir-email').value=f.email||'';
-  if(n('fir-html'))n('fir-html').value=f.html||'';
+  // Si guardamos rawSource (modo md), lo cargamos para que el usuario edite el original
+  // Si no, cargamos el HTML directo
+  if(n('fir-html'))n('fir-html').value=(f.mode==='md'&&f.rawSource)?f.rawSource:(f.html||'');
   if(n('fir-lang'))n('fir-lang').value=f.lang||'es';
+  firSwitchMode(f.mode||'html');  // default html per backward compat
   firPreviewSig();
   n('m-fir-edit').setAttribute('data-fir-id',f.id);
   openM('m-fir-edit');
 }
 
-// Vista previa en tiempo real del HTML pegado
+// Toggle modo edici\u00f3n: 'html' o 'md'
+var _firMode='html';
+function firSwitchMode(mode){
+  _firMode=mode;
+  var btnHtml=n('fir-mode-html'),btnMd=n('fir-mode-md');
+  var helpHtml=n('fir-mode-html-help'),helpMd=n('fir-mode-md-help');
+  if(mode==='html'){
+    if(btnHtml){btnHtml.classList.add('bp');btnHtml.classList.remove('bg');}
+    if(btnMd){btnMd.classList.add('bg');btnMd.classList.remove('bp');}
+    if(helpHtml)helpHtml.style.display='';
+    if(helpMd)helpMd.style.display='none';
+    if(n('fir-html'))n('fir-html').placeholder='Pega aqu\u00ed el HTML de la firma...';
+  }else{
+    if(btnMd){btnMd.classList.add('bp');btnMd.classList.remove('bg');}
+    if(btnHtml){btnHtml.classList.add('bg');btnHtml.classList.remove('bp');}
+    if(helpHtml)helpHtml.style.display='none';
+    if(helpMd)helpMd.style.display='';
+    if(n('fir-html'))n('fir-html').placeholder='Pega aqu\u00ed el texto con Markdown:\n\nFrancesco Dell\'Agli\nCEO - DMCAR GROUP\n[+39 342 9624234](tel:+393429624234)\n[info@dmcargroup.com](mailto:info@dmcargroup.com)\n...';
+  }
+  firPreviewSig();
+}
+
+// Convierte texto con sintaxis Markdown a HTML formateado para email
+// Maneja: [texto](url), [tel:..], [mailto:..], saltos de l\u00ednea, p\u00e1rrafos vac\u00edos, bloques de aviso
+function firMarkdownToHTML(text){
+  if(!text||typeof text!=='string')return '';
+  // 1. Escape HTML primero
+  var html=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // 2. Converti link Markdown [texto](url) \u2192 <a href="url">texto</a>
+  // Soporta tel:, mailto:, http://, https://
+  html=html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,function(m,txt,url){
+    var u=url.trim();
+    var color='#2563eb';
+    var icon='';
+    if(u.indexOf('tel:')===0)icon='\ud83d\udcde ';
+    else if(u.indexOf('mailto:')===0)icon='\u2709\ufe0f ';
+    else if(/^https?:\/\//.test(u))icon='';
+    return icon+'<a href="'+u+'" style="color:'+color+';text-decoration:none">'+txt+'</a>';
+  });
+  // 3. Detecto bloques de aviso (\u26a0\ufe0f ...): los pongo en caja amarilla
+  html=html.replace(/(\u26a0\ufe0f[^\n]+)/g,'<div style="background:#fef3c7;border-left:3px solid #f59e0b;padding:8px 12px;margin:8px 0;font-size:11px;color:#78350f;line-height:1.5">$1</div>');
+  // 4. Detecto bloques IMPORTANT/disclaimer
+  html=html.replace(/(IMPORTANT:[^\n]+(?:\n[^\n]+)*)/g,'<div style="background:#f3f4f6;border-left:3px solid #9ca3af;padding:8px 12px;margin:8px 0;font-size:10px;color:#4b5563;line-height:1.5;font-style:italic">$1</div>');
+  // 5. Identifico la primera l\u00ednea como nombre (en negrita + grande)
+  var lines=html.split('\n');
+  if(lines.length>0&&lines[0].trim()){
+    lines[0]='<div style="font-weight:700;font-size:15px;color:#1a1a1a;margin-bottom:2px">'+lines[0]+'</div>';
+  }
+  // 6. Segunda l\u00ednea: cargo (italic gris)
+  if(lines.length>1&&lines[1].trim()&&!/<div/.test(lines[1])){
+    lines[1]='<div style="font-style:italic;font-size:13px;color:#555;margin-bottom:8px">'+lines[1]+'</div>';
+  }
+  // 7. Junto las l\u00edneas con <br> entre las que no son ya bloques
+  html=lines.map(function(l,i){
+    if(!l.trim())return '<div style="height:8px"></div>';  // l\u00ednea vac\u00eda \u2192 spacer
+    if(/<div/.test(l))return l;
+    return '<div style="font-size:12px;color:#333;line-height:1.6;margin-bottom:3px">'+l+'</div>';
+  }).join('\n');
+  // 8. Wrap completo
+  return '<div style="font-family:Arial,Helvetica,sans-serif;color:#333;line-height:1.5">'+html+'</div>';
+}
+
+// Vista previa en tiempo real (en ambos modos)
 function firPreviewSig(){
-  var html=(n('fir-html')&&n('fir-html').value||'').trim();
+  var raw=(n('fir-html')&&n('fir-html').value||'').trim();
   var prev=n('fir-html-prev');
   if(!prev)return;
-  if(!html){
-    prev.innerHTML='<div style="color:#999;font-size:11px;font-style:italic">La vista previa aparecer\u00e1 aqu\u00ed cuando pegues la firma HTML...</div>';
+  if(!raw){
+    prev.innerHTML='<div style="color:#999;font-size:11px;font-style:italic">La vista previa aparecer\u00e1 aqu\u00ed cuando pegues la firma...</div>';
     return;
   }
-  // Inietto direttamente l'HTML (sicuro: \u00e8 contenuto dell'utente, mostrato in un sandbox visivo)
-  prev.innerHTML=html;
+  if(_firMode==='md'){
+    prev.innerHTML=firMarkdownToHTML(raw);
+  }else{
+    prev.innerHTML=raw;
+  }
 }
 
 function firSave(){
   var name=(n('fir-name').value||'').trim();
-  var html=(n('fir-html').value||'').trim();
+  var raw=(n('fir-html').value||'').trim();
   if(!name){alert('El nombre identificador es obligatorio.');return;}
-  if(!html){alert('Debes pegar el HTML de la firma.');return;}
+  if(!raw){alert('Debes pegar la firma.');return;}
+  // Si modo Markdown, convierto a HTML antes de guardar
+  var html=raw;
+  if(_firMode==='md'){
+    html=firMarkdownToHTML(raw);
+  }
   var existingId=n('m-fir-edit').getAttribute('data-fir-id');
   var data={
     name:name,
     email:(n('fir-email').value||'').trim(),
-    html:html,
+    html:html,                  // sempre HTML finale (per render email)
+    rawSource:raw,              // testo originale (utile per editing)
+    mode:_firMode,              // 'html' o 'md'
     lang:n('fir-lang').value||'es',
     updatedAt:new Date().toISOString()
   };
@@ -11551,7 +11639,6 @@ function firDel(id){
 }
 
 // Helper: devuelve el HTML de la firma listo para insertar en email
-// Como ya guardamos el bloque HTML completo, lo devolvemos tal cual
 function firRenderHTML(firma){
   if(!firma||!firma.html)return '';
   return firma.html;
