@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v9.32 — DMCAR GROUP CRM | 2026-05-01 | fixes: \uXXXX HTML escapes decoded, campUpdSubjectFromEmoji + campAutoFillSubject defined, campStripEmojis() for outbound email anti-spam -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -817,7 +818,7 @@ En que te puedo ayudar hoy?</div></div>
               <button class="btn bg" onclick="mkClrSel()" style="font-size:11px">Deseleccionar</button>
               <button class="btn bs" onclick="mkBulkSetStatus()" style="font-size:11px">Cambiar estado</button>
               <button class="btn bs" onclick="mkBulkAddToList()" style="font-size:11px">A&ntilde;adir a lista</button>
-              <button class="btn bg" onclick="mkBulkSoftDelete()" style="font-size:11px" title="No elimina \u2014 solo cambia status a unsubscribed">&#128274; Unsubscribe</button>
+              <button class="btn bg" onclick="mkBulkSoftDelete()" style="font-size:11px" title="No elimina — solo cambia status a unsubscribed">&#128274; Unsubscribe</button>
             </div>
           </div>
         </div>
@@ -838,7 +839,7 @@ En que te puedo ayudar hoy?</div></div>
       </div>
     </div>
 
-    <!-- CAMPA\u00d1AS -->
+    <!-- CAMPAÑAS -->
     <div class="view" id="view-campaigns">
       <div class="fbet mb14">
         <div><div class="st">Campa&ntilde;as Email</div><div class="ss">Env&iacute;o masivo de emails a tus listas con tracking de aperturas</div></div>
@@ -992,7 +993,7 @@ En que te puedo ayudar hoy?</div></div>
               <div style="font-size:10px;color:var(--t3);margin-bottom:8px;line-height:1.4">Las respuestas de tus contactos B2B aparecer&aacute;n aqu&iacute; autom&aacute;ticamente (revisi&oacute;n cada 30s).</div>
               <div class="fc g8" style="flex-wrap:wrap">
                 <button class="btn bp" onclick="inboxOpen()" style="font-size:11px">&#9993;&#65039; Abrir bandeja <span id="cfg-inbox-cnt" style="margin-left:6px;background:rgba(255,255,255,.2);padding:1px 6px;border-radius:8px;font-size:10px;display:none">0</span></button>
-                <button class="btn bs" onclick="if(typeof NX_INBOX!=='undefined'){NX_INBOX.fetchInbox().then(function(){if(typeof showToast==='function')showToast('\u2713 Bandeja actualizada');});}" style="font-size:11px">&#128260; Refrescar ahora</button>
+                <button class="btn bs" onclick="if(typeof NX_INBOX!=='undefined'){NX_INBOX.fetchInbox().then(function(){if(typeof showToast==='function')showToast('✓ Bandeja actualizada');});}" style="font-size:11px">&#128260; Refrescar ahora</button>
               </div>
             </div>
           </div>
@@ -1449,7 +1450,7 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
-    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este n\u00famero" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
+    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este número" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
@@ -1523,13 +1524,13 @@ En que te puedo ayudar hoy?</div></div>
         <span id="pp-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
       </div>
       <div id="pp-collapse" style="display:none;padding:0 12px 12px 12px">
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">Copia la firma de un email, biglietto da visita o cualquier texto. NEXO extrae nombre, empresa, tel\u00e9fono, email, pa\u00eds y tipo autom\u00e1ticamente.</div>
-        <textarea id="pp-text" rows="6" placeholder="Ej:&#10;ALEJANDRO G\u00c1LVEZ L\u00d3PEZ&#10;MOBUS&#10;VENTAS REMARKETING&#10;+34672723333 - Ext. 90009&#10;alejandro.galvez@marcosautomocion.com" style="font-size:11px;font-family:monospace"></textarea>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">Copia la firma de un email, biglietto da visita o cualquier texto. NEXO extrae nombre, empresa, teléfono, email, país y tipo automáticamente.</div>
+        <textarea id="pp-text" rows="6" placeholder="Ej:&#10;ALEJANDRO GÁLVEZ LÓPEZ&#10;MOBUS&#10;VENTAS REMARKETING&#10;+34672723333 - Ext. 90009&#10;alejandro.galvez@marcosautomocion.com" style="font-size:11px;font-family:monospace"></textarea>
         <div id="pp-status-msg" style="font-size:11px;color:var(--acc);min-height:16px;margin:6px 0"></div>
         <button type="button" class="btn bp" onclick="provExtractFromPasteInline()" style="width:100%;font-size:12px">&#9889; Procesar y rellenar campos</button>
       </div>
     </div>
-    <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans M\u00fcller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW M\u00fcller GmbH"></div></div>
+    <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans Müller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option>Comercial</option><option>Director</option><option>Stock manager</option><option>Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
@@ -1803,7 +1804,7 @@ En que te puedo ayudar hoy?</div></div>
           <option value="unsubscribed">Unsubscribed</option>
           <option value="bounced">Bounced</option>
         </select>
-        <div style="font-size:9px;color:var(--t4);margin-top:3px;line-height:1.4">\ud83d\udca1 Una vez unsubscribed, el contacto NO se elimina pero NO recibe m\u00e1s emails. Estado global: vale para todas las listas.</div>
+        <div style="font-size:9px;color:var(--t4);margin-top:3px;line-height:1.4">💡 Una vez unsubscribed, el contacto NO se elimina pero NO recibe más emails. Estado global: vale para todas las listas.</div>
       </div>
     </div>
     <div class="g2 mb10">
@@ -1851,7 +1852,7 @@ En que te puedo ayudar hoy?</div></div>
 <div class="ovl" id="m-mk-ipinfer">
   <div class="modal" style="max-width:880px">
     <div class="fbet mb14"><div class="mt">&#127760; Revisar resultados IP Geolocation</div><button class="btn bg" onclick="closeM('m-mk-ipinfer')" style="padding:5px 10px">X</button></div>
-    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Revisa los pa&iacute;ses detectados antes de aplicarlos. Los sitios en Cloudflare/AWS pueden mostrar USA aunque la empresa sea europea \u2014 desmarca los incorrectos.</div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.5">Revisa los pa&iacute;ses detectados antes de aplicarlos. Los sitios en Cloudflare/AWS pueden mostrar USA aunque la empresa sea europea — desmarca los incorrectos.</div>
     <div id="mk-ipinfer-summary"></div>
     <div id="mk-ipinfer-content"></div>
     <div class="fc g8" style="margin-top:14px">
@@ -1861,22 +1862,22 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- CAMPA\u00d1AS: NUEVO / EDITAR VENDEDOR -->
+<!-- CAMPAÑAS: NUEVO / EDITAR VENDEDOR -->
 <div class="ovl" id="m-fir-edit">
   <div class="modal" style="max-width:900px">
     <div class="fbet mb14"><div class="mt">&#9997;&#65039; Firma comercial</div><button class="btn bg" onclick="closeM('m-fir-edit')" style="padding:5px 10px">X</button></div>
     <div style="font-size:11px;color:var(--t3);margin-bottom:12px;line-height:1.5;background:var(--bg3);padding:10px;border-radius:7px;border-left:3px solid var(--acc)">
-      &#128161; <strong>C\u00f3mo crear una firma:</strong> Abre tu firma actual en Direct Mail (o Gmail/Outlook), copia el bloque HTML completo (con foto, datos, links) y p\u00e9galo abajo en &laquo;Firma HTML&raquo;.
+      &#128161; <strong>Cómo crear una firma:</strong> Abre tu firma actual en Direct Mail (o Gmail/Outlook), copia el bloque HTML completo (con foto, datos, links) y pégalo abajo en &laquo;Firma HTML&raquo;.
     </div>
     <div class="g2 mb10">
       <div><label>Nombre identificador *</label><input type="text" id="fir-name" placeholder="ej: Francesco IT, Mauricio ES..." oninput="firPreviewSig()"></div>
       <div><label>Idioma de la firma</label>
         <select id="fir-lang">
-          <option value="es">&#127466;&#127480; Espa\u00f1ol</option>
+          <option value="es">&#127466;&#127480; Español</option>
           <option value="it">&#127470;&#127481; Italiano</option>
-          <option value="en">&#127468;&#127463; Ingl\u00e9s</option>
-          <option value="fr">&#127467;&#127479; Franc\u00e9s</option>
-          <option value="de">&#127465;&#127466; Alem\u00e1n</option>
+          <option value="en">&#127468;&#127463; Inglés</option>
+          <option value="fr">&#127467;&#127479; Francés</option>
+          <option value="de">&#127465;&#127466; Alemán</option>
         </select>
       </div>
     </div>
@@ -1885,7 +1886,7 @@ En que te puedo ayudar hoy?</div></div>
       <div class="fbet" style="margin-bottom:6px">
         <label style="margin:0">Firma *</label>
         <div class="fc g4" style="font-size:11px">
-          <button type="button" class="btn bs" onclick="firPasteFromClipboard()" style="padding:3px 10px;font-size:10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none" title="Pegar desde el portapapeles (\u00fatil si Cmd+V no funciona)">&#128203; Pegar</button>
+          <button type="button" class="btn bs" onclick="firPasteFromClipboard()" style="padding:3px 10px;font-size:10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none" title="Pegar desde el portapapeles (útil si Cmd+V no funciona)">&#128203; Pegar</button>
           <button type="button" class="btn bp" id="fir-mode-html" onclick="firSwitchMode('html')" style="padding:3px 10px;font-size:10px">&lt;/&gt; HTML</button>
           <button type="button" class="btn bg" id="fir-mode-md" onclick="firSwitchMode('md')" style="padding:3px 10px;font-size:10px">&#128221; Texto/Markdown</button>
         </div>
@@ -1911,7 +1912,7 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- CAMPA\u00d1AS: EDITOR TEMPLATE A BLOQUES -->
+<!-- CAMPAÑAS: EDITOR TEMPLATE A BLOQUES -->
 <div class="ovl" id="m-tpl-edit">
   <div class="modal" style="max-width:1280px;width:96vw;max-height:94vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
     <!-- Header del editor -->
@@ -1980,7 +1981,7 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- MODAL: EDITAR BLOQUE INDIVIDUAL (configuraci\u00f3n del bloque seleccionado) -->
+<!-- MODAL: EDITAR BLOQUE INDIVIDUAL (configuración del bloque seleccionado) -->
 <div class="ovl" id="m-tpl-block-edit">
   <div class="modal" style="max-width:600px">
     <div class="fbet mb14"><div class="mt" id="m-tpl-block-title">Editar bloque</div><button class="btn bg" onclick="closeM('m-tpl-block-edit')" style="padding:5px 10px">X</button></div>
@@ -1992,7 +1993,7 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- CAMPA\u00d1AS: CREAR CAMPA\u00d1A -->
+<!-- CAMPAÑAS: CREAR CAMPAÑA -->
 <div class="ovl" id="m-camp-new">
   <div class="modal" style="max-width:1100px;width:96vw;max-height:94vh;padding:0;display:flex;flex-direction:column">
     <!-- Header -->
@@ -2002,9 +2003,9 @@ En que te puedo ayudar hoy?</div></div>
     </div>
     <!-- Body con 2 columnas -->
     <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;overflow:hidden;min-height:0">
-      <!-- COL 1: Configuraci\u00f3n -->
+      <!-- COL 1: Configuración -->
       <div style="overflow-y:auto;padding:18px;border-right:1px solid var(--border)">
-        <!-- 1. Nombre campa\u00f1a -->
+        <!-- 1. Nombre campaña -->
         <div class="mb14">
           <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">1. Nombre de la campa&ntilde;a</label>
           <input type="text" id="camp-name" placeholder="ej: Newsletter Mayo - AUDI Q5">
@@ -2015,23 +2016,23 @@ En que te puedo ayudar hoy?</div></div>
           <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
             <select id="camp-emoji" onchange="campUpdSubjectFromEmoji()" style="width:auto;min-width:60px;font-size:14px;padding:6px 8px">
               <option value="">(sin emoji)</option>
-              <option value="\ud83d\ude97">\ud83d\ude97 Coche</option>
-              <option value="\u26a1">\u26a1 Rayo</option>
-              <option value="\ud83d\udd25">\ud83d\udd25 Fuego</option>
-              <option value="\ud83d\udcb0">\ud83d\udcb0 Dinero</option>
-              <option value="\ud83d\udc8e">\ud83d\udc8e Diamante</option>
-              <option value="\ud83c\udfc1">\ud83c\udfc1 Bandera</option>
-              <option value="\u2728">\u2728 Estrellas</option>
-              <option value="\ud83d\ude80">\ud83d\ude80 Cohete</option>
-              <option value="\ud83c\udd95">\ud83c\udd95 Nuevo</option>
-              <option value="\ud83d\udcc8">\ud83d\udcc8 Subida</option>
-              <option value="\ud83c\udf81">\ud83c\udf81 Regalo</option>
-              <option value="\u2705">\u2705 Check</option>
+              <option value="🚗">🚗 Coche</option>
+              <option value="⚡">⚡ Rayo</option>
+              <option value="🔥">🔥 Fuego</option>
+              <option value="💰">💰 Dinero</option>
+              <option value="💎">💎 Diamante</option>
+              <option value="🏁">🏁 Bandera</option>
+              <option value="✨">✨ Estrellas</option>
+              <option value="🚀">🚀 Cohete</option>
+              <option value="🆕">🆕 Nuevo</option>
+              <option value="📈">📈 Subida</option>
+              <option value="🎁">🎁 Regalo</option>
+              <option value="✅">✅ Check</option>
             </select>
             <input type="text" id="camp-subject" placeholder="ej: used Audi A3 Sportback S line..." style="flex:1">
-            <button type="button" class="btn bs" onclick="campAutoFillSubject()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con el t&iacute;tulo del coche">\u26a1 Auto</button>
+            <button type="button" class="btn bs" onclick="campAutoFillSubject()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con el t&iacute;tulo del coche">⚡ Auto</button>
           </div>
-          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click \u2018Auto\u2019 para rellenar con el t&iacute;tulo del coche seleccionado (ej. \u2018used Audi A3 Sportback S line 40 TFSI...\u2019)</div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click ‘Auto’ para rellenar con el t&iacute;tulo del coche seleccionado (ej. ‘used Audi A3 Sportback S line 40 TFSI...’)</div>
         </div>
         <!-- 3. Template -->
         <div class="mb14">
@@ -2039,7 +2040,7 @@ En que te puedo ayudar hoy?</div></div>
           <select id="camp-tplId" onchange="campOnTemplateChg()">
             <option value="">-- Selecciona un template --</option>
           </select>
-          <div style="font-size:10px;color:var(--t4);margin-top:3px">El bloque 'Card Auto' del template act\u00faa como placeholder \u2014 los coches seleccionados abajo se inyectar\u00e1n autom\u00e1ticamente.</div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">El bloque 'Card Auto' del template actúa como placeholder — los coches seleccionados abajo se inyectarán automáticamente.</div>
         </div>
         <!-- 4. Firma asociada (info, no selector) -->
         <div class="mb14">
@@ -2058,7 +2059,7 @@ En que te puedo ayudar hoy?</div></div>
             <button class="btn bs" onclick="campOpenStockPicker()" style="font-size:10px;padding:3px 9px">+ A&ntilde;adir del Stock Vivo</button>
           </div>
           <div id="camp-cars-list" style="background:var(--bg3);border-radius:7px;padding:10px;min-height:60px;font-size:11px;color:var(--t3)">
-            <em>Ning\u00fan coche seleccionado a\u00fan. Click '+' para a\u00f1adir.</em>
+            <em>Ningún coche seleccionado aún. Click '+' para añadir.</em>
           </div>
         </div>
         <!-- 6. Lista destinatarios -->
@@ -2075,7 +2076,7 @@ En que te puedo ayudar hoy?</div></div>
         <div style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Destinatarios</div>
         <div id="camp-recipients-controls" style="margin-bottom:10px;display:none">
           <div class="fc g6" style="font-size:11px">
-            <button class="btn bs" onclick="campSelectAll(true)" style="padding:3px 9px;font-size:10px">\u2713 Todos</button>
+            <button class="btn bs" onclick="campSelectAll(true)" style="padding:3px 9px;font-size:10px">✓ Todos</button>
             <button class="btn bs" onclick="campSelectAll(false)" style="padding:3px 9px;font-size:10px">x Ninguno</button>
             <input type="text" id="camp-search" placeholder="Buscar..." oninput="campFilterRecipients()" style="flex:1;font-size:11px;padding:4px 8px">
           </div>
@@ -2098,7 +2099,7 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- STOCK PICKER: selecci\u00f3n multi-coches con checkbox -->
+<!-- STOCK PICKER: selección multi-coches con checkbox -->
 <div class="ovl" id="m-camp-stock-picker">
   <div class="modal" style="max-width:780px">
     <div class="fbet mb14"><div class="mt">&#128663; Seleccionar coches del Stock Vivo</div><button class="btn bg" onclick="closeM('m-camp-stock-picker')" style="padding:5px 10px">X</button></div>
@@ -12253,6 +12254,62 @@ function campUpdSummary(){
   }
 }
 
+// === ASUNTO: emoji prefix + auto-fill desde coche seleccionado ===
+function campUpdSubjectFromEmoji(){
+  var sel=n('camp-emoji');var inp=n('camp-subject');
+  if(!sel||!inp)return;
+  var emoji=sel.value||'';
+  // Quita cualquier emoji previo al inicio del asunto (Unicode emoji + espacio)
+  var cur=(inp.value||'').replace(/^[\u2600-\u27BF\u2700-\u27BF\u2B00-\u2BFF\uD83C-\uDBFF\uDC00-\uDFFF\uFE0F\u200D]+\s*/u,'').trim();
+  inp.value=(emoji?emoji+' ':'')+cur;
+  if(_campEditing)_campEditing.subject=inp.value;
+}
+window.campUpdSubjectFromEmoji=campUpdSubjectFromEmoji;
+
+function campAutoFillSubject(){
+  var inp=n('camp-subject');if(!inp)return;
+  // Toma el primer coche seleccionado y construye 'used <Brand> <Model> <Version>'
+  var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
+  if(sel.length===0){alert('\u26a0\ufe0f Selecciona al menos 1 coche abajo (paso 5) para usar Auto.');return;}
+  var first=sel[0];
+  var stockId=typeof first==='string'?first:(first&&first.stockId);
+  var s=stock.find(function(x){return String(x.id)===String(stockId);});
+  if(!s){alert('Coche no encontrado en stock.');return;}
+  var title='used '+(s.brand||'')+' '+(s.model||'');
+  if(s.version)title+=' '+s.version;
+  title=title.replace(/\s+/g,' ').trim();
+  // Conserva el emoji del select si está activo
+  var emoji=(n('camp-emoji')&&n('camp-emoji').value)||'';
+  inp.value=(emoji?emoji+' ':'')+title;
+  if(_campEditing)_campEditing.subject=inp.value;
+}
+window.campAutoFillSubject=campAutoFillSubject;
+
+// === STRIP EMOJIS para email final (anti-spam B2B) ===
+// Quita emojis decorativos del HTML del email; deja el resto del texto intacto.
+// La interfaz NEXO mantiene emojis (uso interno) — solo se aplica al HTML antes de enviar.
+function campStripEmojis(html){
+  if(!html)return html;
+  // Rangos Unicode emoji + variation selectors + ZWJ. NO toca letras acentuadas (\u00C0+) ni símbolos comunes.
+  // Pictographs: U+1F300-U+1FAFF (incluye 1F600 caras, 1F680 transporte, 1F300-1F5FF símbolos, 1F900-1F9FF complementarios, 1FA00+)
+  // Misc symbols: U+2600-U+27BF (incluye ✅⚡✨✔)
+  // Misc pictographs: U+2B00-U+2BFF
+  // Dingbats: U+2700-U+27BF (ya cubierto)
+  // Variation selector: U+FE0F. Zero-width joiner: U+200D. Skin tones: U+1F3FB-U+1F3FF (cubierto en 1F3xx)
+  // Regional indicators (banderas): U+1F1E6-U+1F1FF (cubierto en 1F1xx)
+  var emojiRe=/[\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/g;
+  // Quita emojis y limpia espacios sobrantes / dobles espacios
+  var clean=html.replace(emojiRe,'');
+  // Limpia secuencias " " (doble espacio) generadas, pero conserva HTML markup intacto
+  clean=clean.replace(/[ \t]{2,}/g,' ');
+  // Limpia espacios al inicio justo después de tag de apertura: "<p> texto" -> "<p>texto"
+  clean=clean.replace(/(<[^\/][^>]*>)\s+/g,'$1');
+  // Limpia espacios justo antes de tag de cierre: "texto </p>" -> "texto</p>"
+  clean=clean.replace(/\s+(<\/[^>]+>)/g,'$1');
+  return clean;
+}
+window.campStripEmojis=campStripEmojis;
+
 // Listeners para inputs nombre/asunto + selects (firma, lista, template)
 document.addEventListener('input',function(e){
   if(e.target.id==='camp-name')_campEditing.name=e.target.value;
@@ -12667,6 +12724,8 @@ function campSendTest(){
   }).then(function(html){
     if(!html){alert('Error al construir el HTML.');return;}
     var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
+    // Quita emojis decorativos del HTML (anti-spam B2B). Subject queda como está.
+    html=campStripEmojis(html);
     // Envio
     if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
     NX_MS.sendEmail(to,subject,html,function(ok,err){
