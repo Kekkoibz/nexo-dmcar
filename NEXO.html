@@ -12500,17 +12500,16 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
       brandLogo:brandLogo
     };
   }
-  // LOTE: calcula valores agregados como Word
-  // Kms: rango min-max (ej: "14125-31751")
+  // LOTE: calcula valores agregados
+  // Kms: MEDIA (un solo valor, no rango)
   var kms=selected.map(function(u){
     var k=u.kms;
     return typeof k==='number'?k:parseInt(String(k||'').replace(/[^0-9]/g,''),10);
   }).filter(function(k){return !isNaN(k)&&k>=0;});
   var kmsLabel='';
   if(kms.length>0){
-    var minK=Math.min.apply(null,kms);
-    var maxK=Math.max.apply(null,kms);
-    kmsLabel=minK===maxK?minK.toLocaleString('es-ES'):minK.toLocaleString('es-ES')+' - '+maxK.toLocaleString('es-ES');
+    var avgK=Math.round(kms.reduce(function(s,k){return s+k;},0)/kms.length);
+    kmsLabel=avgK.toLocaleString('es-ES');
   }
   // Damages: media
   var damages=selected.map(function(u){
@@ -13320,7 +13319,7 @@ function tplRenderBlockHTML(block){
         ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px"><strong>Net Price:</strong> '+esc(c.price)+'</div>';
       }
       // Datos b\u00e1sicos (Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery)
-      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:18px">';
+      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:6px">';
       if(c.vin)ah+='<div><strong>Ex. VIN:</strong> '+esc(c.vin)+'</div>';
       if(c.firstReg)ah+='<div><strong>1st Reg:</strong> '+esc(c.firstReg)+'</div>';
       if(c.avgKms)ah+='<div><strong>Average Kms:</strong> '+esc(c.avgKms)+'</div>';
@@ -13329,9 +13328,9 @@ function tplRenderBlockHTML(block){
       if(c.availableUnits)ah+='<div><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
       if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
       ah+='</div>';
-      // Equipment (header azul + texto) - todo en UN solo bloque para evitar espacios extra
+      // Equipment (header azul + texto) - margen reducido para pegar al Delivery
       var eqText=(c.equipment||'').trim()||'Standard';
-      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin:18px 0;padding:0">'
+      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin:0 0 14px 0;padding:0">'
         +'<span style="font-size:14px;font-weight:600;color:#0000F5;display:block;margin:0;padding:0">Equipment:</span>'
         +esc(eqText)
         +'</div>';
