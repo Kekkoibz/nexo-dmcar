@@ -1630,6 +1630,28 @@ En que te puedo ayudar hoy?</div></div>
           <label><input type="radio" name="mk-dup" value="update"> Actualizar campos vac&iacute;os</label>
           <label><input type="radio" name="mk-dup" value="replace"> Reemplazar todos los datos</label>
         </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+        <div style="font-size:12px;font-weight:600;color:var(--t1);margin-bottom:6px">&#128221; Asignar a una lista (opcional):</div>
+        <div class="mb6" style="font-size:12px">
+          <label style="display:block;margin-bottom:4px;cursor:pointer">
+            <input type="radio" name="mk-list-action" value="none" checked onchange="mkImportListActionChg()"> No asignar (solo importar contactos)
+          </label>
+          <label style="display:block;margin-bottom:4px;cursor:pointer">
+            <input type="radio" name="mk-list-action" value="new" onchange="mkImportListActionChg()"> Crear nueva lista est&aacute;tica con estos contactos
+          </label>
+          <label style="display:block;margin-bottom:4px;cursor:pointer">
+            <input type="radio" name="mk-list-action" value="existing" onchange="mkImportListActionChg()"> A&ntilde;adir a lista existente
+          </label>
+        </div>
+        <div id="mk-list-newname" style="display:none;margin-bottom:6px">
+          <input type="text" id="mk-list-newname-input" placeholder="Nombre de la nueva lista (ej: Importaci&oacute;n mayo 2026)" style="font-size:12px">
+        </div>
+        <div id="mk-list-existing" style="display:none;margin-bottom:6px">
+          <select id="mk-list-existing-sel" style="font-size:12px">
+            <option value="">Selecciona una lista...</option>
+          </select>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Solo aparecen las listas est&aacute;ticas (las din&aacute;micas se actualizan solas).</div>
+        </div>
       </div>
     </div>
     <div id="mk-import-progress" style="display:none;padding:14px;background:var(--bg2);border-radius:8px;margin-top:10px;font-size:12px"></div>
@@ -9535,6 +9557,36 @@ function mkParseCSV(text){
   n('mk-import-step1').style.display='none';
   n('mk-import-step2').style.display='';
   n('mk-import-btn').style.display='';
+  // Popola il select delle liste statiche esistenti (solo statiche, non dinamiche)
+  mkPopulateStaticListsSelect();
+  // Reset radio "asignar a lista" sempre su "none" all'inizio
+  document.querySelectorAll('input[name="mk-list-action"]').forEach(function(r){r.checked=(r.value==='none');});
+  if(n('mk-list-newname'))n('mk-list-newname').style.display='none';
+  if(n('mk-list-existing'))n('mk-list-existing').style.display='none';
+  if(n('mk-list-newname-input'))n('mk-list-newname-input').value='';
+  if(n('mk-list-existing-sel'))n('mk-list-existing-sel').value='';
+}
+
+// Toggle visibility dei campi in base alla scelta del radio "asignar a lista"
+function mkImportListActionChg(){
+  var action=document.querySelector('input[name="mk-list-action"]:checked').value;
+  if(n('mk-list-newname'))n('mk-list-newname').style.display=(action==='new')?'':'none';
+  if(n('mk-list-existing'))n('mk-list-existing').style.display=(action==='existing')?'':'none';
+}
+
+// Popola il select delle liste statiche
+function mkPopulateStaticListsSelect(){
+  var sel=n('mk-list-existing-sel');
+  if(!sel)return;
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  if(staticLists.length===0){
+    sel.innerHTML='<option value="">No hay listas est\u00e1ticas \u2014 crea una nueva</option>';
+  }else{
+    sel.innerHTML='<option value="">Selecciona una lista...</option>'+staticLists.map(function(l){
+      var count=Array.isArray(l.contactIds)?l.contactIds.length:0;
+      return '<option value="'+esc(l.id)+'">'+esc(l.name)+' ('+count+' contactos)</option>';
+    }).join('');
+  }
 }
 
 function mkImportConfirm(){
@@ -9622,12 +9674,67 @@ function mkImportConfirm(){
     SS('mkLastImportBatch',batch);
   }
 
+  // GESTIONE LISTA: crea nuova / aggiungi a esistente / niente
+  // Raccoglie TUTTI gli ID coinvolti (nuovi + aggiornati)
+  var allTouchedIds=batchAddedIds.slice();
+  // Aggiungi anche gli ID dei duplicati che sono stati toccati (update/replace)
+  if(dupStrategy==='update'||dupStrategy==='replace'){
+    rows.forEach(function(r){
+      var em=m.email>=0?mkNormEmail(r[m.email]):'';
+      if(!em||!mkValidEmail(em))return;
+      var ex=mkFindByEmail(em);
+      if(ex&&allTouchedIds.indexOf(ex.id)<0)allTouchedIds.push(ex.id);
+    });
+  }
+  var listAction=document.querySelector('input[name="mk-list-action"]:checked').value;
+  var listMsg='';
+  if(listAction==='new'&&allTouchedIds.length>0){
+    var newName=(n('mk-list-newname-input').value||'').trim();
+    if(!newName){
+      listMsg='<br>\u26a0\ufe0f No se cre\u00f3 lista: nombre vac\u00edo.';
+    }else{
+      var newList={
+        id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        name:newName,
+        desc:'Creada al importar el '+new Date().toLocaleDateString('es-ES')+' ('+allTouchedIds.length+' contactos)',
+        type:'static',
+        contactIds:allTouchedIds,
+        createdAt:new Date().toISOString()
+      };
+      mkLists.push(newList);
+      mkListsCounter++;
+      SS('mkLists',mkLists);SS('mkListsCounter',mkListsCounter);
+      listMsg='<br>\u2705 Nueva lista <strong>"'+esc(newName)+'"</strong> creada con '+allTouchedIds.length+' contactos.';
+    }
+  }else if(listAction==='existing'&&allTouchedIds.length>0){
+    var existingId=n('mk-list-existing-sel').value;
+    if(!existingId){
+      listMsg='<br>\u26a0\ufe0f No se a\u00f1adi\u00f3 a ninguna lista: selecciona una primero.';
+    }else{
+      var lst=mkLists.find(function(l){return l.id===existingId;});
+      if(!lst){
+        listMsg='<br>\u26a0\ufe0f Lista no encontrada.';
+      }else if(lst.type!=='static'){
+        listMsg='<br>\u26a0\ufe0f No se puede a\u00f1adir a lista din\u00e1mica.';
+      }else{
+        if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+        var addedToList=0;
+        allTouchedIds.forEach(function(id){
+          if(lst.contactIds.indexOf(id)<0){lst.contactIds.push(id);addedToList++;}
+        });
+        SS('mkLists',mkLists);
+        listMsg='<br>\u2705 A\u00f1adidos <strong>'+addedToList+'</strong> contactos a la lista <strong>"'+esc(lst.name)+'"</strong>.';
+      }
+    }
+  }
+
   // Riepilogo
   var html='<div style="line-height:1.7"><strong>\u2705 Importaci\u00f3n completa:</strong><br>'
     +'\u2022 <strong>'+added+'</strong> nuevos contactos a\u00f1adidos<br>'
     +'\u2022 <strong>'+updated+'</strong> actualizados<br>'
     +'\u2022 <strong>'+ignored+'</strong> duplicados ignorados<br>';
   if(invalid>0)html+='\u2022 <strong style="color:var(--orange)">'+invalid+'</strong> filas con email no v\u00e1lida<br>';
+  if(listMsg)html+=listMsg;
   html+='</div>';
   n('mk-import-progress').style.display='block';
   n('mk-import-progress').innerHTML=html;
