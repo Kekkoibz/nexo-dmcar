@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.34 — DMCAR GROUP CRM | 2026-05-01 | fix campAutoFillSubject (groupKey format), Stock Vivo sort by ID timestamp DESC (newest top) -->
+<!-- NEXO v9.36 — DMCAR GROUP CRM | 2026-05-01 | FIX equip leído de parent.equip (no notes), Standard fallback aplicado, warning pre-envío campañas (equip/VIN/fotos) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -4239,6 +4239,11 @@ function addStkItem(item){
   item.pickup=item.pickup||'--';
   item.status=item.status||'Stock';
   item.vehicles=item.vehicles||[];
+  // v9.35: normaliza versión (Used/New/Km 0 + reglas kW/CV)
+  if(item.version&&typeof nxNormalizeVersion==='function'){
+    var ctx=((item.brand||'')+' '+(item.model||'')+' '+item.version);
+    item.version=nxNormalizeVersion(item.version,ctx);
+  }
   // Tag with current import batch (set at start of an import run) so we can undo later
   if(window._currentImportBatch) item.importBatch=window._currentImportBatch;
   stock.push(item);stkCnt++;
@@ -4258,13 +4263,54 @@ function undoLastImport(){
   alert(toRemove.length+' vehiculo'+(toRemove.length!==1?'s':'')+' eliminados.');
 }
 
+// Detecta vehículos eléctricos / híbridos (mantienen kW)
+function nxIsElectricOrHybrid(text){
+  if(!text)return false;
+  return /(FULL\s+ELECTRIC|\bBEV\b|\bEV\b|\bELETTRICA\b|\bELETRICO\b|\bELECTRICO\b|\bELECTRIC\b|PLUG-?IN|\bPHEV\b|\bHEV\b|\bHYBRID\b|\bHIBRIDO\b|\bIBRIDA\b|\bMHEV\b|\be-tron\b|\biPerformance\b)/i.test(text);
+}
+window.nxIsElectricOrHybrid=nxIsElectricOrHybrid;
+
+// Normaliza versión según reglas v9.35:
+// - "used" → "Used" (capitalize)
+// - "new" → "New"
+// - "km 0" / "km0" → "Km 0"
+// - Si NO es eléctrico/híbrido: elimina kW dejando solo CV
+// - Si SÍ es eléctrico/híbrido: mantiene kW
+function nxNormalizeVersion(version, fullText){
+  if(!version)return version;
+  var s=String(version);
+  // Chequea EV/hybrid en BOTH version y context (evita falsos negativos cuando el contexto es solo "BMW")
+  var contextEl=(fullText||'')+' '+version;
+  var isEl=nxIsElectricOrHybrid(contextEl);
+  // === Reglas kW/CV (solo ICE) ===
+  if(!isEl){
+    // "110(150) kW(CV)"  ó  "110(150)kW(CV)"  → "150 CV"
+    s=s.replace(/\b\d+\s*\(\s*(\d+)\s*\)\s*kW\s*\(\s*CV\s*\)/gi,'$1 CV');
+    // "110 kW (150 CV)" → "150 CV"
+    s=s.replace(/\b\d+\s*kW\s*\(\s*(\d+)\s*CV\s*\)/gi,'$1 CV');
+    // "110 kW 150 CV" → "150 CV"
+    s=s.replace(/\b\d+\s*kW\s+(\d+\s*CV)/gi,'$1');
+    // "150 CV 110 kW" → "150 CV"
+    s=s.replace(/(\d+\s*CV)\s+\d+\s*kW\b/gi,'$1');
+    // kW restante (con su número delante) → ""
+    s=s.replace(/\b\d+\s*kW\b/gi,'');
+  }
+  // === Reglas capitalización (siempre) ===
+  s=s.replace(/\bused\b/g,'Used');
+  s=s.replace(/\bnew\b/g,'New');
+  s=s.replace(/\bkm\s*0\b/gi,'Km 0');
+  // Cleanup espacios + paréntesis vacíos / sobrantes
+  s=s.replace(/\(\s*\)/g,'').replace(/\s+/g,' ').trim();
+  return s;
+}
+window.nxNormalizeVersion=nxNormalizeVersion;
+
 // Scan stock and remove M/T from electric/hybrid vehicles (since they're always automatic)
 function cleanStockTransmission(){
-  var isElectric=/(FULL\s+ELECTRIC|\bBEV\b|\bEV\b|\bELETTRICA\b|\bELETRICO\b|\bELECTRICO\b|PLUG-?IN|\bPHEV\b|\bHEV\b|\bHYBRID\b|\bHIBRIDO\b|\bIBRIDA\b)/i;
   var fixed=0;
   stock.forEach(function(item){
     var v=item.version||'';
-    if(isElectric.test(v)&&/\bM\/T\b/i.test(v)){
+    if(nxIsElectricOrHybrid(v)&&/\bM\/T\b/i.test(v)){
       item.version=v.replace(/\bM\/T\b/gi,'').replace(/\s+/g,' ').trim();
       fixed++;
     }
@@ -4274,6 +4320,33 @@ function cleanStockTransmission(){
   fStk();
   alert('Corregidos '+fixed+' vehiculos electricos/hibridos: M/T eliminado de la version.');
 }
+
+// Aplica reglas de normalización v9.35 a TODO el stock existente.
+// Returns count of vehicles modified.
+function nxNormalizeAllStock(){
+  var fixed=0;
+  stock.forEach(function(item){
+    var orig=item.version||'';
+    if(!orig)return;
+    // Pasa contexto = brand+model+version para mejor detección eléctrico
+    var ctx=((item.brand||'')+' '+(item.model||'')+' '+orig);
+    var nv=nxNormalizeVersion(orig,ctx);
+    if(nv!==orig){
+      item.version=nv;
+      fixed++;
+    }
+  });
+  if(fixed){SS('stock',stock);fStk();}
+  return fixed;
+}
+window.nxNormalizeAllStock=nxNormalizeAllStock;
+
+function nxNormalizeAllStockManual(){
+  if(!confirm('\u26a0\ufe0f Esta acci\u00f3n normalizar\u00e1 las versiones de TODO el stock seg\u00fan reglas v9.35:\n\n\u2022 used \u2192 Used\n\u2022 new \u2192 New\n\u2022 km 0 \u2192 Km 0\n\u2022 ICE: kW eliminado, solo CV\n\u2022 H\u00edbridos/El\u00e9ctricos: kW mantenido\n\n\u00bfContinuar?'))return;
+  var f=nxNormalizeAllStock();
+  alert('\u2705 Normalizados '+f+' veh\u00edculos.');
+}
+window.nxNormalizeAllStockManual=nxNormalizeAllStockManual;
 
 // Remove "ghost" rows (entries without brand, without model, or with junk version like "No Stock", "Total", etc.)
 function cleanStockGhosts(){
@@ -4357,6 +4430,11 @@ function saveEdit(){
   m.supplier=n('se-sup').value.trim();m.equip=n('se-equip').value.trim();m.buy=n('se-buy').value.trim();
   m.sell=n('se-sell').value.trim();m.pickup=n('se-pickup').value.trim();m.status=n('se-status').value;
   m.notes=n('se-notes').value.trim();
+  // v9.35: normaliza versión tras edit
+  if(m.version&&typeof nxNormalizeVersion==='function'){
+    var ctx=((m.brand||'')+' '+(m.model||'')+' '+m.version);
+    m.version=nxNormalizeVersion(m.version,ctx);
+  }
   SS('stock',stock);closeM('m-sedit');updBF();fStk();
 }
 
@@ -12284,9 +12362,19 @@ function campAutoFillSubject(){
     });
   }
   if(!s){alert('\u26a0\ufe0f Coche no encontrado en stock.\nRevisa que la selecci\u00f3n del paso 5 corresponda a un veh\u00edculo del Stock Vivo.');return;}
-  var title='used '+(s.brand||'')+' '+(s.model||'');
-  if(s.version)title+=' '+s.version;
+  // Normaliza versión por si stock legacy aún no normalizado
+  var version=s.version||'';
+  if(version&&typeof nxNormalizeVersion==='function'){
+    var ctxV=((s.brand||'')+' '+(s.model||'')+' '+version);
+    version=nxNormalizeVersion(version,ctxV);
+  }
+  var title='Used '+(s.brand||'')+' '+(s.model||'');
+  if(version)title+=' '+version;
   title=title.replace(/\s+/g,' ').trim();
+  // Aplica reglas asunto: Used / New / Km 0
+  if(typeof nxNormalizeVersion==='function'){
+    title=nxNormalizeVersion(title,title);
+  }
   // Sin emoji (anti-spam B2B)
   inp.value=title;
   if(_campEditing)_campEditing.subject=inp.value;
@@ -12557,7 +12645,10 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
   var first=selected[0];
   var parent=group.parentStock&&group.parentStock[0]?group.parentStock[0]:first;
   var brandLogo=campBrandLogoUrl(parent.brand);
-  var cleanEquipment=campCleanEquipment(parent.notes);
+  // FIX v9.36: lee equipment del campo correcto (equip), no de notes.
+  // Si está vacío o es "--", usa fallback "Standard" (regla DMCAR como en Word).
+  var rawEquip=(parent.equip&&parent.equip!=='--')?parent.equip:'';
+  var cleanEquipment=campCleanEquipment(rawEquip);
   // T\u00edtulo: brand + model + version (igual al Word)
   var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
   // Precio
@@ -12680,6 +12771,60 @@ function campBuildTemplate(){
   return template;
 }
 
+// === CHECK DATOS FALTANTES PRE-ENVIO (v9.36) ===
+// Igual al modal pre-offer del Generador Word: avisa si faltan equip/VIN/fotos.
+// Devuelve un array de problemas {groupKey, brand, model, missing:['equip','vin','photo']}.
+function campCheckMissingData(){
+  var problems=[];
+  var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
+  if(sel.length===0)return problems;
+  sel.forEach(function(item){
+    if(typeof item==='string')return;  // legacy: skip
+    var groupKey=item.groupKey;
+    if(!groupKey)return;
+    var parts=String(groupKey).split('||');
+    var brand=parts[0]||'';
+    var model=parts[1]||'';
+    // Encuentra el primer stock item del grupo
+    var s=stock.find(function(x){
+      return ((x.brand||'').toUpperCase()===brand.toUpperCase())&&((x.model||'').toUpperCase()===model.toUpperCase());
+    });
+    if(!s)return;
+    var missing=[];
+    // 1) Equipment vacío o "--"
+    if(!s.equip||s.equip==='--'||!String(s.equip).trim())missing.push('equip');
+    // 2) VINs ausentes en vehicles[]
+    var hasVins=Array.isArray(s.vehicles)&&s.vehicles.some(function(v){return v.vin&&v.vin!=='--';});
+    if(!hasVins)missing.push('vin');
+    // 3) Fotos ausentes (photo1 vacía)
+    if(!s.photo1)missing.push('photo');
+    if(missing.length>0){
+      problems.push({stockId:s.id,groupKey:groupKey,brand:brand,model:model,missing:missing});
+    }
+  });
+  return problems;
+}
+window.campCheckMissingData=campCheckMissingData;
+
+// Devuelve true si el usuario confirma continuar, false si cancela.
+function campShowMissingWarning(problems){
+  if(!problems||problems.length===0)return true;
+  var msg='\u26a0\ufe0f DATOS FALTANTES en '+problems.length+' coche'+(problems.length!==1?'s':'')+':\n\n';
+  problems.forEach(function(p){
+    var miss=[];
+    if(p.missing.indexOf('equip')>=0)miss.push('equipamiento');
+    if(p.missing.indexOf('vin')>=0)miss.push('VIN');
+    if(p.missing.indexOf('photo')>=0)miss.push('fotos');
+    msg+='\u2022 '+p.brand+' '+p.model+': falta '+miss.join(', ')+'\n';
+  });
+  msg+='\nNota: si no a\u00f1ades equipamiento, el email mostrar\u00e1 \"Standard\" (regla DMCAR).\n\n';
+  msg+='\u00bfQu\u00e9 quieres hacer?\n\n';
+  msg+='[OK]      Continuar y enviar igualmente\n';
+  msg+='[Cancel]  Cancelar y editar el Stock primero';
+  return confirm(msg);
+}
+window.campShowMissingWarning=campShowMissingWarning;
+
 // VERSION SYNC: para preview r\u00e1pida (sin esperar logos)
 // Devuelve HTML construido sin pre-resolve de logos
 function campBuildHTML(vars){
@@ -12709,6 +12854,11 @@ function campSendTest(){
   if(!_campEditing.subject||!_campEditing.subject.trim()){alert('Escribe un asunto.');return;}
   if(_campEditing.selectedCarIds.length===0){
     if(!confirm('\u26a0\ufe0f No has seleccionado ning\u00fan coche.\n\nEl email se enviar\u00e1 sin Card Auto. \u00bfContinuar?'))return;
+  }
+  // v9.36: avisa si faltan equip/VIN/fotos en algún coche seleccionado (igual que el modal pre-offer del Word)
+  var problems=campCheckMissingData();
+  if(problems.length>0){
+    if(!campShowMissingWarning(problems))return;
   }
   // Verifica Microsoft Graph
   if(typeof NX_MS==='undefined'||!NX_MS.ready){
@@ -14027,6 +14177,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
   setTimeout(function(){if(typeof NX_PROV_INBOX!=='undefined')NX_PROV_INBOX.init();},2100);
   // Marketing: migrazione one-shot dei paesi (normalizza alle label canoniche)
   setTimeout(function(){if(typeof mkMigrateCountries==='function')mkMigrateCountries();},2500);
+  // v9.35: one-shot normalize del stock (Used/New/Km 0 + reglas kW/CV). Solo primera vez.
+  setTimeout(function(){
+    if(LS('nx5_norm_v935',false))return;
+    if(typeof nxNormalizeAllStock==='function'){
+      var f=nxNormalizeAllStock();
+      console.log('[v9.35] Stock normalizado: '+f+' veh\u00edculos modificados.');
+      SS('nx5_norm_v935',true);
+    }
+  },2700);
 })();
 
 </script>
