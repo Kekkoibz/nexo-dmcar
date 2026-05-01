@@ -2085,7 +2085,7 @@ En que te puedo ayudar hoy?</div></div>
     <div id="camp-stock-list" style="max-height:60vh;overflow-y:auto;background:var(--bg3);border-radius:7px;padding:10px"></div>
     <div class="fc g8" style="margin-top:14px">
       <button class="btn bg" onclick="closeM('m-camp-stock-picker')" style="flex:1">Cancelar</button>
-      <button class="btn bp" onclick="campStockPickerConfirm()" style="flex:2">&#10004; Confirmar selecci\u00f3n (<span id="camp-stock-pick-cnt">0</span>)</button>
+      <button class="btn bp" onclick="campStockPickerConfirm()" style="flex:2">&#10004; Confirmar selecci&oacute;n (<span id="camp-stock-pick-cnt">0</span>)</button>
     </div>
   </div>
 </div>
@@ -11786,38 +11786,124 @@ function campOnListChg(){
   campUpdSummary();
 }
 
-// Render del listado de coches seleccionados
+// Render del listado de coches seleccionados (grupos con cantidad)
 function campRenderCarsList(){
   var div=n('camp-cars-list');
   if(!div)return;
-  if(_campEditing.selectedCarIds.length===0){
+  if(!Array.isArray(_campEditing.selectedCarIds)||_campEditing.selectedCarIds.length===0){
     div.innerHTML='<em>Ning\u00fan coche seleccionado a\u00fan. Click \'+\' para a\u00f1adir.</em>';
     return;
   }
-  div.innerHTML=_campEditing.selectedCarIds.map(function(cid){
-    var car=stock.find(function(s){return String(s.id)===String(cid);});
-    if(!car)return '<div style="color:var(--red);font-size:10px">\u26a0\ufe0f Coche no encontrado: '+esc(cid)+'</div>';
-    var label=((car.brand||'')+' '+(car.model||'')).trim();
-    if(car.unit)label+=' (Unit '+esc(car.unit)+')';
-    return '<div class="fbet" style="background:var(--bg2);padding:6px 10px;border-radius:5px;margin-bottom:4px">'
-      +'<span style="font-size:11px;color:var(--t1)">\ud83d\ude97 '+esc(label)+'</span>'
-      +'<button class="btn bd" onclick="campRemoveCar(\''+esc(cid)+'\')" style="font-size:10px;padding:2px 6px" title="Quitar">x</button>'
+  div.innerHTML=_campEditing.selectedCarIds.map(function(item){
+    // Compatibilidad con formato legacy (string id) y nuevo (obj groupKey+qty)
+    if(typeof item==='string'){
+      var car=stock.find(function(s){return String(s.id)===String(item);});
+      if(!car)return '<div style="color:var(--red);font-size:10px">\u26a0\ufe0f Coche no encontrado: '+esc(item)+'</div>';
+      var label=((car.brand||'')+' '+(car.model||'')).trim();
+      if(car.unit)label+=' (Unit '+esc(car.unit)+')';
+      return '<div class="fbet" style="background:var(--bg2);padding:6px 10px;border-radius:5px;margin-bottom:4px">'
+        +'<span style="font-size:11px;color:var(--t1)">\ud83d\ude97 '+esc(label)+'</span>'
+        +'<button class="btn bd" onclick="campRemoveCar(\''+esc(item)+'\')" style="font-size:10px;padding:2px 6px" title="Quitar">x</button>'
+      +'</div>';
+    }
+    // Nuevo formato: {groupKey, qty}
+    var key=item.groupKey;
+    var qty=item.qty||1;
+    var parts=key.split('||');
+    var brand=parts[0]||'?';
+    var model=parts[1]||'';
+    // Cuenta unidades reales del stock para validar
+    var availableUnits=stock.filter(function(s){
+      var k=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+      return k===key;
+    });
+    var available=availableUnits.length;
+    var qtyLbl=(qty===available)?'todas las '+available+' unidades':qty+' de '+available+' unidades';
+    var modeLbl=qty===1?'\ud83d\udd2c detalles individuales':'\ud83d\udcca medias del lote';
+    return '<div class="fbet" style="background:var(--bg2);padding:8px 10px;border-radius:5px;margin-bottom:4px">'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:11px;color:var(--t1);font-weight:600">\ud83d\ude97 '+esc((brand+' '+model).trim())+'</div>'
+        +'<div style="font-size:10px;color:var(--t3)">'+esc(qtyLbl)+' \u00b7 '+modeLbl+'</div>'
+      +'</div>'
+      +'<button class="btn bd" onclick="campRemoveCarGroup(\''+esc(key)+'\')" style="font-size:10px;padding:2px 6px" title="Quitar">x</button>'
     +'</div>';
   }).join('');
 }
 
+// Quitar coche legacy (compatibilidad)
 function campRemoveCar(carId){
-  _campEditing.selectedCarIds=_campEditing.selectedCarIds.filter(function(id){return String(id)!==String(carId);});
+  _campEditing.selectedCarIds=_campEditing.selectedCarIds.filter(function(item){
+    if(typeof item==='string')return String(item)!==String(carId);
+    return true;
+  });
   campRenderCarsList();
   campUpdSummary();
 }
 
-// === STOCK PICKER ===
-var _campStockPick=new Set();
+// Quitar grupo entero (nuevo formato)
+function campRemoveCarGroup(groupKey){
+  _campEditing.selectedCarIds=_campEditing.selectedCarIds.filter(function(item){
+    if(typeof item==='string')return true;
+    return item.groupKey!==groupKey;
+  });
+  campRenderCarsList();
+  campUpdSummary();
+}
+
+// === STOCK PICKER (agrupado por modelo + selector cantidad) ===
+// _campStockPick es ahora un mapa: {groupKey: cantidad}
+//   groupKey = "brand||model" (ej: "AUDI||A3")
+//   cantidad = cu\u00e1ntas unidades selecc. de ese modelo (1 hasta max disponibles)
+var _campStockPick={};
+
+// Agrupa el stock por brand+model, contando unidades por grupo
+// Devuelve array: [{key, brand, model, units:[stockObj,...], count}]
+function campGroupStockByModel(){
+  var groups={};
+  stock.forEach(function(s){
+    var key=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+    if(!groups[key]){
+      groups[key]={
+        key:key,
+        brand:s.brand||'',
+        model:s.model||'',
+        units:[]
+      };
+    }
+    groups[key].units.push(s);
+  });
+  var arr=Object.keys(groups).map(function(k){
+    var g=groups[k];
+    g.count=g.units.length;
+    return g;
+  });
+  // Ordena alfab\u00e9ticamente por brand+model
+  arr.sort(function(a,b){
+    var sa=(a.brand+' '+a.model).toLowerCase();
+    var sb=(b.brand+' '+b.model).toLowerCase();
+    return sa.localeCompare(sb);
+  });
+  return arr;
+}
 
 function campOpenStockPicker(){
-  // Pre-marca los ya seleccionados
-  _campStockPick=new Set(_campEditing.selectedCarIds.map(String));
+  // Pre-rellena _campStockPick desde selectedCarIds (reagrupa por modelo)
+  _campStockPick={};
+  if(Array.isArray(_campEditing.selectedCarIds)){
+    _campEditing.selectedCarIds.forEach(function(item){
+      // item puede ser un id (legacy) o un obj {groupKey, qty}
+      if(typeof item==='string'){
+        // Legacy: era un stock.id, busca su grupo
+        var s=stock.find(function(x){return String(x.id)===String(item);});
+        if(s){
+          var key=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+          _campStockPick[key]=(_campStockPick[key]||0)+1;
+        }
+      }else if(item&&item.groupKey){
+        _campStockPick[item.groupKey]=item.qty||1;
+      }
+    });
+  }
   if(n('camp-stock-search'))n('camp-stock-search').value='';
   campRenderStockPicker();
   openM('m-camp-stock-picker');
@@ -11827,38 +11913,87 @@ function campRenderStockPicker(){
   var div=n('camp-stock-list');
   if(!div)return;
   var q=(n('camp-stock-search')&&n('camp-stock-search').value||'').toLowerCase().trim();
-  var filtered=stock.filter(function(s){
-    if(!q)return true;
-    var hay=((s.brand||'')+' '+(s.model||'')+' '+(s.unit||'')+' '+(s.color||'')).toLowerCase();
-    return hay.indexOf(q)>=0;
-  });
-  if(filtered.length===0){
+  var groups=campGroupStockByModel();
+  // Filtra por b\u00fasqueda
+  if(q){
+    groups=groups.filter(function(g){
+      return ((g.brand+' '+g.model).toLowerCase().indexOf(q)>=0);
+    });
+  }
+  if(groups.length===0){
     div.innerHTML='<div style="text-align:center;padding:30px;color:var(--t4);font-size:11px">No hay coches en el stock'+(q?' que coincidan con "'+esc(q)+'"':'')+'.</div>';
+    campUpdStockPickerCount();
     return;
   }
-  div.innerHTML=filtered.map(function(s){
-    var checked=_campStockPick.has(String(s.id))?' checked':'';
-    var label=((s.brand||'')+' '+(s.model||'')).trim();
+  div.innerHTML=groups.map(function(g){
+    var selectedQty=_campStockPick[g.key]||0;
+    var checked=selectedQty>0;
+    var label=(g.brand+' '+g.model).trim();
+    // Detalles del grupo: ej. "12 unidades \u00b7 Black, White, Grey \u00b7 23.500\u20ac (medio)"
+    var avgPrice=campComputeGroupAvg(g.units);
+    var colors=Array.from(new Set(g.units.map(function(u){return u.color;}).filter(function(c){return c;})));
     var details=[];
-    if(s.unit)details.push('Unit '+s.unit);
-    if(s.regDate)details.push(s.regDate);
-    if(s.color)details.push(s.color);
-    if(s.salePrice)details.push((typeof s.salePrice==='number'?s.salePrice.toLocaleString('es-ES'):s.salePrice)+'\u20ac');
-    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border-radius:5px;margin-bottom:4px;cursor:pointer">'
-      +'<input type="checkbox" value="'+esc(s.id)+'" onchange="campStockPickerToggle(this)"'+checked+'>'
+    details.push(g.count+' unidad'+(g.count!==1?'es':''));
+    if(colors.length>0)details.push(colors.slice(0,3).join(', ')+(colors.length>3?'...':''));
+    if(avgPrice)details.push(avgPrice+' (medio)');
+    // Selector cantidad (1..g.count)
+    var qtyOptions='';
+    for(var i=1;i<=g.count;i++){
+      qtyOptions+='<option value="'+i+'"'+(selectedQty===i?' selected':'')+'>'+i+(i===g.count?' (todas)':'')+'</option>';
+    }
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border-radius:6px;margin-bottom:5px;border:1px solid '+(checked?'var(--acc)':'var(--border)')+'">'
+      +'<input type="checkbox" data-grpkey="'+esc(g.key)+'" onchange="campStockPickerToggleGroup(this)"'+(checked?' checked':'')+'>'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:12px;font-weight:600;color:var(--t1)">\ud83d\ude97 '+esc(label)+'</div>'
-        +(details.length?'<div style="font-size:10px;color:var(--t3)">'+esc(details.join(' \u00b7 '))+'</div>':'')
+        +'<div style="font-size:10px;color:var(--t3)">'+esc(details.join(' \u00b7 '))+'</div>'
       +'</div>'
-    +'</label>';
+      +'<div style="display:flex;align-items:center;gap:6px">'
+        +'<label style="font-size:10px;color:var(--t3);margin:0">Cantidad:</label>'
+        +'<select data-grpkey="'+esc(g.key)+'" onchange="campStockPickerChgQty(this)" style="font-size:11px;padding:3px 6px;width:auto;min-width:55px"'+(checked?'':' disabled')+'>'
+          +qtyOptions
+        +'</select>'
+      +'</div>'
+    +'</div>';
   }).join('');
-  if(n('camp-stock-pick-cnt'))n('camp-stock-pick-cnt').textContent=_campStockPick.size;
+  campUpdStockPickerCount();
 }
 
-function campStockPickerToggle(cb){
-  if(cb.checked)_campStockPick.add(cb.value);
-  else _campStockPick.delete(cb.value);
-  if(n('camp-stock-pick-cnt'))n('camp-stock-pick-cnt').textContent=_campStockPick.size;
+// Toggle un grupo entero (checkbox)
+function campStockPickerToggleGroup(cb){
+  var key=cb.getAttribute('data-grpkey');
+  if(cb.checked){
+    // Si no hab\u00eda cantidad, default = 1
+    if(!_campStockPick[key])_campStockPick[key]=1;
+    // Habilita el select de cantidad
+    var sel=document.querySelector('select[data-grpkey="'+key+'"]');
+    if(sel){
+      sel.disabled=false;
+      if(!sel.value)sel.value='1';
+      _campStockPick[key]=parseInt(sel.value,10)||1;
+    }
+  }else{
+    delete _campStockPick[key];
+    var sel2=document.querySelector('select[data-grpkey="'+key+'"]');
+    if(sel2)sel2.disabled=true;
+  }
+  // Visual: actualizo borde del card
+  campRenderStockPicker();
+}
+
+// Cambio cantidad de un grupo
+function campStockPickerChgQty(sel){
+  var key=sel.getAttribute('data-grpkey');
+  var qty=parseInt(sel.value,10)||1;
+  _campStockPick[key]=qty;
+  campUpdStockPickerCount();
+}
+
+function campUpdStockPickerCount(){
+  var totalGroups=Object.keys(_campStockPick).length;
+  var totalUnits=Object.keys(_campStockPick).reduce(function(s,k){return s+(_campStockPick[k]||0);},0);
+  if(n('camp-stock-pick-cnt')){
+    n('camp-stock-pick-cnt').textContent=totalGroups+' modelo'+(totalGroups!==1?'s':'')+' / '+totalUnits+' unidad'+(totalUnits!==1?'es':'');
+  }
 }
 
 function campStockPickerFilter(){
@@ -11866,10 +12001,22 @@ function campStockPickerFilter(){
 }
 
 function campStockPickerConfirm(){
-  _campEditing.selectedCarIds=Array.from(_campStockPick);
+  // Convierte _campStockPick {key:qty} en array de {groupKey, qty}
+  _campEditing.selectedCarIds=Object.keys(_campStockPick).map(function(key){
+    return {groupKey:key,qty:_campStockPick[key]};
+  });
   closeM('m-camp-stock-picker');
   campRenderCarsList();
   campUpdSummary();
+}
+
+// Calcula precio medio formateado de un grupo de unidades
+function campComputeGroupAvg(units){
+  if(!Array.isArray(units)||units.length===0)return '';
+  var validPrices=units.map(function(u){return typeof u.salePrice==='number'?u.salePrice:parseFloat(String(u.salePrice||'').replace(/[^0-9.,]/g,'').replace(',','.'));}).filter(function(p){return !isNaN(p)&&p>0;});
+  if(validPrices.length===0)return '';
+  var avg=validPrices.reduce(function(s,p){return s+p;},0)/validPrices.length;
+  return Math.round(avg).toLocaleString('es-ES')+'\u20ac';
 }
 
 // === DESTINATARIOS ===
@@ -11981,8 +12128,18 @@ function campUpdSummary(){
   var div=n('camp-summary');
   if(!div)return;
   var recipients=campGetFinalRecipients().length;
-  var cars=_campEditing.selectedCarIds.length;
-  div.innerHTML='\ud83d\ude97 '+cars+' coche'+(cars!==1?'s':'')+' \u00b7 \ud83d\udce7 '+recipients+' destinatario'+(recipients!==1?'s':'')+' \u00b7 \u2728 '+(_campEditing.tplId?'template':'sin template')+' \u00b7 \u270d\ufe0f '+(_campEditing.firmaId?'firma':'sin firma');
+  // Cuenta grupos y unidades totales
+  var groups=Array.isArray(_campEditing.selectedCarIds)?_campEditing.selectedCarIds.length:0;
+  var totalUnits=0;
+  if(Array.isArray(_campEditing.selectedCarIds)){
+    _campEditing.selectedCarIds.forEach(function(item){
+      if(typeof item==='string')totalUnits+=1;
+      else if(item&&item.qty)totalUnits+=item.qty;
+      else totalUnits+=1;
+    });
+  }
+  var carsLabel=groups+' modelo'+(groups!==1?'s':'')+' / '+totalUnits+' uds';
+  div.innerHTML='\ud83d\ude97 '+carsLabel+' \u00b7 \ud83d\udce7 '+recipients+' destinatario'+(recipients!==1?'s':'')+' \u00b7 \u2728 '+(_campEditing.tplId?'template':'sin template')+' \u00b7 \u270d\ufe0f '+(_campEditing.firmaId?'firma':'sin firma');
   // Stats panel destinatarios
   var stats=n('camp-recipients-stats');
   if(stats){
@@ -12070,19 +12227,188 @@ function campSaveDraft(){
   if(typeof showToast==='function')showToast('\u2713 Borrador guardado');
 }
 
+// Construye config de Card Auto desde un grupo de unidades
+// Si qty=1 \u2192 toma los detalles completos de la primera unidad
+// Si qty>1 \u2192 calcula medias del lote (precio, kms, da\u00f1os) + lista colores
+function campBuildCardConfigFromGroup(groupKey,qty){
+  // Filtra unidades del stock para este grupo
+  var units=stock.filter(function(s){
+    var k=((s.brand||'').toUpperCase()+'||'+(s.model||'').toUpperCase()).trim();
+    return k===groupKey;
+  });
+  if(units.length===0)return null;
+  // Toma las primeras qty unidades (en el futuro permitiremos elegir cu\u00e1les)
+  var selected=units.slice(0,qty);
+  var first=selected[0];
+  var brandLogo=first.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+first.brand+'.png':''):'';
+  if(qty===1){
+    // 1 unidad: detalles completos del coche
+    return {
+      stockId:first.id,
+      title:((first.brand||'')+' '+(first.model||'')).trim(),
+      price:first.salePrice?(typeof first.salePrice==='number'?first.salePrice.toLocaleString('es-ES'):first.salePrice)+'\u20ac':'',
+      reference:first.unit||first.id||'',
+      firstReg:first.regDate||'',
+      extColor:first.color||'',
+      delivery:'Stock',
+      equipment:first.notes||'',
+      photo1:first.photo1||'',
+      photo2:first.photo2||'',
+      photo3:first.photo3||'',
+      brandLogo:brandLogo
+    };
+  }
+  // Lote: calcula medias
+  var prices=selected.map(function(u){return typeof u.salePrice==='number'?u.salePrice:parseFloat(String(u.salePrice||'').replace(/[^0-9.,]/g,'').replace(',','.'));}).filter(function(p){return !isNaN(p)&&p>0;});
+  var avgPrice=prices.length?Math.round(prices.reduce(function(s,p){return s+p;},0)/prices.length):0;
+  var kms=selected.map(function(u){return typeof u.kms==='number'?u.kms:parseInt(String(u.kms||'').replace(/[^0-9]/g,''),10);}).filter(function(k){return !isNaN(k)&&k>=0;});
+  var avgKms=kms.length?Math.round(kms.reduce(function(s,k){return s+k;},0)/kms.length):0;
+  var damages=selected.map(function(u){return typeof u.damages==='number'?u.damages:parseFloat(String(u.damages||'').replace(/[^0-9.,]/g,'').replace(',','.'));}).filter(function(d){return !isNaN(d)&&d>=0;});
+  var avgDamages=damages.length?Math.round(damages.reduce(function(s,d){return s+d;},0)/damages.length):0;
+  // Lista colores (con conteo: "3x Black, 5x White, 4x Grey")
+  var colorMap={};
+  selected.forEach(function(u){if(u.color)colorMap[u.color]=(colorMap[u.color]||0)+1;});
+  var colorList=Object.keys(colorMap).map(function(c){return colorMap[c]+'x '+c;}).join(', ');
+  // Equipment: usa el del primero (suele ser igual en mismo modelo)
+  var equipment=first.notes||'';
+  if(equipment){
+    equipment='Lote de '+qty+' unidades \u2014 mismo equipamiento:\n\n'+equipment;
+  }
+  return {
+    stockId:'group_'+groupKey,
+    title:((first.brand||'')+' '+(first.model||'')).trim()+' \u2014 LOTE '+qty+' UDS',
+    price:avgPrice?avgPrice.toLocaleString('es-ES')+'\u20ac (medio)':'',
+    reference:'Lote '+qty+' uds',
+    firstReg:first.regDate?'desde '+first.regDate:'',
+    extColor:colorList||'(varios)',
+    delivery:'Stock \u00b7 '+qty+' unidades disponibles',
+    equipment:equipment+(avgKms?'\n\nMedia Kms: '+avgKms.toLocaleString('es-ES'):'')+(avgDamages?'\nMedia Damage: '+avgDamages.toLocaleString('es-ES')+'\u20ac':''),
+    photo1:first.photo1||'',
+    photo2:first.photo2||'',
+    photo3:first.photo3||'',
+    brandLogo:brandLogo
+  };
+}
+
+// Construye el HTML completo de la campa\u00f1a inyectando los coches en el placeholder Card Auto
+// Si el template tiene un bloque auto_card, se clona N veces con los datos de cada grupo de coches
+// Si no hay coches seleccionados, se elimina el bloque auto_card del template
+function campBuildHTML(vars){
+  var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+  if(!t)return '';
+  // Clone profundo del template para no modificar el original
+  var template=JSON.parse(JSON.stringify(t));
+  // Identifica el placeholder Card Auto en los bloques
+  var autoCardIdx=-1;
+  for(var i=0;i<template.blocks.length;i++){
+    if(template.blocks[i].type==='auto_card'){
+      autoCardIdx=i;
+      break;
+    }
+  }
+  // Construye los bloques Card Auto a inyectar (uno por grupo seleccionado)
+  var injectedBlocks=[];
+  if(Array.isArray(_campEditing.selectedCarIds)){
+    _campEditing.selectedCarIds.forEach(function(item){
+      var cardConfig=null;
+      if(typeof item==='string'){
+        // Legacy: stock.id directo
+        var car=stock.find(function(s){return String(s.id)===String(item);});
+        if(car){
+          cardConfig={
+            stockId:car.id,
+            title:((car.brand||'')+' '+(car.model||'')).trim(),
+            price:car.salePrice?(typeof car.salePrice==='number'?car.salePrice.toLocaleString('es-ES'):car.salePrice)+'\u20ac':'',
+            reference:car.unit||car.id||'',
+            firstReg:car.regDate||'',
+            extColor:car.color||'',
+            delivery:'Stock',
+            equipment:car.notes||'',
+            photo1:car.photo1||'',
+            photo2:car.photo2||'',
+            photo3:car.photo3||'',
+            brandLogo:car.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+car.brand+'.png':''):''
+          };
+        }
+      }else if(item&&item.groupKey){
+        // Nuevo formato: grupo + cantidad
+        cardConfig=campBuildCardConfigFromGroup(item.groupKey,item.qty||1);
+      }
+      if(cardConfig){
+        injectedBlocks.push({
+          id:'inj_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+          type:'auto_card',
+          config:cardConfig
+        });
+      }
+    });
+  }
+  // Reemplaza el bloque placeholder con los inyectados
+  if(autoCardIdx>=0){
+    if(injectedBlocks.length>0){
+      template.blocks.splice.apply(template.blocks,[autoCardIdx,1].concat(injectedBlocks));
+    }else{
+      template.blocks.splice(autoCardIdx,1);
+    }
+  }else if(injectedBlocks.length>0){
+    var firmaIdx=template.blocks.findIndex(function(b){return b.type==='signature';});
+    var insertAt=firmaIdx>=0?firmaIdx:template.blocks.length;
+    template.blocks.splice.apply(template.blocks,[insertAt,0].concat(injectedBlocks));
+  }
+  // Genera HTML usando la funci\u00f3n existente
+  return tplBuildHTML(template,vars||{});
+}
+
 function campSendTest(){
-  // Valida primero
+  // Validaciones
   if(!_campEditing.tplId){alert('Selecciona un template.');return;}
-  if(!_campEditing.firmaId){alert('Selecciona una firma.');return;}
+  var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+  if(!t){alert('Template no encontrado.');return;}
+  if(!t.defaultFirmaId&&!_campEditing.firmaId){
+    alert('\u26a0\ufe0f El template no tiene firma asociada.\n\nEdita el template y asocia una firma antes de enviar.');return;
+  }
   if(!_campEditing.subject||!_campEditing.subject.trim()){alert('Escribe un asunto.');return;}
-  var to=prompt('\ud83d\udce7 Enviar test a qu\u00e9 email?','info@dmcargroup.com');
-  if(!to||!mkValidEmail(to.trim())){alert('Email no v\u00e1lido.');return;}
-  // Construye HTML (l\u00f3gica completa en v9.18)
-  alert('\ud83d\udea7 Test send: la inyecci\u00f3n de coches y env\u00edo se completar\u00e1n en v9.18.\n\nDe momento se enviar\u00e1 el template tal cual con un coche dummy si quieres probar.');
+  if(_campEditing.selectedCarIds.length===0){
+    if(!confirm('\u26a0\ufe0f No has seleccionado ning\u00fan coche.\n\nEl email se enviar\u00e1 sin Card Auto. \u00bfContinuar?'))return;
+  }
+  // Verifica Microsoft Graph
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){
+    alert('\u26a0\ufe0f Microsoft Graph no est\u00e1 conectado.\n\nVe a Configuraci\u00f3n y conecta tu cuenta info@dmcargroup.com primero.');
+    return;
+  }
+  // Pide email destino
+  var to=prompt('\ud83d\udce7 \u00bfA qu\u00e9 email enviar la prueba?\n\nNEXO mandar\u00e1 una vista previa con todos los coches inyectados, variables sustituidas y firma asociada.','info@dmcargroup.com');
+  if(!to)return;
+  to=to.trim();
+  if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
+  // Construye HTML con inyecci\u00f3n de coches + variables de ejemplo
+  var html=campBuildHTML({
+    nombre:'Francesco',
+    empresa:'DMCAR Group (TEST)',
+    pais:'Espa\u00f1a',
+    email:to,
+    unsubscribe_url:'https://example.com/unsubscribe/test',
+    view_online_url:'https://example.com/view-online/test'
+  });
+  if(!html){alert('Error al construir el HTML.');return;}
+  var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
+  // Envio
+  if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
+  NX_MS.sendEmail(to,subject,html,function(ok,err){
+    if(ok){
+      if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
+      setTimeout(function(){
+        var carCount=_campEditing.selectedCarIds.length;
+        alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).\n\n\ud83d\udd0d Comprueba en Apple Mail / Gmail:\n\u2022 Header con logo\n\u2022 View Online link\n\u2022 Saludo (Hello Francesco)\n\u2022 '+carCount+' coche'+(carCount!==1?'s':'')+' inyectado'+(carCount!==1?'s':'')+' como Card Auto\n\u2022 Firma comercial visible\n\u2022 Footer con copyright\n\nSi todo se ve bien, la campa\u00f1a est\u00e1 lista para envio masivo. \ud83d\ude80');
+      },300);
+    }else{
+      alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
+    }
+  });
 }
 
 function campSendNow(){
-  alert('\ud83d\udea7 Env\u00edo masivo en desarrollo \u2014 v9.19.\n\nCompleto:\n\u2022 Inyecci\u00f3n de coches en placeholder Card Auto\n\u2022 Throttling configurable\n\u2022 Tracking aperturas\n\u2022 Adjuntos\n\nPor ahora puedes guardar como borrador y enviar test.');
+  alert('\ud83d\udea7 Env\u00edo masivo en desarrollo \u2014 v9.20.\n\nCompleto:\n\u2022 Throttling configurable (10-30/min)\n\u2022 Tracking aperturas\n\u2022 Adjuntos\n\u2022 Stats finales\n\nPor ahora puedes:\n\u2022 \ud83d\udce7 Test a m\u00ed (verificar render)\n\u2022 \ud83d\udcbe Guardar borrador');
 }
 
 // === HOOKS DE ACCESO ===
