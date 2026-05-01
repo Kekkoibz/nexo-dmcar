@@ -684,9 +684,13 @@ En que te puedo ayudar hoy?</div></div>
         <div><div class="st">Marketing</div><div class="ss">Contactos para email marketing y listas de difusi&oacute;n</div></div>
         <div class="fc g8">
           <button class="btn bs" onclick="mkDownloadTemplate()" style="font-size:12px" title="Descargar plantilla CSV vac&iacute;a"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Plantilla CSV</button>
+          <button class="btn bs" onclick="mkBulkEnrich()" style="font-size:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border:none" title="Auto-rellenar pa&iacute;s y empresa de los contactos vac&iacute;os usando el dominio del email">&#10024; Enriquecer datos</button>
           <button class="btn bs" onclick="mkExportCSV()" style="font-size:12px">&#9111; Exportar</button>
           <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
           <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
+          <button class="btn bs" onclick="mkUndoLastImport()" id="mk-undo-btn" style="font-size:12px;display:none" title="Borrar todos los contactos del &uacute;ltimo import (irrevocable)">&#8617; Anular &uacute;ltimo import</button>
+          <button class="btn bs" onclick="mkOpenSelectedEdit()" style="font-size:12px" title="Modificar contacto seleccionado">&#9998; Modificar</button>
+          <button class="btn bd" onclick="mkBulkHardDelete()" style="font-size:12px" title="Eliminar definitivamente (irrevocable)">&#128465; Eliminar</button>
           <button class="btn bp" onclick="mkOpenManual()">+ Contacto</button>
         </div>
       </div>
@@ -1630,7 +1634,10 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">&#128100; Nuevo / Editar contacto</div><button class="btn bg" onclick="closeM('m-mk-edit')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10">
       <div><label>Nombre</label><input type="text" id="mke-name" placeholder="Marco"></div>
-      <div><label>Empresa</label><input type="text" id="mke-co" placeholder="AutoItalia Srl"></div>
+      <div>
+        <label>Empresa <button type="button" onclick="mkSearchCompanyGoogle()" title="Buscar en Google esta empresa (web, telefono, direccion)" style="background:transparent;border:none;color:var(--acc);cursor:pointer;font-size:11px;margin-left:4px;padding:0">&#128269;</button></label>
+        <input type="text" id="mke-co" placeholder="AutoItalia Srl">
+      </div>
     </div>
     <div class="g2 mb10">
       <div><label>Email *</label><input type="email" id="mke-email" placeholder="marco@empresa.it"></div>
@@ -8858,6 +8865,8 @@ function renderMarketing(){
   // Update tab counters
   if(n('mk-tab-cnt-c'))n('mk-tab-cnt-c').textContent='('+mkContacts.length+')';
   if(n('mk-tab-cnt-l'))n('mk-tab-cnt-l').textContent='('+mkLists.length+')';
+  // Update Anular import button visibility
+  if(typeof mkUpdUndoBtn==='function')mkUpdUndoBtn();
   // Render tab attivo
   if(mkActiveTab==='contactos')mkRender();
   else mkRenderLists();
@@ -9047,6 +9056,8 @@ function mkSaveContact(){
   }else{
     record.id='mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
     record.createdAt=new Date().toISOString();
+    // AUTO-ENRICH silenzioso
+    if(typeof mkAutoEnrich==='function')mkAutoEnrich(record);
     mkContacts.push(record);
     mkCntCounter++;SS('mkCntCounter',mkCntCounter);
   }
@@ -9215,6 +9226,8 @@ function mkImportConfirm(){
   var m=mkImportData.mapping;
   var rows=mkImportData.rows;
   var added=0,updated=0,ignored=0,invalid=0;
+  // Traccia gli ID dei NUOVI contatti aggiunti in questo batch (per "Anular ultimo import")
+  var batchAddedIds=[];
 
   rows.forEach(function(r){
     var email=m.email>=0?mkNormEmail(r[m.email]):'';
@@ -9267,13 +9280,27 @@ function mkImportConfirm(){
     }else{
       newData.id='mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
       newData.createdAt=new Date().toISOString();
+      // AUTO-ENRICH silenzioso al momento dell'import
+      if(typeof mkAutoEnrich==='function')mkAutoEnrich(newData);
       mkContacts.push(newData);
+      batchAddedIds.push(newData.id);
       mkCntCounter++;
       added++;
     }
   });
 
   SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
+
+  // Salva batch per "Anular ultimo import" (solo se ci sono effettivamente NUOVI contatti)
+  if(batchAddedIds.length>0){
+    var batch={
+      timestamp:new Date().toISOString(),
+      source:'csv_excel_import',
+      contactIds:batchAddedIds,
+      stats:{added:added,updated:updated,ignored:ignored,invalid:invalid}
+    };
+    SS('mkLastImportBatch',batch);
+  }
 
   // Riepilogo
   var html='<div style="line-height:1.7"><strong>\u2705 Importaci\u00f3n completa:</strong><br>'
@@ -9331,6 +9358,8 @@ function mkExtractFromPaste(){
         createdAt:new Date().toISOString(),
         updatedAt:new Date().toISOString()
       };
+      // AUTO-ENRICH silenzioso
+      if(typeof mkAutoEnrich==='function')mkAutoEnrich(rec);
       mkContacts.push(rec);
       mkCntCounter++;added++;
     }
@@ -9338,13 +9367,16 @@ function mkExtractFromPaste(){
     // Multi-email: aggiunge solo email senza altri dettagli
     emails.forEach(function(email){
       if(mkFindByEmail(email)){ignored++;return;}
-      mkContacts.push({
+      var rec={
         id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,9),
         firstName:'',companyName:'',email:email,phone:'',country:'',
         customerType:'',status:'subscribed',interest:[],origin:'pegar_texto',
         notes:'Importado de pegar texto (lote)',
         createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
-      });
+      };
+      // AUTO-ENRICH silenzioso da dominio email
+      if(typeof mkAutoEnrich==='function')mkAutoEnrich(rec);
+      mkContacts.push(rec);
       mkCntCounter++;added++;
     });
   }
@@ -9596,6 +9628,8 @@ function mkSyncFromB2B(rec,source){
       createdAt:new Date().toISOString(),
       updatedAt:new Date().toISOString()
     };
+    // AUTO-ENRICH silenzioso: completa pa\u00eds/empresa dal dominio email se mancanti
+    if(typeof mkAutoEnrich==='function')mkAutoEnrich(newRec);
     mkContacts.push(newRec);
     mkCntCounter++;
     SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
@@ -9686,6 +9720,320 @@ function mkBulkSoftDelete(){
 }
 
 // END MARKETING SYNC + STATUS
+// ===========================================================================
+
+// ===========================================================================
+// MARKETING — Arricchimento automatico via dominio email
+// ===========================================================================
+
+// TLD nazionale → Country (deterministico, alta confidenza)
+var MK_TLD_COUNTRY={
+  // Europa
+  'it':'Italia','fr':'Francia','de':'Alemania','es':'Espa\u00f1a','pt':'Portugal',
+  'nl':'Pa\u00edses Bajos','be':'B\u00e9lgica','at':'Austria','ch':'Suiza','lu':'Luxemburgo',
+  'pl':'Polonia','cz':'Rep\u00fablica Checa','sk':'Eslovaquia','hu':'Hungr\u00eda','ro':'Ruman\u00eda',
+  'bg':'Bulgaria','gr':'Grecia','hr':'Croacia','si':'Eslovenia','rs':'Serbia',
+  'dk':'Dinamarca','se':'Suecia','no':'Noruega','fi':'Finlandia','is':'Islandia',
+  'ie':'Irlanda','uk':'Reino Unido','co.uk':'Reino Unido','ee':'Estonia','lv':'Letonia','lt':'Lituania',
+  // America
+  'us':'Estados Unidos','ca':'Canad\u00e1','mx':'M\u00e9xico','br':'Brasil','ar':'Argentina',
+  'cl':'Chile','co':'Colombia','pe':'Per\u00fa','uy':'Uruguay','ve':'Venezuela',
+  // Asia / Pacifico
+  'cn':'China','jp':'Jap\u00f3n','kr':'Corea del Sur','in':'India','sg':'Singapur',
+  'au':'Australia','nz':'Nueva Zelanda','hk':'Hong Kong','tw':'Taiw\u00e1n','th':'Tailandia',
+  // Medio Oriente / Africa
+  'ae':'EAU','sa':'Arabia Saud\u00ed','tr':'Turqu\u00eda','il':'Israel','eg':'Egipto',
+  'ma':'Marruecos','za':'Sud\u00e1frica','ng':'Nigeria',
+  // Russia
+  'ru':'Rusia','ua':'Ucrania'
+};
+
+// Domini email "free" / generici (NON sono aziendali)
+var MK_FREE_DOMAINS={
+  'gmail.com':true,'googlemail.com':true,
+  'hotmail.com':true,'hotmail.it':true,'hotmail.es':true,'hotmail.fr':true,'hotmail.de':true,
+  'outlook.com':true,'outlook.it':true,'outlook.es':true,
+  'live.com':true,'live.it':true,'msn.com':true,
+  'yahoo.com':true,'yahoo.it':true,'yahoo.es':true,'yahoo.fr':true,'yahoo.de':true,
+  'icloud.com':true,'me.com':true,'mac.com':true,
+  'aol.com':true,'gmx.com':true,'gmx.de':true,'gmx.net':true,'web.de':true,
+  'libero.it':true,'tiscali.it':true,'virgilio.it':true,'alice.it':true,
+  'orange.fr':true,'wanadoo.fr':true,'free.fr':true,'laposte.net':true,
+  't-online.de':true,'arcor.de':true,
+  'protonmail.com':true,'proton.me':true,'tutanota.com':true,'pm.me':true,
+  'mail.com':true,'zoho.com':true,'yandex.com':true,'yandex.ru':true,'mail.ru':true,'inbox.ru':true,
+  'pec.it':true,'legalmail.it':true
+};
+
+// Estrai dominio puro da email
+function mkEmailDomain(email){
+  var e=String(email||'').toLowerCase().trim();
+  var at=e.indexOf('@');
+  if(at<0)return '';
+  return e.substring(at+1);
+}
+
+// Restituisce TLD nazionale (es. "it", "co.uk") da dominio
+function mkTLDFromDomain(domain){
+  if(!domain)return '';
+  var parts=domain.split('.');
+  if(parts.length<2)return '';
+  // Caso speciale "co.uk", "com.au", ecc.
+  var last2=parts.slice(-2).join('.');
+  if(MK_TLD_COUNTRY[last2])return last2;
+  // Caso normale
+  return parts[parts.length-1];
+}
+
+// Inferisce paese dal dominio email
+function mkInferCountryFromEmail(email){
+  var d=mkEmailDomain(email);
+  if(!d)return '';
+  var tld=mkTLDFromDomain(d);
+  return MK_TLD_COUNTRY[tld]||'';
+}
+
+// Estrai nome azienda probabile dal dominio (es: moureyautomobiles.com \u2192 "Mourey Automobiles")
+// Gestisce CamelCase parole composte e prefissi/suffissi auto-related.
+function mkInferCompanyFromDomain(domain){
+  if(!domain)return '';
+  // Escludi domini free
+  if(MK_FREE_DOMAINS[domain])return '';
+  // Rimuovi TLD (.com, .it, ecc.)
+  var parts=domain.split('.');
+  if(parts.length<2)return '';
+  var name=parts[0]; // es "moureyautomobiles" o "auto-italia"
+  // Prova split su separatori comuni
+  if(name.indexOf('-')>=0){
+    // "auto-italia" \u2192 "Auto Italia"
+    return name.split('-').map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
+  }
+  // CamelCase: rileva word boundaries comuni per parole italiane/inglesi
+  // Tentativo 1: split su parole note "auto", "cars", "motor", "group", "service", "trade", "import", "export"
+  var commonWords=['auto','cars','car','motor','motors','motori','group','gruppo','service','services','trade','trading','import','export','automobiles','automotive','dealer','vehicles','vehicle'];
+  var lower=name.toLowerCase();
+  for(var i=0;i<commonWords.length;i++){
+    var w=commonWords[i];
+    var idx=lower.indexOf(w);
+    if(idx>0){
+      // Split: prima + parola comune
+      var p1=name.substring(0,idx);
+      var p2=name.substring(idx,idx+w.length);
+      var p3=name.substring(idx+w.length);
+      var arr=[p1,p2,p3].filter(Boolean);
+      return arr.map(function(x){return x.charAt(0).toUpperCase()+x.slice(1).toLowerCase();}).join(' ');
+    }
+  }
+  // Fallback: capitalizza la prima
+  return name.charAt(0).toUpperCase()+name.slice(1);
+}
+
+// Inferisce dominio aziendale (per UI: mostra "Buscar en Google")
+function mkIsCorporateDomain(email){
+  var d=mkEmailDomain(email);
+  if(!d)return false;
+  return !MK_FREE_DOMAINS[d];
+}
+
+// AUTO-ENRICH: arricchisce un contatto in-place se i campi sono vuoti
+// Restituisce true se ha modificato qualcosa
+function mkAutoEnrich(c){
+  if(!c||!c.email)return false;
+  var changed=false;
+  // 1. Country
+  if(!c.country){
+    var inferred=mkInferCountryFromEmail(c.email);
+    if(inferred){c.country=inferred;changed=true;}
+  }
+  // 2. Company (solo se dominio aziendale)
+  if(!c.companyName){
+    var dom=mkEmailDomain(c.email);
+    if(dom&&!MK_FREE_DOMAINS[dom]){
+      var inferred2=mkInferCompanyFromDomain(dom);
+      if(inferred2){c.companyName=inferred2;changed=true;}
+    }
+  }
+  return changed;
+}
+
+// BULK ENRICH: arricchisce TUTTI i contatti con dati vuoti
+function mkBulkEnrich(){
+  if(!mkContacts.length){alert('No hay contactos.');return;}
+  var enriched=0,skipped=0;
+  mkContacts.forEach(function(c){
+    var before=JSON.stringify({co:c.country,cn:c.companyName});
+    if(mkAutoEnrich(c)){
+      c.updatedAt=new Date().toISOString();
+      enriched++;
+    }else{
+      skipped++;
+    }
+  });
+  if(enriched>0){
+    SS('mkContacts',mkContacts);
+    renderMarketing();
+    alert('\u2705 Arricchimento completo:\n\n'
+      +'\u2022 '+enriched+' contactos enriquecidos (pa\u00eds/empresa inferidos del dominio)\n'
+      +'\u2022 '+skipped+' contactos sin cambios (ya completos o sin dominio aziendale)');
+  }else{
+    alert('Ningun contacto necesitaba enriquecimiento. Todos ya tienen pa\u00eds y empresa.');
+  }
+}
+
+// END MARKETING ENRICHMENT
+// ===========================================================================
+
+// Helper UI: apre Google con query intelligente per identificare l'azienda
+function mkSearchCompanyGoogle(){
+  // Costruisce query da: empresa + email domain + paese
+  var co=(n('mke-co')&&n('mke-co').value||'').trim();
+  var email=(n('mke-email')&&n('mke-email').value||'').trim();
+  var country=(n('mke-country')&&n('mke-country').value||'').trim();
+  var domain=mkEmailDomain(email);
+  var query='';
+  if(co){
+    query=co+(country?' '+country:'');
+  }else if(domain&&!MK_FREE_DOMAINS[domain]){
+    // Dominio aziendale: cerca direttamente il dominio
+    query=domain+' empresa contacto';
+  }else{
+    query=email||'';
+  }
+  if(!query.trim()){alert('Inserisci almeno empresa, dominio email o pa\u00eds.');return;}
+  var url='https://www.google.com/search?q='+encodeURIComponent(query);
+  window.open(url,'_blank','noopener,noreferrer');
+}
+
+// ===========================================================================
+// MARKETING — Unsubscribe link (per template email Direct Mail futuri)
+// ===========================================================================
+// URL del Cloudflare Worker che gestisce le disiscrizioni
+var MK_UNSUB_WORKER_URL='https://nexo-unsubscribe.shiny-pond-1403.workers.dev';
+
+// Genera link unsubscribe firmato per un contatto specifico
+// Il "token" \u00e8 un HMAC dell'email + secret condiviso col Worker
+// Cos\u00ec previene unsubscribe arbitrari (solo chi ha il link valido pu\u00f2 disiscrivere quello specifico email)
+function mkBuildUnsubLink(email){
+  // Per ora token semplice: btoa(email + timestamp). In futuro HMAC vero.
+  // Il Worker valida e accetta.
+  var ts=Date.now();
+  var token=btoa(email+'|'+ts);
+  return MK_UNSUB_WORKER_URL+'/?email='+encodeURIComponent(email)+'&t='+encodeURIComponent(token);
+}
+
+// Footer HTML standard per email (Direct Mail compliance)
+function mkBuildEmailFooter(email,lang){
+  lang=(lang||'es').toLowerCase();
+  var labels={
+    es:{unsub:'Si no quiere recibir m\u00e1s emails, haga click aqu\u00ed para darse de baja',sent:'Has recibido este email porque est\u00e1s suscrito a nuestras comunicaciones'},
+    it:{unsub:'Se non vuoi pi\u00f9 ricevere email, clicca qui per cancellarti',sent:'Hai ricevuto questa email perch\u00e9 sei iscritto alle nostre comunicazioni'},
+    en:{unsub:'If you don\'t want to receive more emails, click here to unsubscribe',sent:'You have received this email because you are subscribed to our communications'}
+  };
+  var L=labels[lang]||labels.es;
+  var unsubLink=mkBuildUnsubLink(email);
+  return '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">'
+    +'<div style="font-size:11px;color:#888;text-align:center;line-height:1.6">'
+    +'<div>'+L.sent+'.</div>'
+    +'<div style="margin-top:6px"><a href="'+unsubLink+'" style="color:#888;text-decoration:underline">'+L.unsub+'</a></div>'
+    +'<div style="margin-top:6px">DMCAR GROUP &middot; info@dmcargroup.com</div>'
+    +'</div>';
+}
+
+// END MARKETING UNSUBSCRIBE HELPERS
+// ===========================================================================
+
+// ===========================================================================
+// MARKETING — Toolbar actions: Modificar / Eliminar / Anular import
+// ===========================================================================
+
+// MODIFICAR: apre il modal edit del contatto selezionato
+// Se ce ne \u00e8 uno solo selezionato → apre direttamente
+// Se ce ne sono pi\u00f9 → chiede di sceglierne uno
+// Se non ce ne sono → avvisa
+function mkOpenSelectedEdit(){
+  if(mkSel.size===0){
+    alert('Selecciona un contacto antes (con la casilla a la izquierda).');
+    return;
+  }
+  if(mkSel.size>1){
+    alert('Has seleccionado '+mkSel.size+' contactos. Solo puedes modificar uno a la vez.\nDeselecciona los dem\u00e1s o usa el bot\u00f3n \u270e en cada fila.');
+    return;
+  }
+  var id=Array.from(mkSel)[0];
+  mkOpenEdit(id);
+}
+
+// ELIMINAR DEFINITIVO (HARD DELETE) BULK
+// Per casi GDPR / ripulitura DB. NON \u00e8 unsubscribe — cancella i record dal DB.
+// Doppia conferma per sicurezza.
+function mkBulkHardDelete(){
+  if(mkSel.size===0){
+    alert('Selecciona los contactos a eliminar (con la casilla a la izquierda).');
+    return;
+  }
+  if(!confirm('\u26a0\ufe0f ELIMINAR DEFINITIVAMENTE '+mkSel.size+' contacto'+(mkSel.size!==1?'s':'')+'?\n\n\u274c Esto BORRA todos los datos (no es unsubscribe)\n\u274c Irreversible \u2014 los contactos se pierden\n\u274c No quedar\u00e1 rastro en el sistema\n\nNormalmente es preferible \u201cunsubscribe\u201d para mantener historial.\n\n\u00bfContinuar igualmente?')){
+    return;
+  }
+  if(!confirm('\ud83d\udea8 SEGUNDA CONFIRMACI\u00d3N\n\nVas a borrar '+mkSel.size+' contacto'+(mkSel.size!==1?'s':'')+' de forma DEFINITIVA.\n\n\u00bfEst\u00e1s 100% seguro?')){
+    return;
+  }
+  var deleted=mkSel.size;
+  mkContacts=mkContacts.filter(function(c){return !mkSel.has(c.id);});
+  mkSel.clear();
+  SS('mkContacts',mkContacts);
+  if(typeof showToast==='function')showToast('\ud83d\uddd1 '+deleted+' contactos eliminados definitivamente');
+  renderMarketing();
+}
+
+// ANULAR \u00daLTIMO IMPORT
+// Tiene traccia dell'ultimo batch import (timestamp + array di IDs aggiunti)
+// e permette di rollbackarlo cancellando tutti i contatti aggiunti in quell'import.
+// I contatti AGGIORNATI durante l'import non vengono toccati (solo i NUOVI).
+function mkUndoLastImport(){
+  var batch=LS('mkLastImportBatch',null);
+  if(!batch||!batch.contactIds||!batch.contactIds.length){
+    alert('No hay ning\u00fan import reciente para anular.');
+    return;
+  }
+  var ts=new Date(batch.timestamp).toLocaleString('es-ES');
+  if(!confirm('\u26a0\ufe0f Anular \u00faltimo import?\n\n\u2022 Fecha: '+ts+'\n\u2022 Contactos a\u00f1adidos: '+batch.contactIds.length+'\n\u2022 Tipo: '+(batch.source||'desconocido')+'\n\nEsto BORRAR\u00c1 estos '+batch.contactIds.length+' contactos del DB. Los contactos que ya exist\u00edan y fueron actualizados NO se tocan.\n\n\u00bfContinuar?')){
+    return;
+  }
+  var idsToRemove={};
+  batch.contactIds.forEach(function(id){idsToRemove[id]=true;});
+  var before=mkContacts.length;
+  mkContacts=mkContacts.filter(function(c){return !idsToRemove[c.id];});
+  var removed=before-mkContacts.length;
+  mkSel.clear();
+  SS('mkContacts',mkContacts);
+  // Rimuovi il batch (anulato)
+  localStorage.removeItem('nx5_mkLastImportBatch');
+  // Aggiorna UI
+  if(typeof renderMarketing==='function')renderMarketing();
+  if(typeof mkUpdUndoBtn==='function')mkUpdUndoBtn();
+  alert('\u2705 Import anulado.\n\n'+removed+' contactos eliminados.');
+}
+
+// Mostra/nasconde il bottone "Anular \u00faltimo import" in base alla presenza del batch
+function mkUpdUndoBtn(){
+  var btn=n('mk-undo-btn');
+  if(!btn)return;
+  var batch=LS('mkLastImportBatch',null);
+  var hasBatch=batch&&batch.contactIds&&batch.contactIds.length>0;
+  // Verifica che almeno qualche contatto del batch esista ancora
+  if(hasBatch){
+    var stillExists=batch.contactIds.some(function(id){
+      return mkContacts.some(function(c){return c.id===id;});
+    });
+    hasBatch=stillExists;
+  }
+  btn.style.display=hasBatch?'':'none';
+  if(hasBatch){
+    btn.innerHTML='&#8617; Anular &uacute;ltimo ('+batch.contactIds.length+')';
+  }
+}
+
+// END MARKETING TOOLBAR ACTIONS
 // ===========================================================================
 
 // -- MODALS ---------------------------------------------------
