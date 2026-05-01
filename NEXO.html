@@ -753,16 +753,11 @@ En que te puedo ayudar hoy?</div></div>
           </div>
           <div class="g3">
             <div><label style="font-size:10px;color:var(--t3)">Inter&eacute;s (marca)</label><input type="text" id="f-mk-interest" placeholder="ej: Audi, BMW" oninput="mkRender()"></div>
-            <div><label style="font-size:10px;color:var(--t3)">Origen</label>
-              <select id="f-mk-origin" onchange="mkRender()">
-                <option value="">Todos</option>
-                <option value="web">Web</option>
-                <option value="instagram">Instagram</option>
-                <option value="fiera">Fiera</option>
-                <option value="lista_vieja">Lista vieja</option>
-                <option value="manual">Manual</option>
-                <option value="pegar_texto">Pegar texto</option>
-                <option value="otro">Otro</option>
+            <div><label style="font-size:10px;color:var(--t3)">Lista</label>
+              <select id="f-mk-list" onchange="mkRender()">
+                <option value="">Todas</option>
+                <option value="__none__">Sin lista (hu&eacute;rfanos)</option>
+                <!-- Le opzioni sono popolate dinamicamente in mkRender() -->
               </select>
             </div>
             <div style="display:flex;align-items:flex-end;justify-content:flex-end">
@@ -786,7 +781,7 @@ En que te puedo ayudar hoy?</div></div>
                 <th>Pa&iacute;s</th>
                 <th>Tipo</th>
                 <th>Inter&eacute;s</th>
-                <th>Origen</th>
+                <th>Listas</th>
                 <th>Fecha</th>
                 <th style="width:90px"></th>
               </tr></thead>
@@ -9170,20 +9165,94 @@ function mkSwitchTab(t){
 }
 
 function mkClearFilters(){
-  ['f-mk-q','f-mk-country','f-mk-type','f-mk-status','f-mk-interest','f-mk-origin'].forEach(function(id){
+  ['f-mk-q','f-mk-country','f-mk-type','f-mk-status','f-mk-interest','f-mk-list'].forEach(function(id){
     var el=n(id);if(el){if(el.tagName==='SELECT')el.selectedIndex=0;else el.value='';}
   });
   mkRender();
 }
 
+// Helper: ritorna l'array di liste (statiche e dinamiche) a cui un contatto appartiene
+// Output: [{id, name, type:'static'|'dynamic'}, ...]
+function mkGetContactLists(c){
+  if(!c||!c.id)return [];
+  var result=[];
+  mkLists.forEach(function(l){
+    if(l.type==='static'){
+      if(Array.isArray(l.contactIds)&&l.contactIds.indexOf(c.id)>=0){
+        result.push({id:l.id,name:l.name,type:'static'});
+      }
+    }else if(l.type==='dynamic'&&l.filters){
+      if(mkContactMatchesFilters(c,l.filters)){
+        result.push({id:l.id,name:l.name,type:'dynamic'});
+      }
+    }
+  });
+  return result;
+}
+
+// Render del HTML chip per la colonna Listas (max 2 + "+N")
+function mkRenderListsCellHTML(c){
+  var lists=mkGetContactLists(c);
+  if(lists.length===0)return '<span style="color:var(--t4);font-size:10px">--</span>';
+  var maxShow=2;
+  var visible=lists.slice(0,maxShow);
+  var hiddenCount=lists.length-maxShow;
+  var html='<div class="fc g4" style="flex-wrap:wrap">';
+  visible.forEach(function(l){
+    // Statica = blu, dinamica = arancione
+    var isStatic=(l.type==='static');
+    var bg=isStatic?'rgba(37,99,235,.15)':'rgba(245,158,11,.15)';
+    var fg=isStatic?'var(--acc)':'#92400e';
+    var icon=isStatic?'\ud83d\udcc4':'\u26a1';
+    html+='<span class="mk-list-chip" data-list-id="'+esc(l.id)+'" title="'+(isStatic?'Lista est\u00e1tica':'Lista din\u00e1mica')+': '+esc(l.name)+'" style="background:'+bg+';color:'+fg+';padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis;display:inline-block">'+icon+' '+esc(l.name)+'</span>';
+  });
+  if(hiddenCount>0){
+    var allNames=lists.map(function(l){return (l.type==='static'?'\ud83d\udcc4 ':'\u26a1 ')+l.name;}).join(', ');
+    html+='<span title="'+esc(allNames)+'" style="background:var(--bg3);color:var(--t3);padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:help">+'+hiddenCount+'</span>';
+  }
+  html+='</div>';
+  return html;
+}
+
+// Popola dinamicamente il select del filtro lista con le liste esistenti
+function mkPopulateListFilter(){
+  var sel=n('f-mk-list');
+  if(!sel)return;
+  var curVal=sel.value;
+  // Statiche prima, poi dinamiche
+  var statics=mkLists.filter(function(l){return l.type==='static';});
+  var dyns=mkLists.filter(function(l){return l.type==='dynamic';});
+  var html='<option value="">Todas</option><option value="__none__">\u2014 Sin lista (hu\u00e9rfanos)</option>';
+  if(statics.length){
+    html+='<optgroup label="\ud83d\udcc4 Est\u00e1ticas">';
+    statics.forEach(function(l){
+      var count=Array.isArray(l.contactIds)?l.contactIds.length:0;
+      html+='<option value="static:'+esc(l.id)+'">'+esc(l.name)+' ('+count+')</option>';
+    });
+    html+='</optgroup>';
+  }
+  if(dyns.length){
+    html+='<optgroup label="\u26a1 Din\u00e1micas">';
+    dyns.forEach(function(l){
+      html+='<option value="dynamic:'+esc(l.id)+'">'+esc(l.name)+'</option>';
+    });
+    html+='</optgroup>';
+  }
+  sel.innerHTML=html;
+  // Restore valore se ancora valido
+  if(curVal&&sel.querySelector('option[value="'+CSS.escape(curVal)+'"]'))sel.value=curVal;
+}
+
 // -- FILTER + RENDER TABLE ------------------------------------------------
 function mkRender(){
+  // Aggiorna il filtro liste prima di filtrare
+  mkPopulateListFilter();
   var q=(n('f-mk-q')&&n('f-mk-q').value||'').toLowerCase().trim();
   var country=(n('f-mk-country')&&n('f-mk-country').value||'').toLowerCase().trim();
   var type=n('f-mk-type')&&n('f-mk-type').value||'';
   var status=n('f-mk-status')&&n('f-mk-status').value||'';
   var interest=(n('f-mk-interest')&&n('f-mk-interest').value||'').toLowerCase().trim();
-  var origin=n('f-mk-origin')&&n('f-mk-origin').value||'';
+  var listFilter=n('f-mk-list')&&n('f-mk-list').value||'';
 
   mkFlt=mkContacts.filter(function(c){
     if(q){
@@ -9197,7 +9266,20 @@ function mkRender(){
       var ints=(c.interest||[]).join(' ').toLowerCase();
       if(ints.indexOf(interest)<0)return false;
     }
-    if(origin&&c.origin!==origin)return false;
+    // Filtro lista
+    if(listFilter){
+      var contactLists=mkGetContactLists(c);
+      if(listFilter==='__none__'){
+        if(contactLists.length>0)return false;
+      }else{
+        // Format: "static:abc123" o "dynamic:xyz789"
+        var parts=listFilter.split(':');
+        if(parts.length===2){
+          var wantId=parts[1];
+          if(!contactLists.some(function(l){return l.id===wantId;}))return false;
+        }
+      }
+    }
     return true;
   });
 
@@ -9231,7 +9313,7 @@ function mkRender(){
       +'<td style="font-size:11px;white-space:nowrap;padding:2px 6px"><div class="mk-country-inline" data-id="'+esc(c.id)+'" style="max-width:160px"></div></td>'
       +'<td style="font-size:10px">'+esc(MK_TYPE_LABEL[c.customerType]||c.customerType||'')+'</td>'
       +'<td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(ints)+'">'+esc(ints)+'</td>'
-      +'<td style="font-size:10px;color:var(--t3)">'+esc(MK_ORIGIN_LABEL[c.origin]||c.origin||'')+'</td>'
+      +'<td style="font-size:10px">'+mkRenderListsCellHTML(c)+'</td>'
       +'<td style="font-size:10px;color:var(--t3)">'+fmtD(c.createdAt)+'</td>'
       +'<td><div class="fc g4">'
         +'<button class="btn bs mk-edit-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">&#9998;</button>'
@@ -9253,6 +9335,20 @@ function mkRender(){
   });
   body.querySelectorAll('.mk-edit-btn').forEach(function(b){
     b.addEventListener('click',function(){mkOpenEdit(this.getAttribute('data-id'));});
+  });
+  // Click sui chip lista \u2192 applica filtro
+  body.querySelectorAll('.mk-list-chip').forEach(function(ch){
+    ch.addEventListener('click',function(e){
+      e.stopPropagation();
+      var lid=this.getAttribute('data-list-id');
+      var list=mkLists.find(function(l){return l.id===lid;});
+      if(!list)return;
+      var sel=n('f-mk-list');
+      if(sel){
+        sel.value=(list.type==='static'?'static:':'dynamic:')+lid;
+        mkRender();
+      }
+    });
   });
   body.querySelectorAll('.mk-unsub-btn').forEach(function(b){
     b.addEventListener('click',function(){mkSoftDelete(this.getAttribute('data-id'));});
