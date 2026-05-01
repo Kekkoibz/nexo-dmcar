@@ -1907,6 +1907,73 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- CAMPA\u00d1AS: EDITOR TEMPLATE A BLOQUES -->
+<div class="ovl" id="m-tpl-edit">
+  <div class="modal" style="max-width:1280px;width:96vw;max-height:94vh;padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <!-- Header del editor -->
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2)">
+      <div style="display:flex;align-items:center;gap:14px;flex:1">
+        <div style="font-size:16px;font-weight:700;color:var(--t1)">&#128196; Editor template</div>
+        <input type="text" id="tpl-name" placeholder="Nombre del template (ej: Newsletter Mayo 2026)" style="flex:1;max-width:320px;font-size:13px">
+        <input type="text" id="tpl-subject" placeholder="Asunto por defecto (ej: Nuevas ofertas...)" style="flex:1;max-width:320px;font-size:13px">
+      </div>
+      <div class="fc g6">
+        <button class="btn bg" onclick="closeM('m-tpl-edit')" style="font-size:12px">Cancelar</button>
+        <button class="btn bp" onclick="tplSave()" style="font-size:12px">&#128190; Guardar template</button>
+      </div>
+    </div>
+
+    <!-- Body en 3 columnas -->
+    <div style="flex:1;display:grid;grid-template-columns:200px 1fr 1fr;gap:0;overflow:hidden;min-height:0">
+
+      <!-- COL 1: Bloques disponibles -->
+      <div style="border-right:1px solid var(--border);overflow-y:auto;background:var(--bg3);padding:12px">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Bloques</div>
+        <div id="tpl-block-palette" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="font-size:10px;color:var(--t4);margin-top:14px;line-height:1.5;padding:8px;background:var(--bg4);border-radius:6px">
+          &#128161; Click en un bloque para a&ntilde;adirlo al canvas. Despu&eacute;s puedes editarlo, reordenarlo o eliminarlo.
+        </div>
+      </div>
+
+      <!-- COL 2: Canvas (orden bloques) -->
+      <div style="overflow-y:auto;padding:14px;background:var(--bg2)">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+          <span>Canvas (estructura)</span>
+          <span id="tpl-canvas-count" style="font-size:9px;color:var(--t4);font-weight:400">0 bloques</span>
+        </div>
+        <div id="tpl-canvas" style="min-height:200px;display:flex;flex-direction:column;gap:8px"></div>
+        <div id="tpl-canvas-empty" style="text-align:center;padding:40px 20px;color:var(--t4);font-size:11px;border:2px dashed var(--border);border-radius:10px;margin-top:8px">
+          &#128206; El canvas est&aacute; vac&iacute;o.<br>Click en un bloque del panel izquierdo para empezar.
+        </div>
+      </div>
+
+      <!-- COL 3: Vista previa HTML real -->
+      <div style="border-left:1px solid var(--border);overflow-y:auto;background:#f3f4f6;padding:14px">
+        <div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;justify-content:space-between">
+          <span>&#128064; Vista previa</span>
+          <span style="font-size:9px;color:var(--t4);font-weight:400">como se ver&aacute; en email</span>
+        </div>
+        <div id="tpl-preview" style="background:#fff;border-radius:8px;padding:18px;color:#1a1a1a;font-family:Arial,sans-serif;font-size:13px;min-height:300px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="color:#999;font-style:italic;font-size:12px;text-align:center;padding:30px">La vista previa aparecer&aacute; aqu&iacute;...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR BLOQUE INDIVIDUAL (configuraci\u00f3n del bloque seleccionado) -->
+<div class="ovl" id="m-tpl-block-edit">
+  <div class="modal" style="max-width:600px">
+    <div class="fbet mb14"><div class="mt" id="m-tpl-block-title">Editar bloque</div><button class="btn bg" onclick="closeM('m-tpl-block-edit')" style="padding:5px 10px">X</button></div>
+    <div id="tpl-block-form"></div>
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-tpl-block-edit')" style="flex:1">Cancelar</button>
+      <button class="btn bp" onclick="tplBlockSaveConfig()" style="flex:2">&#128190; Aplicar</button>
+    </div>
+  </div>
+</div>
 <script>
 // Global error handler - shows errors visually on mobile
 window.onerror = function(msg, src, line, col, err) {
@@ -11769,12 +11836,207 @@ function tplRender(){
   }).join('');
 }
 
+// ===========================================================================
+// EDITOR TEMPLATE A BLOQUES (v9.12)
+// ===========================================================================
+
+// Estado actual del editor (cargado al abrir, guardado al cerrar)
+var _tplEditing={
+  id:null,            // null si nuevo
+  name:'',
+  subject:'',
+  blocks:[],          // array de blocks {id, type, config}
+  editingBlockIdx:-1  // \u00edndice del bloque actualmente en edici\u00f3n (-1 si ninguno)
+};
+
+// Definici\u00f3n de tipos de bloques disponibles
+// Cada tipo tiene: type, label, icon, defaultConfig, renderHTML(config), renderForm(config)
+var TPL_BLOCK_TYPES={
+  header:{
+    type:'header',
+    label:'Header',
+    icon:'\ud83d\uddbc\ufe0f',
+    description:'Logo + tagline en la parte superior',
+    defaultConfig:{
+      logoUrl:'https://kekkoibz.github.io/nexo-dmcar/logos/dmcar.png',
+      tagline:'DMCARGROUP \u2013 Your Trusted Partner in Automotive Trading',
+      bgColor:'#ffffff'
+    }
+  },
+  greeting:{
+    type:'greeting',
+    label:'Saludo',
+    icon:'\ud83d\udc4b',
+    description:'Hello {{nombre}} con referencia',
+    defaultConfig:{
+      template:'Hello {{nombre}},',
+      refLabel:'Ref:',
+      refValue:''
+    }
+  },
+  text:{
+    type:'text',
+    label:'Texto',
+    icon:'\ud83d\udcdd',
+    description:'P\u00e1rrafo de texto libre con variables',
+    defaultConfig:{
+      content:'Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n\nPraesent quis ipsum nec ipsum lobortis viverra.'
+    }
+  },
+  separator:{
+    type:'separator',
+    label:'Separador',
+    icon:'\u2796',
+    description:'L\u00ednea separadora horizontal',
+    defaultConfig:{
+      style:'solid',
+      color:'#e5e7eb'
+    }
+  },
+  signature:{
+    type:'signature',
+    label:'Firma',
+    icon:'\u270d\ufe0f',
+    description:'Firma comercial seleccionable de tu r\u00fabrica',
+    defaultConfig:{
+      firmaId:''  // se setear\u00e1 al elegir
+    }
+  },
+  footer:{
+    type:'footer',
+    label:'Footer',
+    icon:'\ud83e\uddb6',
+    description:'Copyright + Privacy + Unsubscribe',
+    defaultConfig:{
+      copyright:'\u00a9 Copyright '+new Date().getFullYear()+' DMCAR GROUP.',
+      address:'\u0160t\u011bp\u00e1nsk\u00e1 1742/27\n11000 Prague 1, Czech Republic\n(VAT: CZ21830851)',
+      privacyUrl:'https://www.dmcargroup.com/privacy-policy'
+    }
+  }
+};
+
+// Render del HTML para cada tipo de bloque
+function tplRenderBlockHTML(block){
+  if(!block)return '';
+  var c=block.config||{};
+  switch(block.type){
+    case 'header':
+      var bg=c.bgColor||'#ffffff';
+      return '<div style="text-align:center;background:'+esc(bg)+';padding:20px 14px">'
+        +(c.logoUrl?'<img src="'+esc(c.logoUrl)+'" alt="Logo" style="max-width:300px;height:auto;display:inline-block">':'')
+        +(c.tagline?'<div style="font-size:14px;font-weight:600;color:#333;margin-top:14px">'+esc(c.tagline)+'</div>':'')
+      +'</div>';
+    case 'greeting':
+      var greeting=esc(c.template||'Hello,');
+      var html='<div style="padding:14px 20px;font-size:14px;color:#333">';
+      html+='<div>'+greeting+'</div>';
+      if(c.refLabel||c.refValue){
+        html+='<div style="font-size:11px;color:#888;margin-top:6px">'+esc(c.refLabel||'Ref:')+' <strong>'+esc(c.refValue||'')+'</strong></div>';
+      }
+      html+='</div>';
+      return html;
+    case 'text':
+      var content=(c.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      return '<div style="padding:6px 20px;font-size:13px;color:#333;line-height:1.6">'+content+'</div>';
+    case 'separator':
+      var style=c.style||'solid';
+      var color=c.color||'#e5e7eb';
+      return '<div style="padding:14px 20px"><hr style="border:none;border-top:1px '+style+' '+color+';margin:0"></div>';
+    case 'signature':
+      // Busca la firma en mkFirmas
+      if(!c.firmaId)return '<div style="padding:14px 20px;color:#dc2626;font-size:11px;font-style:italic">\u26a0\ufe0f Bloque firma sin selecci\u00f3n. Click para configurar.</div>';
+      var firma=mkFirmas.find(function(f){return f.id===c.firmaId;});
+      if(!firma)return '<div style="padding:14px 20px;color:#dc2626;font-size:11px;font-style:italic">\u26a0\ufe0f Firma no encontrada (ID: '+esc(c.firmaId)+'). Quiz\u00e1s fue eliminada.</div>';
+      return '<div style="padding:14px 20px">'+(firma.html||'')+'</div>';
+    case 'footer':
+      var html='<div style="padding:20px;text-align:center;background:#f9fafb;font-size:10px;color:#6b7280;line-height:1.5">';
+      if(c.copyright)html+='<div style="margin-bottom:6px">'+esc(c.copyright)+'</div>';
+      if(c.address)html+='<div style="margin-bottom:8px;white-space:pre-line">'+esc(c.address)+'</div>';
+      if(c.privacyUrl)html+='<div><a href="'+esc(c.privacyUrl)+'" style="color:#6b7280;text-decoration:underline">Privacy Policy</a> &nbsp;\u2022&nbsp; <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline">Unsubscribe</a></div>';
+      html+='</div>';
+      return html;
+  }
+  return '';
+}
+
+// Render del formulario de edici\u00f3n para cada tipo de bloque
+function tplRenderBlockForm(block){
+  if(!block)return '';
+  var c=block.config||{};
+  var t=block.type;
+  var html='';
+  switch(t){
+    case 'header':
+      html+='<div class="mb10"><label>URL del logo</label><input type="text" id="bf-logoUrl" value="'+esc(c.logoUrl||'')+'" placeholder="https://..."></div>';
+      html+='<div class="mb10"><label>Tagline</label><input type="text" id="bf-tagline" value="'+esc(c.tagline||'')+'" placeholder="DMCARGROUP \u2013 Your Trusted Partner..."></div>';
+      html+='<div class="mb10"><label>Color de fondo</label><input type="color" id="bf-bgColor" value="'+esc(c.bgColor||'#ffffff')+'"></div>';
+      break;
+    case 'greeting':
+      html+='<div class="mb10"><label>Saludo (puede usar {{nombre}})</label><input type="text" id="bf-template" value="'+esc(c.template||'')+'" placeholder="Hello {{nombre}},"></div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Etiqueta Ref</label><input type="text" id="bf-refLabel" value="'+esc(c.refLabel||'')+'" placeholder="Ref:"></div>';
+      html+='<div><label>Valor Ref (opcional)</label><input type="text" id="bf-refValue" value="'+esc(c.refValue||'')+'" placeholder="ej: 19.91"></div>';
+      html+='</div>';
+      break;
+    case 'text':
+      html+='<div class="mb10"><label>Contenido del texto</label><textarea id="bf-content" placeholder="Texto del p\u00e1rrafo..." style="min-height:150px">'+esc(c.content||'')+'</textarea></div>';
+      html+='<div style="font-size:10px;color:var(--t4);line-height:1.5">Variables disponibles: <code>{{nombre}}</code> <code>{{empresa}}</code> <code>{{pais}}</code> <code>{{email}}</code></div>';
+      break;
+    case 'separator':
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Estilo de l\u00ednea</label><select id="bf-style"><option value="solid"'+(c.style==='solid'?' selected':'')+'>S\u00f3lida</option><option value="dashed"'+(c.style==='dashed'?' selected':'')+'>Discontinua</option><option value="dotted"'+(c.style==='dotted'?' selected':'')+'>Punteada</option></select></div>';
+      html+='<div><label>Color</label><input type="color" id="bf-color" value="'+esc(c.color||'#e5e7eb')+'"></div>';
+      html+='</div>';
+      break;
+    case 'signature':
+      html+='<div class="mb10"><label>Selecciona una firma de la r\u00fabrica</label>';
+      if(mkFirmas.length===0){
+        html+='<div style="background:var(--bg3);padding:12px;border-radius:7px;color:var(--t3);font-size:12px;text-align:center">No hay firmas creadas todav\u00eda. Ve a la pesta&ntilde;a <strong>Firmas</strong> y crea al menos una.</div>';
+      }else{
+        html+='<select id="bf-firmaId">';
+        html+='<option value="">-- Selecciona una firma --</option>';
+        mkFirmas.forEach(function(f){
+          var sel=(c.firmaId===f.id)?' selected':'';
+          var langFlag=FIR_LANG_FLAG[f.lang]||'';
+          html+='<option value="'+esc(f.id)+'"'+sel+'>'+langFlag+' '+esc(f.name||'')+'</option>';
+        });
+        html+='</select>';
+      }
+      html+='</div>';
+      break;
+    case 'footer':
+      html+='<div class="mb10"><label>Copyright</label><input type="text" id="bf-copyright" value="'+esc(c.copyright||'')+'" placeholder="\u00a9 Copyright '+new Date().getFullYear()+' DMCAR GROUP."></div>';
+      html+='<div class="mb10"><label>Direcci\u00f3n / Datos legales</label><textarea id="bf-address" style="min-height:80px">'+esc(c.address||'')+'</textarea></div>';
+      html+='<div class="mb10"><label>URL Privacy Policy</label><input type="text" id="bf-privacyUrl" value="'+esc(c.privacyUrl||'')+'" placeholder="https://..."></div>';
+      break;
+  }
+  return html;
+}
+
+// === FUNCIONES PRINCIPALES DEL EDITOR ===
+
 function tplOpenNew(){
-  alert('\ud83d\udea7 Editor de templates en desarrollo \u2014 v9.8.\n\nEl editor visual a bloques estar\u00e1 disponible en la pr\u00f3xima versi\u00f3n. Bloques previstos:\n\u2022 \ud83d\uddbc\ufe0f Header (logo)\n\u2022 \ud83d\udc4b Saludo\n\u2022 \ud83d\ude97 Card auto (auto-fill desde Stock Vivo)\n\u2022 \ud83d\udccb Equipment list\n\u2022 \u270d\ufe0f Firma (selector de rubrica)\n\u2022 \ud83e\uddb6 Footer\n\nMientras tanto, ya puedes crear las firmas en la pesta\u00f1a Firmas.');
+  _tplEditing={id:null,name:'',subject:'',blocks:[],editingBlockIdx:-1};
+  if(n('tpl-name'))n('tpl-name').value='';
+  if(n('tpl-subject'))n('tpl-subject').value='';
+  tplRenderEditor();
+  openM('m-tpl-edit');
 }
 
 function tplOpenEdit(id){
-  alert('\ud83d\udea7 Editor de template en desarrollo. ID: '+id);
+  var t=mkTemplates.find(function(x){return x.id===id;});
+  if(!t){alert('Template no encontrado.');return;}
+  _tplEditing={
+    id:t.id,
+    name:t.name||'',
+    subject:t.subject||'',
+    blocks:JSON.parse(JSON.stringify(t.blocks||[])),  // deep clone
+    editingBlockIdx:-1
+  };
+  if(n('tpl-name'))n('tpl-name').value=_tplEditing.name;
+  if(n('tpl-subject'))n('tpl-subject').value=_tplEditing.subject;
+  tplRenderEditor();
+  openM('m-tpl-edit');
 }
 
 function tplDel(id){
@@ -11786,6 +12048,170 @@ function tplDel(id){
   renderCampaigns();
   if(typeof showToast==='function')showToast('\u2713 Template eliminado');
 }
+
+// Render completo del editor (paleta + canvas + preview)
+function tplRenderEditor(){
+  tplRenderPalette();
+  tplRenderCanvas();
+  tplRenderPreview();
+}
+
+// Render del panel izquierdo: bloques disponibles
+function tplRenderPalette(){
+  var pal=n('tpl-block-palette');
+  if(!pal)return;
+  pal.innerHTML=Object.keys(TPL_BLOCK_TYPES).map(function(key){
+    var t=TPL_BLOCK_TYPES[key];
+    return '<button class="btn bg" onclick="tplAddBlock(\''+key+'\')" style="text-align:left;padding:8px 10px;font-size:11px;border-radius:7px" title="'+esc(t.description)+'">'
+      +'<span style="font-size:14px;margin-right:6px">'+t.icon+'</span>'
+      +'<span style="font-weight:600">'+esc(t.label)+'</span>'
+    +'</button>';
+  }).join('');
+}
+
+// Render del canvas central (estructura de bloques)
+function tplRenderCanvas(){
+  var canvas=n('tpl-canvas'),empty=n('tpl-canvas-empty'),count=n('tpl-canvas-count');
+  if(!canvas)return;
+  if(count)count.textContent=_tplEditing.blocks.length+' bloque'+(_tplEditing.blocks.length!==1?'s':'');
+  if(_tplEditing.blocks.length===0){
+    canvas.innerHTML='';
+    if(empty)empty.style.display='';
+    return;
+  }
+  if(empty)empty.style.display='none';
+  canvas.innerHTML=_tplEditing.blocks.map(function(b,i){
+    var t=TPL_BLOCK_TYPES[b.type]||{label:b.type,icon:'?'};
+    return '<div class="card" style="padding:10px 12px;border-left:3px solid var(--acc)">'
+      +'<div class="fbet">'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:16px">'+t.icon+'</span>'
+          +'<span style="font-weight:600;font-size:12px;color:var(--t1)">'+esc(t.label)+'</span>'
+          +'<span style="font-size:9px;color:var(--t4)">#'+(i+1)+'</span>'
+        +'</div>'
+        +'<div class="fc g4">'
+          +'<button class="btn bs" onclick="tplBlockEdit('+i+')" style="font-size:10px;padding:3px 8px" title="Editar">&#9998;</button>'
+          +'<button class="btn bs" onclick="tplBlockMove('+i+',-1)" style="font-size:10px;padding:3px 6px" title="Mover arriba"'+(i===0?' disabled':'')+'>&#9650;</button>'
+          +'<button class="btn bs" onclick="tplBlockMove('+i+',1)" style="font-size:10px;padding:3px 6px" title="Mover abajo"'+(i===_tplEditing.blocks.length-1?' disabled':'')+'>&#9660;</button>'
+          +'<button class="btn bd" onclick="tplBlockDel('+i+')" style="font-size:10px;padding:3px 7px" title="Eliminar">x</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+}
+
+// Render del preview (HTML real ensamblado)
+function tplRenderPreview(){
+  var prev=n('tpl-preview');
+  if(!prev)return;
+  if(_tplEditing.blocks.length===0){
+    prev.innerHTML='<div style="color:#999;font-style:italic;font-size:12px;text-align:center;padding:30px">La vista previa aparecer\u00e1 aqu\u00ed cuando a\u00f1adas bloques...</div>';
+    return;
+  }
+  // Ensambla todos los bloques + sustituye variables con valores de ejemplo
+  var html=_tplEditing.blocks.map(function(b){return tplRenderBlockHTML(b);}).join('');
+  // Variables de ejemplo (para preview)
+  html=html.replace(/\{\{nombre\}\}/g,'Francesco').replace(/\{\{empresa\}\}/g,'DMCAR Group').replace(/\{\{pais\}\}/g,'Espa\u00f1a').replace(/\{\{email\}\}/g,'cliente@ejemplo.com').replace(/\{\{unsubscribe_url\}\}/g,'#');
+  prev.innerHTML=html;
+}
+
+// A\u00f1ade un bloque del tipo dado al canvas
+function tplAddBlock(type){
+  var typeDef=TPL_BLOCK_TYPES[type];
+  if(!typeDef)return;
+  var newBlock={
+    id:'blk_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    type:type,
+    config:JSON.parse(JSON.stringify(typeDef.defaultConfig||{}))
+  };
+  _tplEditing.blocks.push(newBlock);
+  tplRenderEditor();
+}
+
+// Mueve un bloque arriba/abajo (delta = -1 o +1)
+function tplBlockMove(idx,delta){
+  var newIdx=idx+delta;
+  if(newIdx<0||newIdx>=_tplEditing.blocks.length)return;
+  var temp=_tplEditing.blocks[idx];
+  _tplEditing.blocks[idx]=_tplEditing.blocks[newIdx];
+  _tplEditing.blocks[newIdx]=temp;
+  tplRenderEditor();
+}
+
+// Elimina un bloque por \u00edndice
+function tplBlockDel(idx){
+  if(!confirm('\u00bfEliminar este bloque?'))return;
+  _tplEditing.blocks.splice(idx,1);
+  tplRenderEditor();
+}
+
+// Abre el modal de edici\u00f3n de configuraci\u00f3n del bloque
+function tplBlockEdit(idx){
+  var block=_tplEditing.blocks[idx];
+  if(!block)return;
+  _tplEditing.editingBlockIdx=idx;
+  var typeDef=TPL_BLOCK_TYPES[block.type]||{label:block.type,icon:'?'};
+  if(n('m-tpl-block-title'))n('m-tpl-block-title').textContent=typeDef.icon+' Editar bloque: '+typeDef.label;
+  if(n('tpl-block-form'))n('tpl-block-form').innerHTML=tplRenderBlockForm(block);
+  openM('m-tpl-block-edit');
+}
+
+// Guarda los cambios del bloque que est\u00e1 en edici\u00f3n
+function tplBlockSaveConfig(){
+  var idx=_tplEditing.editingBlockIdx;
+  if(idx<0)return;
+  var block=_tplEditing.blocks[idx];
+  if(!block)return;
+  // Lee los valores del form (los IDs empiezan por bf-)
+  var newConfig={};
+  // Recorro todos los inputs/textareas/selects del form
+  var formEl=n('tpl-block-form');
+  if(formEl){
+    formEl.querySelectorAll('[id^="bf-"]').forEach(function(el){
+      var key=el.id.replace(/^bf-/,'');
+      newConfig[key]=el.value;
+    });
+  }
+  block.config=Object.assign({},block.config,newConfig);
+  closeM('m-tpl-block-edit');
+  _tplEditing.editingBlockIdx=-1;
+  tplRenderEditor();
+}
+
+// Guarda el template completo
+function tplSave(){
+  var name=(n('tpl-name')&&n('tpl-name').value||'').trim();
+  if(!name){alert('El nombre del template es obligatorio.');return;}
+  if(_tplEditing.blocks.length===0){alert('A\u00f1ade al menos un bloque al template.');return;}
+  var subject=(n('tpl-subject')&&n('tpl-subject').value||'').trim();
+  var data={
+    name:name,
+    description:'',
+    subject:subject,
+    blocks:_tplEditing.blocks,
+    updatedAt:new Date().toISOString()
+  };
+  if(_tplEditing.id){
+    var idx=mkTemplates.findIndex(function(x){return x.id===_tplEditing.id;});
+    if(idx>=0)Object.assign(mkTemplates[idx],data);
+  }else{
+    data.id='tpl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    data.createdAt=new Date().toISOString();
+    mkTemplates.push(data);
+    mkTemplatesCounter++;
+  }
+  SS('mkTemplates',mkTemplates);
+  SS('mkTemplatesCounter',mkTemplatesCounter);
+  closeM('m-tpl-edit');
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Template guardado');
+}
+
+// Listeners en los inputs nombre + subject del editor (actualizan _tplEditing)
+document.addEventListener('input',function(e){
+  if(e.target.id==='tpl-name')_tplEditing.name=e.target.value;
+  if(e.target.id==='tpl-subject')_tplEditing.subject=e.target.value;
+});
 
 // END CAMPA\u00d1AS SCHELETRO
 // ===========================================================================
