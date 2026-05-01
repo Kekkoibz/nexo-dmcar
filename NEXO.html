@@ -707,7 +707,7 @@ En que te puedo ayudar hoy?</div></div>
         <div class="card mb12">
           <div class="g4 mb10">
             <div><label style="font-size:10px;color:var(--t3)">Buscar</label><input type="text" id="f-mk-q" placeholder="Nombre, empresa, email..." oninput="mkRender()"></div>
-            <div><label style="font-size:10px;color:var(--t3)">Pa&iacute;s</label><input type="text" id="f-mk-country" placeholder="Todos" oninput="mkRender()"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Pa&iacute;s</label><select id="f-mk-country" data-mk-countries="1" onchange="mkRender()"><option value="">Todos</option></select></div>
             <div><label style="font-size:10px;color:var(--t3)">Tipo cliente</label>
               <select id="f-mk-type" onchange="mkRender()">
                 <option value="">Todos</option>
@@ -1644,7 +1644,7 @@ En que te puedo ayudar hoy?</div></div>
       <div><label>Tel&eacute;fono</label><input type="text" id="mke-phone" placeholder="+39 02 1234567"></div>
     </div>
     <div class="g3 mb10">
-      <div><label>Pa&iacute;s</label><input type="text" id="mke-country" placeholder="Italia"></div>
+      <div><label>Pa&iacute;s</label><select id="mke-country" data-mk-countries="1"><option value="">--</option></select></div>
       <div><label>Tipo cliente</label>
         <select id="mke-type">
           <option value="">--</option>
@@ -8867,9 +8867,30 @@ function renderMarketing(){
   if(n('mk-tab-cnt-l'))n('mk-tab-cnt-l').textContent='('+mkLists.length+')';
   // Update Anular import button visibility
   if(typeof mkUpdUndoBtn==='function')mkUpdUndoBtn();
+  // Popola TUTTI i select countries (dropdown filtro + dropdown modal edit)
+  // Lo facciamo sempre per garantire coerenza dopo render anche di nuovi modal
+  if(typeof mkPopulateCountriesDropdowns==='function')mkPopulateCountriesDropdowns();
   // Render tab attivo
   if(mkActiveTab==='contactos')mkRender();
   else mkRenderLists();
+}
+
+// Popola tutti i <select> con data-mk-countries="1" con la lista paesi (con bandiere)
+function mkPopulateCountriesDropdowns(){
+  document.querySelectorAll('select[data-mk-countries="1"]').forEach(function(sel){
+    // Conserva il valore selezionato corrente (se c'\u00e8)
+    var cur=sel.value;
+    var firstOptionLabel=sel.options.length>0?sel.options[0].textContent:'--';
+    var firstOptionValue=sel.options.length>0?sel.options[0].value:'';
+    sel.innerHTML='<option value="'+esc(firstOptionValue)+'">'+esc(firstOptionLabel)+'</option>';
+    MK_COUNTRIES.forEach(function(c){
+      var op=document.createElement('option');
+      op.value=c.label;
+      op.textContent=c.flag+' '+c.label;
+      if(c.label===cur)op.selected=true;
+      sel.appendChild(op);
+    });
+  });
 }
 
 function mkSwitchTab(t){
@@ -8943,7 +8964,7 @@ function mkRender(){
       +'<td style="font-size:11px">'+esc(c.companyName||'--')+'</td>'
       +'<td style="font-size:11px;color:var(--acc)">'+esc(c.email||'')+'</td>'
       +'<td style="font-family:monospace;font-size:10px">'+esc(c.phone||'')+'</td>'
-      +'<td style="font-size:11px">'+esc(c.country||'')+'</td>'
+      +'<td style="font-size:11px;white-space:nowrap">'+(c.country?(mkCountryInfo(c.country).flag+' '):'')+esc(c.country||'')+'</td>'
       +'<td style="font-size:10px">'+esc(MK_TYPE_LABEL[c.customerType]||c.customerType||'')+'</td>'
       +'<td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(ints)+'">'+esc(ints)+'</td>'
       +'<td style="font-size:10px;color:var(--t3)">'+esc(MK_ORIGIN_LABEL[c.origin]||c.origin||'')+'</td>'
@@ -9727,25 +9748,194 @@ function mkBulkSoftDelete(){
 // ===========================================================================
 
 // TLD nazionale → Country (deterministico, alta confidenza)
+// Lista paesi UE 27 + alleati europei + "NO UE"
+// Ogni riga: code (ISO2), label (es), flag emoji
+// Nota: usiamo la label (es. "Italia") come valore canonico salvato nel DB
+var MK_COUNTRIES=[
+  // UE 27
+  {code:'AT',label:'Austria',flag:'\ud83c\udde6\ud83c\uddf9'},
+  {code:'BE',label:'B\u00e9lgica',flag:'\ud83c\udde7\ud83c\uddea'},
+  {code:'BG',label:'Bulgaria',flag:'\ud83c\udde7\ud83c\uddec'},
+  {code:'HR',label:'Croacia',flag:'\ud83c\udded\ud83c\uddf7'},
+  {code:'CY',label:'Chipre',flag:'\ud83c\udde8\ud83c\uddfe'},
+  {code:'CZ',label:'Rep\u00fablica Checa',flag:'\ud83c\udde8\ud83c\uddff'},
+  {code:'DK',label:'Dinamarca',flag:'\ud83c\udde9\ud83c\uddf0'},
+  {code:'EE',label:'Estonia',flag:'\ud83c\uddea\ud83c\uddea'},
+  {code:'FI',label:'Finlandia',flag:'\ud83c\uddeb\ud83c\uddee'},
+  {code:'FR',label:'Francia',flag:'\ud83c\uddeb\ud83c\uddf7'},
+  {code:'DE',label:'Alemania',flag:'\ud83c\udde9\ud83c\uddea'},
+  {code:'GR',label:'Grecia',flag:'\ud83c\uddec\ud83c\uddf7'},
+  {code:'HU',label:'Hungr\u00eda',flag:'\ud83c\udded\ud83c\uddfa'},
+  {code:'IE',label:'Irlanda',flag:'\ud83c\uddee\ud83c\uddea'},
+  {code:'IT',label:'Italia',flag:'\ud83c\uddee\ud83c\uddf9'},
+  {code:'LV',label:'Letonia',flag:'\ud83c\uddf1\ud83c\uddfb'},
+  {code:'LT',label:'Lituania',flag:'\ud83c\uddf1\ud83c\uddf9'},
+  {code:'LU',label:'Luxemburgo',flag:'\ud83c\uddf1\ud83c\uddfa'},
+  {code:'MT',label:'Malta',flag:'\ud83c\uddf2\ud83c\uddf9'},
+  {code:'NL',label:'Pa\u00edses Bajos',flag:'\ud83c\uddf3\ud83c\uddf1'},
+  {code:'PL',label:'Polonia',flag:'\ud83c\uddf5\ud83c\uddf1'},
+  {code:'PT',label:'Portugal',flag:'\ud83c\uddf5\ud83c\uddf9'},
+  {code:'RO',label:'Ruman\u00eda',flag:'\ud83c\uddf7\ud83c\uddf4'},
+  {code:'SK',label:'Eslovaquia',flag:'\ud83c\uddf8\ud83c\uddf0'},
+  {code:'SI',label:'Eslovenia',flag:'\ud83c\uddf8\ud83c\uddee'},
+  {code:'ES',label:'Espa\u00f1a',flag:'\ud83c\uddea\ud83c\uddf8'},
+  {code:'SE',label:'Suecia',flag:'\ud83c\uddf8\ud83c\uddea'},
+  // Alleati europei extra-UE
+  {code:'GB',label:'Reino Unido',flag:'\ud83c\uddec\ud83c\udde7'},
+  {code:'CH',label:'Suiza',flag:'\ud83c\udde8\ud83c\udded'},
+  {code:'NO',label:'Noruega',flag:'\ud83c\uddf3\ud83c\uddf4'},
+  {code:'IS',label:'Islandia',flag:'\ud83c\uddee\ud83c\uddf8'},
+  // Catch-all
+  {code:'XX',label:'NO UE / Resto del mundo',flag:'\ud83c\udf0d'}
+];
+
+// Helper: dato un valore "label" (es. "Italia"), restituisce {label, flag}
+function mkCountryInfo(label){
+  if(!label)return null;
+  // Match esatto sulla label
+  var c=MK_COUNTRIES.find(function(x){return x.label===label;});
+  if(c)return c;
+  // Match case-insensitive
+  var lower=label.toLowerCase();
+  c=MK_COUNTRIES.find(function(x){return x.label.toLowerCase()===lower;});
+  if(c)return c;
+  // Non trovato: ritorna oggetto fittizio per render
+  return {code:'??',label:label,flag:'\ud83c\udf0d'};
+}
+
+// Helper: render dropdown HTML countries (con bandiere)
+function mkCountriesDropdownHTML(currentValue,allowEmpty){
+  var html='';
+  if(allowEmpty)html+='<option value="">--</option>';
+  MK_COUNTRIES.forEach(function(c){
+    var sel=(currentValue===c.label)?' selected':'';
+    html+='<option value="'+esc(c.label)+'"'+sel+'>'+c.flag+' '+esc(c.label)+'</option>';
+  });
+  return html;
+}
+
+// Migrazione one-shot: normalizza i valori "country" esistenti nei contatti.
+// Chiamata al boot. Mappa valori free-text a labels canoniche.
+var MK_COUNTRY_ALIASES={
+  // ITA
+  'italy':'Italia','italia':'Italia','it':'Italia',
+  // ES
+  'spain':'Espa\u00f1a','espa\u00f1a':'Espa\u00f1a','espana':'Espa\u00f1a','es':'Espa\u00f1a',
+  // FR
+  'france':'Francia','francia':'Francia','fr':'Francia',
+  // DE
+  'germany':'Alemania','alemania':'Alemania','deutschland':'Alemania','germania':'Alemania','de':'Alemania',
+  // PT
+  'portugal':'Portugal','portogallo':'Portugal','pt':'Portugal',
+  // NL
+  'netherlands':'Pa\u00edses Bajos','holanda':'Pa\u00edses Bajos','olanda':'Pa\u00edses Bajos','pa\u00edses bajos':'Pa\u00edses Bajos','nl':'Pa\u00edses Bajos',
+  // BE
+  'belgium':'B\u00e9lgica','belgica':'B\u00e9lgica','b\u00e9lgica':'B\u00e9lgica','belgio':'B\u00e9lgica','be':'B\u00e9lgica',
+  // PL
+  'poland':'Polonia','polonia':'Polonia','pl':'Polonia',
+  // AT
+  'austria':'Austria','at':'Austria',
+  // CH
+  'switzerland':'Suiza','suiza':'Suiza','svizzera':'Suiza','schweiz':'Suiza','ch':'Suiza',
+  // GB
+  'united kingdom':'Reino Unido','uk':'Reino Unido','reino unido':'Reino Unido','gran breta\u00f1a':'Reino Unido','inghilterra':'Reino Unido','gb':'Reino Unido',
+  // IE
+  'ireland':'Irlanda','irlanda':'Irlanda','ie':'Irlanda',
+  // SE
+  'sweden':'Suecia','suecia':'Suecia','svezia':'Suecia','se':'Suecia',
+  // DK
+  'denmark':'Dinamarca','dinamarca':'Dinamarca','danimarca':'Dinamarca','dk':'Dinamarca',
+  // FI
+  'finland':'Finlandia','finlandia':'Finlandia','fi':'Finlandia',
+  // NO
+  'norway':'Noruega','noruega':'Noruega','norvegia':'Noruega','no':'Noruega',
+  // CZ/SK/HU/RO/BG/GR/HR/SI
+  'czech republic':'Rep\u00fablica Checa','rep\u00fablica checa':'Rep\u00fablica Checa','repubblica ceca':'Rep\u00fablica Checa','cz':'Rep\u00fablica Checa',
+  'slovakia':'Eslovaquia','slovacchia':'Eslovaquia','sk':'Eslovaquia',
+  'hungary':'Hungr\u00eda','hungr\u00eda':'Hungr\u00eda','ungheria':'Hungr\u00eda','hu':'Hungr\u00eda',
+  'romania':'Ruman\u00eda','ruman\u00eda':'Ruman\u00eda','ro':'Ruman\u00eda',
+  'bulgaria':'Bulgaria','bg':'Bulgaria',
+  'greece':'Grecia','grecia':'Grecia','gr':'Grecia',
+  'croatia':'Croacia','croacia':'Croacia','croazia':'Croacia','hr':'Croacia',
+  'slovenia':'Eslovenia','eslovenia':'Eslovenia','si':'Eslovenia',
+  'cyprus':'Chipre','chipre':'Chipre','cipro':'Chipre','cy':'Chipre',
+  'malta':'Malta','mt':'Malta',
+  'estonia':'Estonia','ee':'Estonia',
+  'latvia':'Letonia','letonia':'Letonia','lettonia':'Letonia','lv':'Letonia',
+  'lithuania':'Lituania','lituania':'Lituania','lt':'Lituania',
+  'luxembourg':'Luxemburgo','luxemburgo':'Luxemburgo','lussemburgo':'Luxemburgo','lu':'Luxemburgo',
+  'iceland':'Islandia','islandia':'Islandia','is':'Islandia'
+};
+
+function mkNormalizeCountryValue(raw){
+  if(!raw)return '';
+  var trimmed=String(raw).trim();
+  if(!trimmed)return '';
+  // Match esatto sulla label canonica
+  if(MK_COUNTRIES.some(function(c){return c.label===trimmed;}))return trimmed;
+  // Match alias (case-insensitive)
+  var lower=trimmed.toLowerCase();
+  if(MK_COUNTRY_ALIASES[lower])return MK_COUNTRY_ALIASES[lower];
+  // Non riconosciuto: lo categorizza come "NO UE / Resto del mundo"
+  // (mantenendo il valore originale nelle notes per non perderlo)
+  return 'NO UE / Resto del mundo';
+}
+
+// One-shot migrazione: normalizza tutti i campi country dei contatti
+function mkMigrateCountries(){
+  var changed=0,unrecognized=[];
+  mkContacts.forEach(function(c){
+    if(!c.country)return;
+    var orig=c.country;
+    if(MK_COUNTRIES.some(function(x){return x.label===orig;}))return; // gi\u00e0 canonico
+    var normalized=mkNormalizeCountryValue(orig);
+    if(normalized!==orig){
+      // Salva originale in notes (1 sola volta)
+      if(normalized==='NO UE / Resto del mundo'&&orig){
+        unrecognized.push({email:c.email,orig:orig});
+        if(!c.notes||c.notes.indexOf('[Pa\u00eds original:')<0){
+          c.notes=(c.notes||'')+(c.notes?' ':'')+'[Pa\u00eds original: '+orig+']';
+        }
+      }
+      c.country=normalized;
+      changed++;
+    }
+  });
+  if(changed>0){
+    SS('mkContacts',mkContacts);
+    console.log('[NEXO] \ud83d\udd04 Migrati '+changed+' paesi a labels canoniche.');
+    if(unrecognized.length){
+      console.log('[NEXO] \u26a0\ufe0f Paesi non riconosciuti (categorizzati come NO UE):',unrecognized);
+    }
+  }
+}
+
 var MK_TLD_COUNTRY={
-  // Europa
+  // UE 27 + alleati europei (mappati al dropdown)
   'it':'Italia','fr':'Francia','de':'Alemania','es':'Espa\u00f1a','pt':'Portugal',
   'nl':'Pa\u00edses Bajos','be':'B\u00e9lgica','at':'Austria','ch':'Suiza','lu':'Luxemburgo',
   'pl':'Polonia','cz':'Rep\u00fablica Checa','sk':'Eslovaquia','hu':'Hungr\u00eda','ro':'Ruman\u00eda',
-  'bg':'Bulgaria','gr':'Grecia','hr':'Croacia','si':'Eslovenia','rs':'Serbia',
+  'bg':'Bulgaria','gr':'Grecia','hr':'Croacia','si':'Eslovenia',
   'dk':'Dinamarca','se':'Suecia','no':'Noruega','fi':'Finlandia','is':'Islandia',
   'ie':'Irlanda','uk':'Reino Unido','co.uk':'Reino Unido','ee':'Estonia','lv':'Letonia','lt':'Lituania',
+  'cy':'Chipre','mt':'Malta',
+  // Tutti gli altri paesi: "NO UE / Resto del mundo" (TLD raggruppati)
   // America
-  'us':'Estados Unidos','ca':'Canad\u00e1','mx':'M\u00e9xico','br':'Brasil','ar':'Argentina',
-  'cl':'Chile','co':'Colombia','pe':'Per\u00fa','uy':'Uruguay','ve':'Venezuela',
+  'us':'NO UE / Resto del mundo','ca':'NO UE / Resto del mundo','mx':'NO UE / Resto del mundo',
+  'br':'NO UE / Resto del mundo','ar':'NO UE / Resto del mundo','cl':'NO UE / Resto del mundo',
+  'co':'NO UE / Resto del mundo','pe':'NO UE / Resto del mundo','uy':'NO UE / Resto del mundo',
+  've':'NO UE / Resto del mundo',
   // Asia / Pacifico
-  'cn':'China','jp':'Jap\u00f3n','kr':'Corea del Sur','in':'India','sg':'Singapur',
-  'au':'Australia','nz':'Nueva Zelanda','hk':'Hong Kong','tw':'Taiw\u00e1n','th':'Tailandia',
+  'cn':'NO UE / Resto del mundo','jp':'NO UE / Resto del mundo','kr':'NO UE / Resto del mundo',
+  'in':'NO UE / Resto del mundo','sg':'NO UE / Resto del mundo','au':'NO UE / Resto del mundo',
+  'nz':'NO UE / Resto del mundo','hk':'NO UE / Resto del mundo','tw':'NO UE / Resto del mundo',
+  'th':'NO UE / Resto del mundo',
   // Medio Oriente / Africa
-  'ae':'EAU','sa':'Arabia Saud\u00ed','tr':'Turqu\u00eda','il':'Israel','eg':'Egipto',
-  'ma':'Marruecos','za':'Sud\u00e1frica','ng':'Nigeria',
-  // Russia
-  'ru':'Rusia','ua':'Ucrania'
+  'ae':'NO UE / Resto del mundo','sa':'NO UE / Resto del mundo','tr':'NO UE / Resto del mundo',
+  'il':'NO UE / Resto del mundo','eg':'NO UE / Resto del mundo','ma':'NO UE / Resto del mundo',
+  'za':'NO UE / Resto del mundo','ng':'NO UE / Resto del mundo',
+  // Est europeo extra-UE
+  'rs':'NO UE / Resto del mundo','ru':'NO UE / Resto del mundo','ua':'NO UE / Resto del mundo'
 };
 
 // Domini email "free" / generici (NON sono aziendali)
@@ -10078,6 +10268,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
   setTimeout(function(){if(typeof NX_INBOX!=='undefined')NX_INBOX.init();},2000);
   // NEXO Provider Inbox (Provider offers) — anche questo post NX_MS
   setTimeout(function(){if(typeof NX_PROV_INBOX!=='undefined')NX_PROV_INBOX.init();},2100);
+  // Marketing: migrazione one-shot dei paesi (normalizza alle label canoniche)
+  setTimeout(function(){if(typeof mkMigrateCountries==='function')mkMigrateCountries();},2500);
 })();
 
 </script>
