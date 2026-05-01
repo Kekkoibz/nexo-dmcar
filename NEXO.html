@@ -12254,11 +12254,23 @@ function campSaveDraft(){
   if(typeof showToast==='function')showToast('\u2713 Borrador guardado');
 }
 
-// Helper: construye URL del logo marca (con CamelCase + espacios codificados)
-// Ejemplos: AUDI \u2192 Audi.png, MERCEDES-BENZ \u2192 Mercedes-Benz.png, BMW \u2192 BMW.png, ASTON MARTIN \u2192 Aston Martin.png
+// Helper: construye URL del logo marca probando m\u00faltiples variantes
+// Tu repo GitHub tiene archivos con grafias inconsistentes:
+// - "AUDI .png" (con espacio antes del .png)
+// - "Aston Martin.png" (CamelCase con espacio)
+// - "BMW.png" (todo may\u00fasculas)
+// - "Citro\u00ebn.png" (CamelCase con tilde)
+// Devuelve la URL principal + el HTML <img> con fallback onerror que prueba variantes
 function campBrandLogoUrl(brand){
   if(!brand)return '';
   if(typeof LOGOS_GITHUB_BASE==='undefined')return '';
+  // Si llega un array de candidates, devuelvo solo la primera (el render usa otro helper)
+  return campBrandLogoVariants(brand)[0]||'';
+}
+
+// Genera array de URLs candidatas para una marca (en orden de prioridad)
+function campBrandLogoVariants(brand){
+  if(!brand||typeof LOGOS_GITHUB_BASE==='undefined')return [];
   // Mapas especiales para marcas con grafia particular
   var SPECIAL={
     'BMW':'BMW',
@@ -12279,14 +12291,40 @@ function campBrandLogoUrl(brand){
     'CITRO\u00cbN':'Citro\u00ebn'
   };
   var key=String(brand).toUpperCase().trim();
-  var fname;
+  var variants=[];
+  // 1. Con mapeo especial (CamelCase)
   if(SPECIAL[key]){
-    fname=SPECIAL[key];
-  }else{
-    // Default: capitalize first letter, lower rest (Audi, Ford, Toyota...)
-    fname=key.charAt(0)+key.slice(1).toLowerCase();
+    variants.push(SPECIAL[key]);
   }
-  return LOGOS_GITHUB_BASE+encodeURIComponent(fname)+'.png';
+  // 2. CamelCase autom\u00e1tico (primer letra may\u00fascula, resto min\u00fascula)
+  var camel=key.charAt(0)+key.slice(1).toLowerCase();
+  if(variants.indexOf(camel)<0)variants.push(camel);
+  // 3. Todo may\u00fasculas
+  if(variants.indexOf(key)<0)variants.push(key);
+  // 4. Todo may\u00fasculas + espacio antes del .png (caso "AUDI .png")
+  variants.push(key+' '); // luego se le concatena ".png" \u2192 "AUDI .png"
+  // 5. Todo min\u00fasculas
+  if(variants.indexOf(key.toLowerCase())<0)variants.push(key.toLowerCase());
+  // 6. Aplica encodeURIComponent y a\u00f1ade .png
+  return variants.map(function(v){return LOGOS_GITHUB_BASE+encodeURIComponent(v)+'.png';});
+}
+
+// Genera HTML <img> con fallback chain para probar todas las variantes
+// Si el primer URL falla \u2192 onerror prueba el siguiente, etc.
+function campBrandLogoImgHTML(brand,maxWidth){
+  var urls=campBrandLogoVariants(brand);
+  if(urls.length===0)return '';
+  maxWidth=maxWidth||120;
+  // Construye chain: src="url1" onerror="this.onerror=...;this.src='url2'"
+  // Encadenamos todas las variantes
+  var onerrorChain='';
+  for(var i=urls.length-1;i>=1;i--){
+    if(i===urls.length-1){
+      onerrorChain='this.onerror=null;this.style.display=\'none\';';  // \u00faltimo: oculta img
+    }
+    onerrorChain='this.onerror=function(){'+onerrorChain+'};this.src=\''+urls[i].replace(/'/g,'\\\'')+'\';';
+  }
+  return '<img src="'+esc(urls[0])+'" alt="'+esc(brand)+'" style="max-width:'+maxWidth+'px;height:auto;display:inline-block;border:0" onerror="'+esc(onerrorChain)+'">';
 }
 
 // Limpia el equipment de texto interno generado por imports/sync
@@ -12326,6 +12364,7 @@ function campBuildCardConfigFromGroup(groupKey,qty){
     return {
       stockId:first.id||first.parentId,
       title:fullTitle,
+      brandName:parent.brand||'',  // \u2190 NUEVO: para que el render pruebe variantes
       price:priceFmt,
       vin:first.vin||first.unit||parent.unit||'',
       firstReg:first.reg||parent.regDate||'',
@@ -12369,6 +12408,7 @@ function campBuildCardConfigFromGroup(groupKey,qty){
   return {
     stockId:'group_'+groupKey,
     title:fullTitle,
+    brandName:parent.brand||'',  // \u2190 NUEVO: para que el render pruebe variantes
     price:priceFmt,
     vin:'',
     firstReg:parent.regDate||first.reg||'',
@@ -13030,9 +13070,17 @@ function tplRenderBlockHTML(block){
       // Render email-safe con etiquetas IDENTICAS al Word/PDF (Generador Ofertas)
       // Etiquetas: Net Price, Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery, Equipment
       var ah='<div style="padding:14px 20px;text-align:center;font-family:Arial,Helvetica,sans-serif">';
-      // Logo marca centrado (si existe)
+      // Logo marca centrado (si existe) - prueba m\u00faltiples variantes con onerror chain
       if(c.brandLogo){
-        ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
+        // Si tenemos brandName guardado, usamos el helper de variantes
+        // Si no, simple img con la URL (legacy)
+        var brandFromConfig=c.brandName||'';
+        if(!brandFromConfig){
+          // Fallback simple
+          ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
+        }else{
+          ah+='<div style="text-align:center;margin-bottom:14px">'+campBrandLogoImgHTML(brandFromConfig,120)+'</div>';
+        }
       }
       // T\u00edtulo coche (azul #0000F5, bold, grande - como Word)
       if(c.title){
@@ -13054,8 +13102,8 @@ function tplRenderBlockHTML(block){
       ah+='</div>';
       // Equipment (header azul + texto) - siempre se muestra (regla DMCAR: si vac\u00edo \u2192 "Standard")
       var eqText=(c.equipment||'').trim()||'Standard';
-      ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 8px 0">Equipment:</div>';
-      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px">'+esc(eqText)+'</div>';
+      ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 2px 0">Equipment:</div>';
+      ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px;margin-top:0">'+esc(eqText)+'</div>';
       // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
       var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
       if(photos.length>0){
