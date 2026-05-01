@@ -424,7 +424,8 @@ En que te puedo ayudar hoy?</div></div>
               <div><label>Idioma</label><select id="o-lang"><option value="EN">English</option><option value="ES">Espanol</option><option value="IT">Italiano</option><option value="FR">Francais</option><option value="DE">Deutsch</option></select></div>
             </div>
             <div id="o-quest" style="display:none" class="mb10"></div>
-            <button class="btn bp" style="width:100%" id="o-btn" onclick="genOferta()">&#9889; Generar oferta</button>
+            <button class="btn bp" style="width:100%" id="o-btn" onclick="genOferta()">&#9889; Generar oferta (Word/PDF)</button>
+            <button class="btn bs" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" onclick="campNewFromOfertas()">&#128231; Crear campa&ntilde;a NEXO Direct Mail</button>
           </div>
           <div class="card">
             <div class="ct">Reglas Master</div>
@@ -1971,6 +1972,103 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fc g8" style="margin-top:14px">
       <button class="btn bg" onclick="closeM('m-tpl-block-edit')" style="flex:1">Cancelar</button>
       <button class="btn bp" onclick="tplBlockSaveConfig()" style="flex:2">&#128190; Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAMPA\u00d1AS: CREAR CAMPA\u00d1A -->
+<div class="ovl" id="m-camp-new">
+  <div class="modal" style="max-width:1100px;width:96vw;max-height:94vh;padding:0;display:flex;flex-direction:column">
+    <!-- Header -->
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2)">
+      <div style="font-size:16px;font-weight:700;color:var(--t1)">&#128231; Crear campa&ntilde;a NEXO Direct Mail</div>
+      <button class="btn bg" onclick="closeM('m-camp-new')" style="padding:5px 10px">X</button>
+    </div>
+    <!-- Body con 2 columnas -->
+    <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;overflow:hidden;min-height:0">
+      <!-- COL 1: Configuraci\u00f3n -->
+      <div style="overflow-y:auto;padding:18px;border-right:1px solid var(--border)">
+        <!-- 1. Nombre campa\u00f1a -->
+        <div class="mb14">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">1. Nombre de la campa&ntilde;a</label>
+          <input type="text" id="camp-name" placeholder="ej: Newsletter Mayo - AUDI Q5">
+        </div>
+        <!-- 2. Asunto del email -->
+        <div class="mb14">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">2. Asunto del email</label>
+          <input type="text" id="camp-subject" placeholder="ej: Nuevas ofertas BMW desde DMCAR">
+        </div>
+        <!-- 3. Template -->
+        <div class="mb14">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">3. Template a usar</label>
+          <select id="camp-tplId" onchange="campOnTemplateChg()">
+            <option value="">-- Selecciona un template --</option>
+          </select>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">El bloque 'Card Auto' del template act\u00faa como placeholder \u2014 los coches seleccionados abajo se inyectar\u00e1n autom\u00e1ticamente.</div>
+        </div>
+        <!-- 4. Firma -->
+        <div class="mb14">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">4. Firma comercial</label>
+          <select id="camp-firmaId">
+            <option value="">-- Selecciona una firma --</option>
+          </select>
+        </div>
+        <!-- 5. Coches a incluir -->
+        <div class="mb14">
+          <div class="fbet" style="margin-bottom:6px">
+            <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px;margin:0">5. Coches a incluir</label>
+            <button class="btn bs" onclick="campOpenStockPicker()" style="font-size:10px;padding:3px 9px">+ A&ntilde;adir del Stock Vivo</button>
+          </div>
+          <div id="camp-cars-list" style="background:var(--bg3);border-radius:7px;padding:10px;min-height:60px;font-size:11px;color:var(--t3)">
+            <em>Ning\u00fan coche seleccionado a\u00fan. Click '+' para a\u00f1adir.</em>
+          </div>
+        </div>
+        <!-- 6. Lista destinatarios -->
+        <div class="mb14">
+          <label style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px">6. Lista destinatarios</label>
+          <select id="camp-listId" onchange="campOnListChg()">
+            <option value="">-- Selecciona una lista --</option>
+          </select>
+          <div id="camp-recipients-stats" style="font-size:11px;color:var(--t3);margin-top:6px"></div>
+        </div>
+      </div>
+      <!-- COL 2: Destinatarios + acciones -->
+      <div style="overflow-y:auto;padding:18px;background:var(--bg3)">
+        <div style="font-size:11px;font-weight:700;color:var(--t1);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Destinatarios</div>
+        <div id="camp-recipients-controls" style="margin-bottom:10px;display:none">
+          <div class="fc g6" style="font-size:11px">
+            <button class="btn bs" onclick="campSelectAll(true)" style="padding:3px 9px;font-size:10px">\u2713 Todos</button>
+            <button class="btn bs" onclick="campSelectAll(false)" style="padding:3px 9px;font-size:10px">x Ninguno</button>
+            <input type="text" id="camp-search" placeholder="Buscar..." oninput="campFilterRecipients()" style="flex:1;font-size:11px;padding:4px 8px">
+          </div>
+        </div>
+        <div id="camp-recipients-list" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:10px;max-height:380px;overflow-y:auto;font-size:11px">
+          <em style="color:var(--t4)">Selecciona una lista arriba para ver sus contactos.</em>
+        </div>
+      </div>
+    </div>
+    <!-- Footer acciones -->
+    <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg2)">
+      <div id="camp-summary" style="font-size:11px;color:var(--t3)"></div>
+      <div class="fc g6">
+        <button class="btn bg" onclick="closeM('m-camp-new')" style="font-size:12px">Cancelar</button>
+        <button class="btn bs" onclick="campSaveDraft()" style="font-size:12px">&#128190; Guardar borrador</button>
+        <button class="btn bs" onclick="campSendTest()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none">&#128231; Test a m&iacute;</button>
+        <button class="btn bp" onclick="campSendNow()" style="font-size:12px">&#9889; Enviar ahora</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STOCK PICKER: selecci\u00f3n multi-coches con checkbox -->
+<div class="ovl" id="m-camp-stock-picker">
+  <div class="modal" style="max-width:780px">
+    <div class="fbet mb14"><div class="mt">&#128663; Seleccionar coches del Stock Vivo</div><button class="btn bg" onclick="closeM('m-camp-stock-picker')" style="padding:5px 10px">X</button></div>
+    <input type="text" id="camp-stock-search" placeholder="Buscar marca, modelo..." oninput="campStockPickerFilter()" style="font-size:12px;margin-bottom:10px">
+    <div id="camp-stock-list" style="max-height:60vh;overflow-y:auto;background:var(--bg3);border-radius:7px;padding:10px"></div>
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-camp-stock-picker')" style="flex:1">Cancelar</button>
+      <button class="btn bp" onclick="campStockPickerConfirm()" style="flex:2">&#10004; Confirmar selecci\u00f3n (<span id="camp-stock-pick-cnt">0</span>)</button>
     </div>
   </div>
 </div>
@@ -11491,17 +11589,455 @@ function campRenderCardHTML(c){
   +'</div>';
 }
 
-// PLACEHOLDER FUNCTIONS (saranno implementate nelle prossime versioni)
-function campOpenNew(){
-  alert('\ud83d\udea7 Funcionalidad en desarrollo.\n\nLa creaci\u00f3n de campa\u00f1as se implementar\u00e1 en la pr\u00f3xima versi\u00f3n (v9.7) cuando integremos:\n\u2022 Editor del template HTML\n\u2022 Selector de lista destinataria\n\u2022 Sistema de variables {{nombre}} {{empresa}} ...\n\u2022 Vista previa con datos reales\n\u2022 Dry-run antes del env\u00edo\n\u2022 Throttling configurable v\u00eda TurboSMTP\n\nFrancesco, manda el template Direct Mail HTML para empezar.');
+// ===========================================================================
+// CREAR / EDITAR CAMPA\u00d1A
+// ===========================================================================
+
+// Estado actual de la campa\u00f1a en edici\u00f3n
+var _campEditing={
+  id:null,           // null si nueva
+  name:'',
+  subject:'',
+  tplId:'',
+  firmaId:'',
+  listId:'',
+  selectedCarIds:[],         // IDs de coches del stock seleccionados
+  excludedRecipientIds:{},   // mapa id\u2192true de contactos deseleccionados
+  status:'draft'
+};
+
+// Apre el modal Crear campa\u00f1a (nueva o pre-rellenada con coches del stock)
+// preselectedCarIds: array opcional de IDs de stock para preseleccionar
+function campOpenNew(preselectedCarIds){
+  _campEditing={
+    id:null,
+    name:'',
+    subject:'',
+    tplId:'',
+    firmaId:'',
+    listId:'',
+    selectedCarIds:Array.isArray(preselectedCarIds)?preselectedCarIds.slice():[],
+    excludedRecipientIds:{},
+    status:'draft'
+  };
+  // Reset campos
+  if(n('camp-name'))n('camp-name').value='';
+  if(n('camp-subject'))n('camp-subject').value='';
+  // Popula selects
+  campPopulateSelects();
+  // Renderiza
+  campRenderCarsList();
+  campRenderRecipients();
+  campUpdSummary();
+  openM('m-camp-new');
 }
 
 function campOpenEdit(id){
-  alert('\ud83d\udea7 Editor de campa\u00f1a en desarrollo.\n\nID: '+id);
+  var c=mkCampaigns.find(function(x){return x.id===id;});
+  if(!c){alert('Campa\u00f1a no encontrada.');return;}
+  _campEditing={
+    id:c.id,
+    name:c.name||'',
+    subject:c.subject||'',
+    tplId:c.tplId||'',
+    firmaId:c.firmaId||'',
+    listId:c.listId||'',
+    selectedCarIds:Array.isArray(c.selectedCarIds)?c.selectedCarIds.slice():[],
+    excludedRecipientIds:c.excludedRecipientIds?Object.assign({},c.excludedRecipientIds):{},
+    status:c.status||'draft'
+  };
+  if(n('camp-name'))n('camp-name').value=_campEditing.name;
+  if(n('camp-subject'))n('camp-subject').value=_campEditing.subject;
+  campPopulateSelects();
+  if(n('camp-tplId'))n('camp-tplId').value=_campEditing.tplId;
+  if(n('camp-firmaId'))n('camp-firmaId').value=_campEditing.firmaId;
+  if(n('camp-listId'))n('camp-listId').value=_campEditing.listId;
+  campRenderCarsList();
+  campRenderRecipients();
+  campUpdSummary();
+  openM('m-camp-new');
 }
 
 function campOpenStats(id){
-  alert('\ud83d\udea7 Stats en desarrollo.\n\nID: '+id);
+  var c=mkCampaigns.find(function(x){return x.id===id;});
+  if(!c){alert('Campa\u00f1a no encontrada.');return;}
+  if(c.status!=='sent'){alert('Esta campa\u00f1a a\u00fan no se ha enviado.');return;}
+  var s=c.stats||{};
+  alert('\ud83d\udcca Estad\u00edsticas de campa\u00f1a:\n\n'
+    +'Nombre: '+c.name+'\n'
+    +'Enviada: '+fmtD(c.sentAt)+'\n\n'
+    +'Total destinatarios: '+(s.totalRecipients||0)+'\n'
+    +'Enviadas correctamente: '+(s.sent||0)+'\n'
+    +'Fallidas: '+(s.failed||0)+'\n'
+    +'Abiertas: '+(s.opened||0)+'\n'
+    +'Clicks: '+(s.clicked||0)+'\n'
+    +'Bounces: '+(s.bounced||0)+'\n'
+    +'Unsubscribes: '+(s.unsubscribed||0)
+  );
+}
+
+// Popula los selects: template, firma, lista
+function campPopulateSelects(){
+  // Templates
+  var tplSel=n('camp-tplId');
+  if(tplSel){
+    var html='<option value="">-- Selecciona un template --</option>';
+    mkTemplates.forEach(function(t){
+      var sel=(_campEditing.tplId===t.id)?' selected':'';
+      html+='<option value="'+esc(t.id)+'"'+sel+'>'+esc(t.name)+'</option>';
+    });
+    tplSel.innerHTML=html;
+  }
+  // Firmas
+  var firSel=n('camp-firmaId');
+  if(firSel){
+    var html2='<option value="">-- Selecciona una firma --</option>';
+    mkFirmas.forEach(function(f){
+      var sel=(_campEditing.firmaId===f.id)?' selected':'';
+      var flag=FIR_LANG_FLAG[f.lang]||'';
+      html2+='<option value="'+esc(f.id)+'"'+sel+'>'+flag+' '+esc(f.name)+'</option>';
+    });
+    firSel.innerHTML=html2;
+  }
+  // Listas (solo statiche per ahora)
+  var lstSel=n('camp-listId');
+  if(lstSel){
+    var html3='<option value="">-- Selecciona una lista --</option>';
+    mkLists.forEach(function(l){
+      var sel=(_campEditing.listId===l.id)?' selected':'';
+      var icon=(l.type==='static'?'\ud83d\udcc4':'\u26a1');
+      var count=(l.type==='static'?(Array.isArray(l.contactIds)?l.contactIds.length:0):'auto');
+      html3+='<option value="'+esc(l.id)+'"'+sel+'>'+icon+' '+esc(mkDecorateListName(l.name))+' ('+count+')</option>';
+    });
+    lstSel.innerHTML=html3;
+  }
+}
+
+function campOnTemplateChg(){
+  _campEditing.tplId=n('camp-tplId').value;
+  // Auto-fill subject si est\u00e1 vac\u00edo y el template tiene uno
+  if(!n('camp-subject').value){
+    var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+    if(t&&t.subject){
+      n('camp-subject').value=t.subject;
+      _campEditing.subject=t.subject;
+    }
+  }
+  campUpdSummary();
+}
+
+function campOnListChg(){
+  _campEditing.listId=n('camp-listId').value;
+  // Reset exclusiones cuando cambias de lista
+  _campEditing.excludedRecipientIds={};
+  campRenderRecipients();
+  campUpdSummary();
+}
+
+// Render del listado de coches seleccionados
+function campRenderCarsList(){
+  var div=n('camp-cars-list');
+  if(!div)return;
+  if(_campEditing.selectedCarIds.length===0){
+    div.innerHTML='<em>Ning\u00fan coche seleccionado a\u00fan. Click \'+\' para a\u00f1adir.</em>';
+    return;
+  }
+  div.innerHTML=_campEditing.selectedCarIds.map(function(cid){
+    var car=stock.find(function(s){return String(s.id)===String(cid);});
+    if(!car)return '<div style="color:var(--red);font-size:10px">\u26a0\ufe0f Coche no encontrado: '+esc(cid)+'</div>';
+    var label=((car.brand||'')+' '+(car.model||'')).trim();
+    if(car.unit)label+=' (Unit '+esc(car.unit)+')';
+    return '<div class="fbet" style="background:var(--bg2);padding:6px 10px;border-radius:5px;margin-bottom:4px">'
+      +'<span style="font-size:11px;color:var(--t1)">\ud83d\ude97 '+esc(label)+'</span>'
+      +'<button class="btn bd" onclick="campRemoveCar(\''+esc(cid)+'\')" style="font-size:10px;padding:2px 6px" title="Quitar">x</button>'
+    +'</div>';
+  }).join('');
+}
+
+function campRemoveCar(carId){
+  _campEditing.selectedCarIds=_campEditing.selectedCarIds.filter(function(id){return String(id)!==String(carId);});
+  campRenderCarsList();
+  campUpdSummary();
+}
+
+// === STOCK PICKER ===
+var _campStockPick=new Set();
+
+function campOpenStockPicker(){
+  // Pre-marca los ya seleccionados
+  _campStockPick=new Set(_campEditing.selectedCarIds.map(String));
+  if(n('camp-stock-search'))n('camp-stock-search').value='';
+  campRenderStockPicker();
+  openM('m-camp-stock-picker');
+}
+
+function campRenderStockPicker(){
+  var div=n('camp-stock-list');
+  if(!div)return;
+  var q=(n('camp-stock-search')&&n('camp-stock-search').value||'').toLowerCase().trim();
+  var filtered=stock.filter(function(s){
+    if(!q)return true;
+    var hay=((s.brand||'')+' '+(s.model||'')+' '+(s.unit||'')+' '+(s.color||'')).toLowerCase();
+    return hay.indexOf(q)>=0;
+  });
+  if(filtered.length===0){
+    div.innerHTML='<div style="text-align:center;padding:30px;color:var(--t4);font-size:11px">No hay coches en el stock'+(q?' que coincidan con "'+esc(q)+'"':'')+'.</div>';
+    return;
+  }
+  div.innerHTML=filtered.map(function(s){
+    var checked=_campStockPick.has(String(s.id))?' checked':'';
+    var label=((s.brand||'')+' '+(s.model||'')).trim();
+    var details=[];
+    if(s.unit)details.push('Unit '+s.unit);
+    if(s.regDate)details.push(s.regDate);
+    if(s.color)details.push(s.color);
+    if(s.salePrice)details.push((typeof s.salePrice==='number'?s.salePrice.toLocaleString('es-ES'):s.salePrice)+'\u20ac');
+    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border-radius:5px;margin-bottom:4px;cursor:pointer">'
+      +'<input type="checkbox" value="'+esc(s.id)+'" onchange="campStockPickerToggle(this)"'+checked+'>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:12px;font-weight:600;color:var(--t1)">\ud83d\ude97 '+esc(label)+'</div>'
+        +(details.length?'<div style="font-size:10px;color:var(--t3)">'+esc(details.join(' \u00b7 '))+'</div>':'')
+      +'</div>'
+    +'</label>';
+  }).join('');
+  if(n('camp-stock-pick-cnt'))n('camp-stock-pick-cnt').textContent=_campStockPick.size;
+}
+
+function campStockPickerToggle(cb){
+  if(cb.checked)_campStockPick.add(cb.value);
+  else _campStockPick.delete(cb.value);
+  if(n('camp-stock-pick-cnt'))n('camp-stock-pick-cnt').textContent=_campStockPick.size;
+}
+
+function campStockPickerFilter(){
+  campRenderStockPicker();
+}
+
+function campStockPickerConfirm(){
+  _campEditing.selectedCarIds=Array.from(_campStockPick);
+  closeM('m-camp-stock-picker');
+  campRenderCarsList();
+  campUpdSummary();
+}
+
+// === DESTINATARIOS ===
+
+function campRenderRecipients(){
+  var div=n('camp-recipients-list');
+  var ctrl=n('camp-recipients-controls');
+  if(!div)return;
+  if(!_campEditing.listId){
+    div.innerHTML='<em style="color:var(--t4)">Selecciona una lista arriba para ver sus contactos.</em>';
+    if(ctrl)ctrl.style.display='none';
+    return;
+  }
+  var lst=mkLists.find(function(l){return l.id===_campEditing.listId;});
+  if(!lst){
+    div.innerHTML='<div style="color:var(--red);font-size:11px">\u26a0\ufe0f Lista no encontrada.</div>';
+    if(ctrl)ctrl.style.display='none';
+    return;
+  }
+  // Resuelve contactos de la lista
+  var contactIds=[];
+  if(lst.type==='static'){
+    contactIds=Array.isArray(lst.contactIds)?lst.contactIds.slice():[];
+  }else if(lst.type==='dynamic'&&lst.filters){
+    contactIds=mkContacts.filter(function(c){return mkContactMatchesFilters(c,lst.filters);}).map(function(c){return c.id;});
+  }
+  if(contactIds.length===0){
+    div.innerHTML='<em style="color:var(--t4);font-size:11px">La lista no tiene contactos.</em>';
+    if(ctrl)ctrl.style.display='none';
+    return;
+  }
+  if(ctrl)ctrl.style.display='';
+  // Render checkbox por contacto
+  var q=(n('camp-search')&&n('camp-search').value||'').toLowerCase().trim();
+  var rows=contactIds.map(function(cid){
+    var c=mkContacts.find(function(x){return x.id===cid;});
+    if(!c)return '';
+    if(q){
+      var hay=((c.firstName||'')+' '+(c.companyName||'')+' '+(c.email||'')).toLowerCase();
+      if(hay.indexOf(q)<0)return '';
+    }
+    var excluded=_campEditing.excludedRecipientIds[cid]?true:false;
+    var statusColor='';
+    if(c.status==='unsubscribed')statusColor='color:#dc2626;text-decoration:line-through';
+    if(c.status==='bounced')statusColor='color:#f59e0b';
+    var country=c.country?(mkCountryInfo(c.country).flag+' '):'';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;'+(excluded?'opacity:.5':'')+';font-size:11px;border-bottom:1px solid var(--border)">'
+      +'<input type="checkbox" value="'+esc(cid)+'" onchange="campToggleRecipient(this)"'+(excluded?'':' checked')+'>'
+      +'<div style="flex:1;min-width:0;'+statusColor+'">'
+        +'<div style="font-weight:500">'+country+esc(c.firstName||c.email||'(sin nombre)')+'</div>'
+        +'<div style="font-size:10px;color:var(--t3)">'+esc(c.email||'')+(c.companyName?' \u00b7 '+esc(c.companyName):'')+'</div>'
+      +'</div>'
+    +'</label>';
+  }).filter(function(x){return x;}).join('');
+  div.innerHTML=rows||'<em style="color:var(--t4);font-size:11px">Sin resultados.</em>';
+}
+
+function campToggleRecipient(cb){
+  if(cb.checked){
+    delete _campEditing.excludedRecipientIds[cb.value];
+  }else{
+    _campEditing.excludedRecipientIds[cb.value]=true;
+  }
+  campUpdSummary();
+}
+
+function campSelectAll(checked){
+  if(!_campEditing.listId)return;
+  var lst=mkLists.find(function(l){return l.id===_campEditing.listId;});
+  if(!lst)return;
+  var contactIds=[];
+  if(lst.type==='static')contactIds=lst.contactIds||[];
+  else if(lst.type==='dynamic'&&lst.filters){
+    contactIds=mkContacts.filter(function(c){return mkContactMatchesFilters(c,lst.filters);}).map(function(c){return c.id;});
+  }
+  if(checked){
+    _campEditing.excludedRecipientIds={};
+  }else{
+    _campEditing.excludedRecipientIds={};
+    contactIds.forEach(function(cid){_campEditing.excludedRecipientIds[cid]=true;});
+  }
+  campRenderRecipients();
+  campUpdSummary();
+}
+
+function campFilterRecipients(){campRenderRecipients();}
+
+// Calcula los IDs de destinatarios finales (lista - excluidos - unsubscribed/bounced)
+function campGetFinalRecipients(){
+  if(!_campEditing.listId)return [];
+  var lst=mkLists.find(function(l){return l.id===_campEditing.listId;});
+  if(!lst)return [];
+  var contactIds=[];
+  if(lst.type==='static')contactIds=lst.contactIds||[];
+  else if(lst.type==='dynamic'&&lst.filters){
+    contactIds=mkContacts.filter(function(c){return mkContactMatchesFilters(c,lst.filters);}).map(function(c){return c.id;});
+  }
+  return contactIds.filter(function(cid){
+    if(_campEditing.excludedRecipientIds[cid])return false;
+    var c=mkContacts.find(function(x){return x.id===cid;});
+    if(!c)return false;
+    if(c.status==='unsubscribed')return false;  // skip unsub
+    if(c.status==='bounced')return false;        // skip bounced
+    return c.email&&mkValidEmail(c.email);
+  });
+}
+
+function campUpdSummary(){
+  var div=n('camp-summary');
+  if(!div)return;
+  var recipients=campGetFinalRecipients().length;
+  var cars=_campEditing.selectedCarIds.length;
+  div.innerHTML='\ud83d\ude97 '+cars+' coche'+(cars!==1?'s':'')+' \u00b7 \ud83d\udce7 '+recipients+' destinatario'+(recipients!==1?'s':'')+' \u00b7 \u2728 '+(_campEditing.tplId?'template':'sin template')+' \u00b7 \u270d\ufe0f '+(_campEditing.firmaId?'firma':'sin firma');
+  // Stats panel destinatarios
+  var stats=n('camp-recipients-stats');
+  if(stats){
+    var total=_campEditing.listId?(function(){
+      var lst=mkLists.find(function(l){return l.id===_campEditing.listId;});
+      if(!lst)return 0;
+      if(lst.type==='static')return (lst.contactIds||[]).length;
+      return mkContacts.filter(function(c){return mkContactMatchesFilters(c,lst.filters||{});}).length;
+    })():0;
+    if(total>0){
+      stats.textContent='\u2713 '+recipients+' de '+total+' contactos seleccionados';
+    }else{
+      stats.textContent='';
+    }
+  }
+}
+
+// Listeners para inputs nombre/asunto
+document.addEventListener('input',function(e){
+  if(e.target.id==='camp-name')_campEditing.name=e.target.value;
+  if(e.target.id==='camp-subject')_campEditing.subject=e.target.value;
+});
+
+// === GUARDAR / ENVIAR ===
+
+function campSaveDraft(){
+  if(!_campEditing.name||!_campEditing.name.trim()){
+    alert('Asigna un nombre a la campa\u00f1a antes de guardar.');return;
+  }
+  var data={
+    name:_campEditing.name.trim(),
+    subject:_campEditing.subject.trim(),
+    tplId:_campEditing.tplId,
+    firmaId:_campEditing.firmaId,
+    listId:_campEditing.listId,
+    selectedCarIds:_campEditing.selectedCarIds,
+    excludedRecipientIds:_campEditing.excludedRecipientIds,
+    status:'draft',
+    updatedAt:new Date().toISOString()
+  };
+  if(_campEditing.id){
+    var idx=mkCampaigns.findIndex(function(x){return x.id===_campEditing.id;});
+    if(idx>=0)Object.assign(mkCampaigns[idx],data);
+  }else{
+    data.id='camp_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    data.createdAt=new Date().toISOString();
+    mkCampaigns.push(data);
+    mkCampaignsCounter++;
+  }
+  SS('mkCampaigns',mkCampaigns);
+  SS('mkCampaignsCounter',mkCampaignsCounter);
+  closeM('m-camp-new');
+  renderCampaigns();
+  if(typeof showToast==='function')showToast('\u2713 Borrador guardado');
+}
+
+function campSendTest(){
+  // Valida primero
+  if(!_campEditing.tplId){alert('Selecciona un template.');return;}
+  if(!_campEditing.firmaId){alert('Selecciona una firma.');return;}
+  if(!_campEditing.subject||!_campEditing.subject.trim()){alert('Escribe un asunto.');return;}
+  var to=prompt('\ud83d\udce7 Enviar test a qu\u00e9 email?','info@dmcargroup.com');
+  if(!to||!mkValidEmail(to.trim())){alert('Email no v\u00e1lido.');return;}
+  // Construye HTML (l\u00f3gica completa en v9.18)
+  alert('\ud83d\udea7 Test send: la inyecci\u00f3n de coches y env\u00edo se completar\u00e1n en v9.18.\n\nDe momento se enviar\u00e1 el template tal cual con un coche dummy si quieres probar.');
+}
+
+function campSendNow(){
+  alert('\ud83d\udea7 Env\u00edo masivo en desarrollo \u2014 v9.19.\n\nCompleto:\n\u2022 Inyecci\u00f3n de coches en placeholder Card Auto\n\u2022 Throttling configurable\n\u2022 Tracking aperturas\n\u2022 Adjuntos\n\nPor ahora puedes guardar como borrador y enviar test.');
+}
+
+// === HOOKS DE ACCESO ===
+
+// Hook desde Stock Vivo: env\u00edo r\u00e1pido de UN coche
+function campNewFromStockSingle(stockId){
+  campOpenNew([stockId]);
+}
+
+// Hook desde Generador Ofertas / toolbar Stock
+function campNewFromStockMulti(stockIds){
+  campOpenNew(stockIds);
+}
+
+// Hook desde Generador de Ofertas: abre el modal Crear Campa\u00f1a
+// Si hay un veh\u00edculo seleccionado en el generador, lo preselecciona
+function campNewFromOfertas(){
+  // Trato de detectar si hay un coche del stock seleccionado en el generador
+  var preselected=[];
+  // Si existe un select vehicle en el generador con id seleccionado
+  var sel=n('o-veh-select');
+  if(sel&&sel.value){
+    preselected.push(sel.value);
+  }
+  // Verifica que tenga al menos templates y firmas creadas
+  if(mkTemplates.length===0){
+    if(!confirm('\u26a0\ufe0f No hay templates creados todav\u00eda.\n\nNecesitas un template para crear una campa\u00f1a.\n\n\u00bfIr a Campa\u00f1as \u2192 Templates ahora?'))return;
+    go('campaigns');
+    setTimeout(function(){campSwitchTab('templates');},200);
+    return;
+  }
+  if(mkFirmas.length===0){
+    if(!confirm('\u26a0\ufe0f No hay firmas creadas todav\u00eda.\n\nNecesitas una firma comercial para crear una campa\u00f1a.\n\n\u00bfIr a Campa\u00f1as \u2192 Firmas ahora?'))return;
+    go('campaigns');
+    setTimeout(function(){campSwitchTab('firmas');},200);
+    return;
+  }
+  campOpenNew(preselected);
 }
 
 function campDel(id){
