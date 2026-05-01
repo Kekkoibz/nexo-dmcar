@@ -12254,7 +12254,55 @@ function campSaveDraft(){
   if(typeof showToast==='function')showToast('\u2713 Borrador guardado');
 }
 
-// Helper: construye URL del logo marca probando m\u00faltiples variantes
+// Helper: descarga el logo de la marca y lo devuelve como dataURL base64
+// Usa fetchLogoBytes (que prueba todas las variantes) y convierte ArrayBuffer \u2192 base64
+function campFetchLogoBase64(brand){
+  return new Promise(function(resolve){
+    if(!brand||typeof fetchLogoBytes!=='function'){resolve('');return;}
+    fetchLogoBytes(brand,function(err,result){
+      if(err||!result||!result.bytes){
+        console.warn('[campFetchLogoBase64] Logo no encontrado para:',brand);
+        resolve('');
+        return;
+      }
+      // Convierte ArrayBuffer \u2192 base64
+      try{
+        var bytes=new Uint8Array(result.bytes);
+        var binary='';
+        for(var i=0;i<bytes.byteLength;i++){
+          binary+=String.fromCharCode(bytes[i]);
+        }
+        var b64=btoa(binary);
+        var ext=result.ext||'png';
+        var dataUrl='data:image/'+ext+';base64,'+b64;
+        resolve(dataUrl);
+      }catch(e){
+        console.error('[campFetchLogoBase64] Error converting:',e);
+        resolve('');
+      }
+    });
+  });
+}
+
+// Pre-resuelve todos los logos de las marcas del campa\u00f1a actual
+// Modifica los bloques inyectados sustituyendo brandLogo URL \u2192 base64 inline
+// Devuelve Promise que resuelve cuando todos los logos est\u00e1n listos
+function campResolveBrandLogos(template){
+  var promises=[];
+  if(!template||!Array.isArray(template.blocks))return Promise.resolve(template);
+  template.blocks.forEach(function(b){
+    if(b.type==='auto_card'&&b.config&&b.config.brandName){
+      var brand=b.config.brandName;
+      var p=campFetchLogoBase64(brand).then(function(b64){
+        if(b64){
+          b.config.brandLogo=b64;  // sustituye URL \u2192 base64
+        }
+      });
+      promises.push(p);
+    }
+  });
+  return Promise.all(promises).then(function(){return template;});
+}
 // Tu repo GitHub tiene archivos con grafias inconsistentes:
 // - "AUDI .png" (con espacio antes del .png)
 // - "Aston Martin.png" (CamelCase con espacio)
@@ -12428,12 +12476,12 @@ function campBuildCardConfigFromGroup(groupKey,qty){
 // Construye el HTML completo de la campa\u00f1a inyectando los coches en el placeholder Card Auto
 // Si el template tiene un bloque auto_card, se clona N veces con los datos de cada grupo de coches
 // Si no hay coches seleccionados, se elimina el bloque auto_card del template
-function campBuildHTML(vars){
+// Construye el template inyectando los coches en el placeholder Card Auto
+// Devuelve {template, hasCards} - sin convertir a HTML todav\u00eda
+function campBuildTemplate(){
   var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
-  if(!t)return '';
-  // Clone profundo del template para no modificar el original
+  if(!t)return null;
   var template=JSON.parse(JSON.stringify(t));
-  // Identifica el placeholder Card Auto en los bloques
   var autoCardIdx=-1;
   for(var i=0;i<template.blocks.length;i++){
     if(template.blocks[i].type==='auto_card'){
@@ -12441,21 +12489,17 @@ function campBuildHTML(vars){
       break;
     }
   }
-  // Construye los bloques Card Auto a inyectar (uno por grupo seleccionado)
   var injectedBlocks=[];
   if(Array.isArray(_campEditing.selectedCarIds)){
     _campEditing.selectedCarIds.forEach(function(item){
       var cardConfig=null;
       if(typeof item==='string'){
-        // Legacy: stock.id directo \u2014 usa la nueva l\u00f3gica de grupo si es posible
         var car=stock.find(function(s){return String(s.id)===String(item);});
         if(car){
-          // Convertimos a grupo+qty=1 para usar la l\u00f3gica nueva
           var legacyKey=((car.brand||'').toUpperCase()+'||'+(car.model||'').toUpperCase()).trim();
           cardConfig=campBuildCardConfigFromGroup(legacyKey,1);
         }
       }else if(item&&item.groupKey){
-        // Nuevo formato: grupo + cantidad
         cardConfig=campBuildCardConfigFromGroup(item.groupKey,item.qty||1);
       }
       if(cardConfig){
@@ -12467,7 +12511,6 @@ function campBuildHTML(vars){
       }
     });
   }
-  // Reemplaza el bloque placeholder con los inyectados
   if(autoCardIdx>=0){
     if(injectedBlocks.length>0){
       template.blocks.splice.apply(template.blocks,[autoCardIdx,1].concat(injectedBlocks));
@@ -12479,8 +12522,25 @@ function campBuildHTML(vars){
     var insertAt=firmaIdx>=0?firmaIdx:template.blocks.length;
     template.blocks.splice.apply(template.blocks,[insertAt,0].concat(injectedBlocks));
   }
-  // Genera HTML usando la funci\u00f3n existente
+  return template;
+}
+
+// VERSION SYNC: para preview r\u00e1pida (sin esperar logos)
+// Devuelve HTML construido sin pre-resolve de logos
+function campBuildHTML(vars){
+  var template=campBuildTemplate();
+  if(!template)return '';
   return tplBuildHTML(template,vars||{});
+}
+
+// VERSION ASYNC: para envio real (con logos en base64 incrustados)
+// Devuelve Promise<HTML> donde los logos ya est\u00e1n convertidos a base64
+function campBuildHTMLAsync(vars){
+  var template=campBuildTemplate();
+  if(!template)return Promise.resolve('');
+  return campResolveBrandLogos(template).then(function(t){
+    return tplBuildHTML(t,vars||{});
+  });
 }
 
 function campSendTest(){
@@ -12505,29 +12565,34 @@ function campSendTest(){
   if(!to)return;
   to=to.trim();
   if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
-  // Construye HTML con inyecci\u00f3n de coches + variables de ejemplo
-  var html=campBuildHTML({
+  // Construye HTML con inyecci\u00f3n de coches + variables de ejemplo + logos en base64
+  if(typeof showToast==='function')showToast('\u23f3 Descargando logos y construyendo email...');
+  campBuildHTMLAsync({
     nombre:'Francesco',
     empresa:'DMCAR Group (TEST)',
     pais:'Espa\u00f1a',
     email:to,
     unsubscribe_url:'https://example.com/unsubscribe/test',
     view_online_url:'https://example.com/view-online/test'
-  });
-  if(!html){alert('Error al construir el HTML.');return;}
-  var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
-  // Envio
-  if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
-  NX_MS.sendEmail(to,subject,html,function(ok,err){
-    if(ok){
-      if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
-      setTimeout(function(){
-        var carCount=_campEditing.selectedCarIds.length;
-        alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).\n\n\ud83d\udd0d Comprueba en Apple Mail / Gmail:\n\u2022 Header con logo\n\u2022 View Online link\n\u2022 Saludo (Hello Francesco)\n\u2022 '+carCount+' coche'+(carCount!==1?'s':'')+' inyectado'+(carCount!==1?'s':'')+' como Card Auto\n\u2022 Firma comercial visible\n\u2022 Footer con copyright\n\nSi todo se ve bien, la campa\u00f1a est\u00e1 lista para envio masivo. \ud83d\ude80');
-      },300);
-    }else{
-      alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
-    }
+  }).then(function(html){
+    if(!html){alert('Error al construir el HTML.');return;}
+    var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
+    // Envio
+    if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
+    NX_MS.sendEmail(to,subject,html,function(ok,err){
+      if(ok){
+        if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
+        setTimeout(function(){
+          var carCount=_campEditing.selectedCarIds.length;
+          alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).');
+        },300);
+      }else{
+        alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
+      }
+    });
+  }).catch(function(e){
+    console.error('[campSendTest] Error:',e);
+    alert('\u274c Error al construir el email:\n\n'+(e.message||e));
   });
 }
 
@@ -13618,7 +13683,7 @@ function tplBuildHTML(template,vars){
                    .replace(/\{\{view_online_url\}\}/g,esc(vars.view_online_url||'#'));
   // Wrap en HTML completo de email
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>'
-    +'<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">'
+    +'<body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif">'
     +'<div style="max-width:680px;margin:0 auto;background:#ffffff;padding:0">'
     +bodyHtml
     +'</div>'
