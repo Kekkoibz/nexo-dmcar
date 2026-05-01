@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.33 — DMCAR GROUP CRM | 2026-05-01 | removed emoji select from email subject (anti-spam B2B), campStripEmojis now applied to both body+subject -->
+<!-- NEXO v9.34 — DMCAR GROUP CRM | 2026-05-01 | fix campAutoFillSubject (groupKey format), Stock Vivo sort by ID timestamp DESC (newest top) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -3809,6 +3809,22 @@ function fStk(){
     if(y1&&yr<y1) return false;
     if(y2<9999&&yr>y2) return false;
     return true;
+  });
+  // Ordina por timestamp DESC (más recientes arriba). Los IDs tienen formato 's'+Date.now()+'_xxxx',
+  // por lo que el orden lexicográfico inverso del ID equivale a orden cronológico inverso.
+  // Fallback a campo date si el ID no es timestamp-based (compatibilidad con datos antiguos).
+  stkFlt.sort(function(a,b){
+    var ta=String(a.id||'');
+    var tb=String(b.id||'');
+    // Extrae timestamp numérico del ID (formato s<ms>_<rand>)
+    var ma=ta.match(/^s(\d+)/);
+    var mb=tb.match(/^s(\d+)/);
+    if(ma&&mb)return parseInt(mb[1],10)-parseInt(ma[1],10);
+    // Fallback: ordena por date DESC (formato YYYY-MM-DD asume orden lexicográfico válido)
+    var da=String(a.date||'');var db=String(b.date||'');
+    if(da!==db)return db.localeCompare(da);
+    // Último recurso: orden lexicográfico inverso del ID
+    return tb.localeCompare(ta);
   });
   // Show/hide "Deshacer import" button based on whether there is a recent batch
   var undoBtn=n('btn-undo-import');
@@ -12250,13 +12266,24 @@ window.campUpdSubjectFromEmoji=campUpdSubjectFromEmoji;
 
 function campAutoFillSubject(){
   var inp=n('camp-subject');if(!inp)return;
-  // Toma el primer coche seleccionado y construye 'used <Brand> <Model> <Version>'
   var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
   if(sel.length===0){alert('\u26a0\ufe0f Selecciona al menos 1 coche abajo (paso 5) para usar Auto.');return;}
   var first=sel[0];
-  var stockId=typeof first==='string'?first:(first&&first.stockId);
-  var s=stock.find(function(x){return String(x.id)===String(stockId);});
-  if(!s){alert('Coche no encontrado en stock.');return;}
+  var s=null;
+  // Formato legacy: string ID
+  if(typeof first==='string'){
+    s=stock.find(function(x){return String(x.id)===String(first);});
+  }
+  // Formato nuevo: {groupKey: "BRAND||MODEL", qty, specificIndices?}
+  else if(first&&first.groupKey){
+    var parts=String(first.groupKey).split('||');
+    var brand=(parts[0]||'').toUpperCase();
+    var model=(parts[1]||'').toUpperCase();
+    s=stock.find(function(x){
+      return ((x.brand||'').toUpperCase()===brand)&&((x.model||'').toUpperCase()===model);
+    });
+  }
+  if(!s){alert('\u26a0\ufe0f Coche no encontrado en stock.\nRevisa que la selecci\u00f3n del paso 5 corresponda a un veh\u00edculo del Stock Vivo.');return;}
   var title='used '+(s.brand||'')+' '+(s.model||'');
   if(s.version)title+=' '+s.version;
   title=title.replace(/\s+/g,' ').trim();
