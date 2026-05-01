@@ -11826,10 +11826,12 @@ function tplRender(){
     var blocksCount=Array.isArray(t.blocks)?t.blocks.length:0;
     return '<div class="card" style="padding:14px">'
       +'<div style="font-weight:700;font-size:13px;color:var(--t1);margin-bottom:6px">'+esc(t.name||'(sin nombre)')+'</div>'
+      +(t.subject?'<div style="font-size:11px;color:var(--t3);margin-bottom:6px"><strong>Asunto:</strong> '+esc(t.subject)+'</div>':'')
       +(t.description?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(t.description)+'</div>':'')
       +'<div style="font-size:10px;color:var(--t4);margin-bottom:10px">'+blocksCount+' bloque'+(blocksCount!==1?'s':'')+' \u00b7 Modif. '+fmtD(t.updatedAt||t.createdAt)+'</div>'
       +'<div class="fc g6">'
         +'<button class="btn bs" onclick="tplOpenEdit(\''+esc(t.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>'
+        +'<button class="btn bs" onclick="tplSendTest(\''+esc(t.id)+'\')" style="font-size:10px;padding:4px 10px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Enviar email de prueba para ver el render real">&#128231; Test</button>'
         +'<button class="btn bd" onclick="tplDel(\''+esc(t.id)+'\')" style="font-size:10px;padding:4px 8px" title="Eliminar">x</button>'
       +'</div>'
     +'</div>';
@@ -12212,6 +12214,67 @@ document.addEventListener('input',function(e){
   if(e.target.id==='tpl-name')_tplEditing.name=e.target.value;
   if(e.target.id==='tpl-subject')_tplEditing.subject=e.target.value;
 });
+
+// Construye el HTML completo de un template para envio email
+// vars: objeto con los valores para sustituci\u00f3n (nombre, empresa, pais, email, unsubscribe_url)
+function tplBuildHTML(template,vars){
+  if(!template||!Array.isArray(template.blocks))return '';
+  vars=vars||{};
+  // Renderiza cada bloque y los junta
+  var bodyHtml=template.blocks.map(function(b){return tplRenderBlockHTML(b);}).join('');
+  // Sustituye variables
+  bodyHtml=bodyHtml.replace(/\{\{nombre\}\}/g,esc(vars.nombre||''))
+                   .replace(/\{\{empresa\}\}/g,esc(vars.empresa||''))
+                   .replace(/\{\{pais\}\}/g,esc(vars.pais||''))
+                   .replace(/\{\{email\}\}/g,esc(vars.email||''))
+                   .replace(/\{\{unsubscribe_url\}\}/g,esc(vars.unsubscribe_url||'#'));
+  // Wrap en HTML completo de email
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>'
+    +'<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">'
+    +'<div style="max-width:680px;margin:0 auto;background:#ffffff;padding:0">'
+    +bodyHtml
+    +'</div>'
+    +'</body></html>';
+}
+
+// Enviar email de prueba con el template renderizado
+function tplSendTest(id){
+  var t=mkTemplates.find(function(x){return x.id===id;});
+  if(!t){alert('Template no encontrado.');return;}
+  if(!Array.isArray(t.blocks)||t.blocks.length===0){alert('El template no tiene bloques.');return;}
+  // Verifica que NX_MS est\u00e9 listo
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){
+    alert('\u26a0\ufe0f Microsoft Graph no est\u00e1 conectado.\n\nVe a Configuraci\u00f3n y conecta tu cuenta info@dmcargroup.com primero.');
+    return;
+  }
+  // Pide email destino
+  var defaultTo='info@dmcargroup.com';
+  var to=prompt('\ud83d\udce7 \u00bfA qu\u00e9 email enviar la prueba?\n\nNEXO te mandar\u00e1 una email con el template "'+t.name+'" renderizado completo (todos los bloques + firma) para que veas c\u00f3mo se ver\u00e1 en clientes reales.',defaultTo);
+  if(!to)return;
+  to=to.trim();
+  if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
+  // Construye HTML completo con valores de ejemplo
+  var html=tplBuildHTML(t,{
+    nombre:'Francesco',
+    empresa:'DMCAR Group (TEST)',
+    pais:'Espa\u00f1a',
+    email:to,
+    unsubscribe_url:'https://example.com/unsubscribe'
+  });
+  var subject='[NEXO Test] '+(t.subject||t.name||'Vista previa template');
+  // Indicaci\u00f3n visual
+  if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
+  NX_MS.sendEmail(to,subject,html,function(ok,err){
+    if(ok){
+      if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
+      setTimeout(function(){
+        alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja de entrada (puede tardar 1-2 min).\n\n\ud83d\udd0d Comprueba en Apple Mail / Gmail:\n\u2022 Logo + tagline en el header\n\u2022 Saludo (Hello Francesco)\n\u2022 Texto con variables sustituidas\n\u2022 Firma comercial visible\n\u2022 Footer con copyright\n\nSi todo se ve bien, el template est\u00e1 listo para campa\u00f1as reales. \ud83d\ude80');
+      },300);
+    }else{
+      alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
+    }
+  });
+}
 
 // END CAMPA\u00d1AS SCHELETRO
 // ===========================================================================
