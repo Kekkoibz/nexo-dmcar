@@ -347,6 +347,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="exportStock()" style="font-size:11px">&#11123; CSV</button>
           <button class="btn bs" onclick="openM('m-import')" style="font-size:11px">&#128206; Importar</button>
           <button class="btn bg" id="btn-undo-import" onclick="undoLastImport()" style="font-size:11px;display:none">&#8617; Deshacer import</button>
+          <button class="btn bs" onclick="campNewFromStockVivo()" style="font-size:11px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none">&#128231; Crear campa&ntilde;a NEXO</button>
           <button class="btn bp" onclick="openM('m-sadd')">+ Nueva</button>
         </div>
       </div>
@@ -12614,6 +12615,34 @@ function campNewFromStockMulti(stockIds){
 
 // Hook desde Generador de Ofertas: abre el modal Crear Campa\u00f1a
 // Si hay un veh\u00edculo seleccionado en el generador, lo preselecciona
+// Hook desde Stock Vivo: abre modal Crear Campa\u00f1a y autom\u00e1ticamente abre el stock picker
+// para seleccionar los coches de la campa\u00f1a
+function campNewFromStockVivo(){
+  // Verifica prerequisitos
+  if(stock.length===0){
+    alert('\u26a0\ufe0f No hay coches en el Stock Vivo todav\u00eda.\n\nA\u00f1ade al menos uno antes de crear una campa\u00f1a.');
+    return;
+  }
+  if(mkTemplates.length===0){
+    if(!confirm('\u26a0\ufe0f No hay templates creados todav\u00eda.\n\nNecesitas un template para crear una campa\u00f1a.\n\n\u00bfIr a Campa\u00f1as \u2192 Templates ahora?'))return;
+    go('campaigns');
+    setTimeout(function(){campSwitchTab('templates');},200);
+    return;
+  }
+  if(mkFirmas.length===0){
+    if(!confirm('\u26a0\ufe0f No hay firmas creadas todav\u00eda.\n\nNecesitas una firma comercial para crear una campa\u00f1a.\n\n\u00bfIr a Campa\u00f1as \u2192 Firmas ahora?'))return;
+    go('campaigns');
+    setTimeout(function(){campSwitchTab('firmas');},200);
+    return;
+  }
+  // Abre el modal Crear Campa\u00f1a vac\u00edo
+  campOpenNew([]);
+  // Despu\u00e9s de un breve delay, abre directamente el stock picker para que elija los coches
+  setTimeout(function(){
+    campOpenStockPicker();
+  },300);
+}
+
 function campNewFromOfertas(){
   // Trato de detectar si hay un coche del stock seleccionado en el generador
   var preselected=[];
