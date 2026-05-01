@@ -3210,7 +3210,11 @@ function renderStkTbl(){
     html+='<tr id="tr-'+sid+'"'+(sel?' style="background:rgba(37,99,235,.07)"':'')+'>';
     html+='<td style="text-align:center"><input type="checkbox" class="rchk" data-id="'+item.id+'"'+(sel?' checked':'')+'></td>';
     // Casella "Oferta enviada" (auto al click Generar Word, ma editabile manualmente)
-    html+='<td style="text-align:center"><input type="checkbox" class="env-chk" data-id="'+item.id+'"'+(item.sent?' checked':'')+' title="'+(item.sentAt?'Enviada el '+esc(item.sentAt):'Marcar como enviada')+'" style="cursor:pointer;accent-color:#10b981;width:18px;height:18px"></td>';
+    // Stato: verde se sent (gruppo intero), arancione se sentPartial (solo unit\u00e0 singole)
+    var envChecked=item.sent||item.sentPartial;
+    var envColor=item.sent?'#10b981':(item.sentPartial?'#f59e0b':'#10b981');
+    var envTitle=item.sent?(item.sentAt?'Oferta de grupo enviada el '+esc(item.sentAt):'Oferta de grupo enviada'):(item.sentPartial?'Oferta(s) parcial(es) enviada(s) - solo unidades individuales':'Marcar como enviada');
+    html+='<td style="text-align:center"><input type="checkbox" class="env-chk" data-id="'+item.id+'"'+(envChecked?' checked':'')+' title="'+envTitle+'" style="cursor:pointer;accent-color:'+envColor+';width:18px;height:18px"></td>';
     html+='<td style="font-size:10px;color:var(--t4);white-space:nowrap">'+esc(item.internalId)+'</td>';
     html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.date)+'</td>';
     html+='<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(item.supplier)+'</td>';
@@ -3336,9 +3340,13 @@ function renderStkTbl(){
       if(idx<0)return;
       stock[idx].sent=this.checked;
       stock[idx].sentAt=this.checked?new Date().toLocaleDateString('es-ES'):null;
+      // Toggle manuale: se l'utente la spunta intenzionalmente, sentPartial \u00e8 implicito (l'utente conferma)
+      // Se la disattiva, ripulisce anche sentPartial
+      if(!this.checked)stock[idx].sentPartial=false;
       SS('stock',stock);
-      // Update tooltip
-      this.title=this.checked&&stock[idx].sentAt?'Enviada el '+stock[idx].sentAt:'Marcar como enviada';
+      // Update tooltip e color
+      this.style.accentColor=this.checked?'#10b981':'#10b981';
+      this.title=this.checked&&stock[idx].sentAt?'Oferta de grupo enviada el '+stock[idx].sentAt:'Marcar como enviada';
     });
   });
 
@@ -4202,6 +4210,7 @@ function genFrmStk(){
             if(sIdx>=0){
               stock[sIdx].sent=true;
               stock[sIdx].sentAt=new Date().toLocaleDateString('es-ES');
+              stock[sIdx].sentPartial=false; // Override: gruppo intero ha priorit\u00e0 sul parziale
               stock[sIdx].sell=ctx.offer.price||'';
               // Calcola margine: P.Venta - P.Compra
               var buyN=fnum(stock[sIdx].buy);
@@ -4297,6 +4306,11 @@ function genFromSingleVehicle(stockId,vehIdx){
           var b2=fnum(stock[sIdx].vehicles[vehIdx].buy||stock[sIdx].buy);
           var s2=fnum(stock[sIdx].vehicles[vehIdx].sell);
           if(b2&&s2)stock[sIdx].vehicles[vehIdx].marginAmount=String(Math.round(s2-b2));
+          // PARZIALE: se non gi\u00e0 segnato come "tutta flotta inviata", segna come parziale (arancione)
+          if(!stock[sIdx].sent){
+            stock[sIdx].sentPartial=true;
+            stock[sIdx].sentPartialAt=new Date().toLocaleDateString('es-ES');
+          }
           SS('stock',stock);
         }
       }catch(e){console.warn('[NEXO] Error updating vehicle after offer:',e);}
@@ -5023,8 +5037,10 @@ function genWordDoc(o,cb){
               });
             });
           }).then(function(blob){
-            var safe=(o.title||'oferta').replace(/[^\w\s\-\.]/g,'').replace(/\s+/g,' ').trim();
-            var fname=safe+'.docx';
+            // Costruisce nome file con prefisso numero unit\u00e0: es "12 AUDI A3 Sportback..."
+            var unitsNum=parseInt(String(o.units||'1').replace(/[^\d]/g,''),10)||1;
+            var titleClean=(o.title||'oferta').replace(/[^\w\s\-\.]/g,'').replace(/\s+/g,' ').trim();
+            var fname=unitsNum+' '+titleClean+'.docx';
             var a=document.createElement('a');
             a.href=URL.createObjectURL(blob);
             a.download=fname;
