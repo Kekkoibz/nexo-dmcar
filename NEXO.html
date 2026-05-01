@@ -3230,27 +3230,58 @@ function renderStkTbl(){
     // Detail row
     if(hasD){
       html+='<tr class="det-row" id="det-'+sid+'" style="display:none">';
-      html+='<td colspan="18">';
+      html+='<td colspan="20">';
       html+='<div class="det-inner">';
       html+='<div style="font-size:10px;font-weight:700;color:var(--acc);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">&#9660; Vehiculos del lote ('+item.vehicles.length+')</div>';
       html+='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-      html+='<table style="width:100%;min-width:600px;border-collapse:collapse">';
+      html+='<table style="width:100%;min-width:900px;border-collapse:collapse">';
       html+='<thead><tr style="background:var(--bg3)">';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3);width:40px" title="Oferta enviada">Env.</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">VIN</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Color</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Kms</th>';
       html+='<th style="padding:6px 14px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3)">Danos EUR</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">1a Reg</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">P.Compra</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">P.Venta</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Margen</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Ubicacion</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3)">Acci&oacute;n</th>';
       html+='</tr></thead><tbody>';
       item.vehicles.forEach(function(v,vi){
+        // Ereditarieta: se v non ha buy/sell propri, usa quello del gruppo
+        var vBuy=v.buy||item.buy||'';
+        var vSell=v.sell||item.sell||'';
+        // Calcolo margen unit: priorita) v.marginAmount esplicito 2) calcolato da buy/sell
+        var vMargin=v.marginAmount||'';
+        if(!vMargin&&vBuy&&vSell){
+          var b=fnum(vBuy),s=fnum(vSell);
+          if(b&&s)vMargin=String(Math.round(s-b));
+        }
+        var vSent=!!v.sent;
+        var vSentAt=v.sentAt||'';
+        // Stili display
+        var sellDisp=vSell?esc(vSell):'<span style="color:var(--t4);font-size:10px">--</span>';
+        var marginDisp=vMargin?'<span style="color:var(--green);font-weight:700">+'+esc(String(vMargin).replace(/[^\d-]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'))+' \u20ac</span>':'<span style="color:var(--t4);font-size:10px">--</span>';
+        // Indicatore se prezzo \u00e8 ereditato (v ha lo stesso buy del gruppo)
+        var inheritedBuy=!v.buy&&item.buy;
+        var inheritedSell=!v.sell&&item.sell;
+        var buyDisp=esc(vBuy)+(inheritedBuy?'<span style="font-size:9px;color:var(--t4);margin-left:3px" title="Heredado del grupo">\u22ef</span>':'');
+        var sellDispEdited=sellDisp+(inheritedSell&&item.sell?'<span style="font-size:9px;color:var(--t4);margin-left:3px" title="Heredado del grupo">\u22ef</span>':'');
         html+='<tr style="background:'+(vi%2===0?'var(--bg4)':'var(--bg2)')+'">';
-        html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+(v.vin||'--')+'</td>';
-        html+='<td style="padding:6px 10px;font-size:12px">'+(v.color||'--')+'</td>';
-        html+='<td style="padding:6px 10px;font-size:12px;text-align:right">'+(v.kms||'--')+'</td>';
-        html+='<td style="padding:6px 14px;font-size:12px;font-weight:600;text-align:center;color:var(--orange);white-space:nowrap">'+(v.damage||'--')+'</td>';
-        html+='<td style="padding:6px 10px;font-size:12px;white-space:nowrap">'+(v.reg||'--')+'</td>';
-        html+='<td style="padding:6px 10px;font-size:11px;color:var(--t3)">'+(v.location||'--')+'</td>';
+        // Env. checkbox
+        html+='<td style="padding:6px 10px;text-align:center"><input type="checkbox" class="veh-env-chk" data-sid="'+esc(item.id)+'" data-vi="'+vi+'"'+(vSent?' checked':'')+' title="'+(vSentAt?'Enviada el '+esc(vSentAt):'Marcar como enviada')+'" style="cursor:pointer;accent-color:#10b981;width:16px;height:16px"></td>';
+        html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+esc(v.vin||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px">'+esc(v.color||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px;text-align:right">'+esc(v.kms||'--')+'</td>';
+        html+='<td style="padding:6px 14px;font-size:12px;font-weight:600;text-align:center;color:var(--orange);white-space:nowrap">'+esc(v.damage||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:12px;white-space:nowrap">'+esc(v.reg||'--')+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;text-align:right;color:var(--t3);white-space:nowrap">'+buyDisp+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;text-align:right;font-weight:600;color:'+(vSell?'var(--green)':'var(--t4)')+';white-space:nowrap">'+sellDispEdited+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;text-align:right;white-space:nowrap">'+marginDisp+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;color:var(--t3)">'+esc(v.location||'--')+'</td>';
+        // Bottone Generar Word per singola unit\u00e0
+        html+='<td style="padding:6px 10px;text-align:center"><button class="btn bs gen-veh-btn" data-sid="'+esc(item.id)+'" data-vi="'+vi+'" title="Generar oferta solo para esta unidad" style="font-size:10px;padding:3px 8px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:600;white-space:nowrap">\u26a1 Generar</button></td>';
         html+='</tr>';
       });
       html+='</tbody></table></div></div></td></tr>';
@@ -3282,6 +3313,31 @@ function renderStkTbl(){
       SS('stock',stock);
       // Update tooltip
       this.title=this.checked&&stock[idx].sentAt?'Enviada el '+stock[idx].sentAt:'Marcar como enviada';
+    });
+  });
+
+  // Checkbox "Env." per singola unit\u00e0 nel dropdown
+  tbody.querySelectorAll('.veh-env-chk').forEach(function(chk){
+    chk.addEventListener('click',function(e){e.stopPropagation();});
+    chk.addEventListener('change',function(){
+      var sid=this.getAttribute('data-sid');
+      var vi=parseInt(this.getAttribute('data-vi'),10);
+      var idx=stock.findIndex(function(s){return String(s.id)===String(sid);});
+      if(idx<0||!stock[idx].vehicles||!stock[idx].vehicles[vi])return;
+      stock[idx].vehicles[vi].sent=this.checked;
+      stock[idx].vehicles[vi].sentAt=this.checked?new Date().toLocaleDateString('es-ES'):null;
+      SS('stock',stock);
+      this.title=this.checked&&stock[idx].vehicles[vi].sentAt?'Enviada el '+stock[idx].vehicles[vi].sentAt:'Marcar como enviada';
+    });
+  });
+
+  // Bottone "Generar" Word per singola unit\u00e0
+  tbody.querySelectorAll('.gen-veh-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var sid=this.getAttribute('data-sid');
+      var vi=parseInt(this.getAttribute('data-vi'),10);
+      genFromSingleVehicle(sid,vi);
     });
   });
 
@@ -4138,6 +4194,92 @@ function genFrmStk(){
   processNext();
   // Refresh stock view dopo tutte le offerte
   setTimeout(function(){if(typeof fStk==='function')fStk();},1000);
+}
+
+// Genera Word per UNA singola unit\u00e0 nel dropdown vehicles[]
+// Usa i dati specifici della unit\u00e0 (km, color, dao, vin) e prezzi (buy/sell ereditati o propri)
+function genFromSingleVehicle(stockId,vehIdx){
+  var item=stock.find(function(s){return String(s.id)===String(stockId);});
+  if(!item){alert('Stock item no encontrado.');return;}
+  if(!item.vehicles||!item.vehicles[vehIdx]){alert('Unidad no encontrada.');return;}
+  var v=item.vehicles[vehIdx];
+
+  // Prompt margine + idioma (con default ricordato)
+  var lastMargin=LS('lastOfferMargin','+1500 EUR');
+  var marginInput=prompt('Margen para esta unidad ('+esc(v.vin||'sin VIN')+'):\n\nFormato: "+1500 EUR" o "10%"\n\nEjemplos:\n  +1500 EUR (suma fija)\n  +10% (porcentaje)','+'+(v.marginAmount?String(v.marginAmount).replace(/[^\d]/g,'')+' EUR':lastMargin.replace(/^\+/,'')));
+  if(marginInput===null)return; // cancel
+  var margin=marginInput.trim();
+  if(!margin)margin='+500 EUR';
+  if(margin.indexOf('+')!==0&&margin.indexOf('-')!==0)margin='+'+margin;
+  SS('lastOfferMargin',margin);
+
+  var lastLang=LS('lastOfferLang','ES');
+  var lang=prompt('Idioma:\n  EN, ES, IT, FR, DE','ES')||'ES';
+  lang=lang.toUpperCase().trim();
+  if(['EN','ES','IT','FR','DE'].indexOf(lang)<0)lang='ES';
+  SS('lastOfferLang',lang);
+
+  // Prezzi: priorit\u00e0 unit\u00e0, fallback gruppo
+  var vBuy=v.buy||item.buy||'';
+  var buyN=fnum(vBuy);
+  var mN=parseFloat(margin.replace(/[^0-9.-]/g,''))||500;
+  var marginIsPct=margin.indexOf('%')>=0;
+  var sellN=buyN?(marginIsPct?buyN*(1+mN/100):buyN+mN):0;
+  var sellP=sellN?Math.round(sellN).toLocaleString('es-ES')+' \u20ac':(v.sell||vBuy||'');
+
+  // Costruisci offer per genWordDoc
+  var offer={
+    brand:item.brand,
+    model:item.model,
+    version:item.version,
+    title:buildSmartTitle(item.brand,item.model,item.version),
+    date:today(),
+    lang:lang,
+    margin:margin,
+    price:sellP,
+    registration:v.reg||item.reg||'',
+    kms:String(v.kms||''),
+    avgKms:false,
+    damages:String(v.damage||'0 \u20ac'),
+    avgDamages:false,
+    colors:v.color||'',
+    units:'1',
+    delivery:item.status||'Stock',
+    equipment:cleanEquipment((item.equip&&item.equip!=='--')?item.equip:''),
+    vin:v.vin||''
+  };
+  var ctx={
+    stockId:item.id,
+    vehicleIndex:vehIdx,        // indica che \u00e8 single-unit
+    vins:v.vin&&v.vin!=='--'?[v.vin]:[],
+    hasEquip:!!(item.equip&&item.equip!=='--'),
+    offer:offer
+  };
+
+  // Apri pre-offer modal poi genera
+  openPreOfferModal(ctx,function(confirmed){
+    if(!confirmed)return;
+    genWordDoc(ctx.offer,function(err){
+      if(err){alert('Error generando: '+err.message);return;}
+      // AUTO-marca questa singola unit\u00e0 come enviada + popola sell + margin
+      try{
+        var sIdx=stock.findIndex(function(s){return s.id===item.id;});
+        if(sIdx>=0&&stock[sIdx].vehicles&&stock[sIdx].vehicles[vehIdx]){
+          stock[sIdx].vehicles[vehIdx].sent=true;
+          stock[sIdx].vehicles[vehIdx].sentAt=new Date().toLocaleDateString('es-ES');
+          stock[sIdx].vehicles[vehIdx].sell=ctx.offer.price||'';
+          var b2=fnum(stock[sIdx].vehicles[vehIdx].buy||stock[sIdx].buy);
+          var s2=fnum(stock[sIdx].vehicles[vehIdx].sell);
+          if(b2&&s2)stock[sIdx].vehicles[vehIdx].marginAmount=String(Math.round(s2-b2));
+          SS('stock',stock);
+        }
+      }catch(e){console.warn('[NEXO] Error updating vehicle after offer:',e);}
+      offerHist.push(Object.assign({},ctx.offer,{id:Date.now()+Math.floor(Math.random()*9999),savedAt:new Date().toISOString()}));
+      SS('offerHist',offerHist);
+      if(typeof showToast==='function')showToast('\u2713 Oferta generada para 1 unidad');
+      setTimeout(function(){if(typeof fStk==='function')fStk();},500);
+    });
+  });
 }
 
 // -- PRE-OFFER MODAL (VIN + missing equipment) ------------------------------
@@ -8096,6 +8238,7 @@ function provStockProcessOne(mailId){
         // Helper normalizzazione per chiave gruppo
         function normKey(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim();}
         // Helper: crea singolo veicolo (per vehicles[])
+        // Include "buy" per unit\u00e0 (per smart inheritance: viene popolato solo se differente dal gruppo)
         function makeVehicle(car){
           return {
             vin:String(car.vin||'').trim()||'--',
@@ -8103,7 +8246,13 @@ function provStockProcessOne(mailId){
             kms:String(car.kms||'--').trim(),
             damage:String(car.danos||car.damages||car.damage||'0 \u20ac').trim(),
             reg:String(car.primer||car.registration||car.reg||'--').trim(),
-            location:String(car.location||car.ubicacion||'--').trim()
+            location:String(car.location||car.ubicacion||'--').trim(),
+            // Prezzo per unit\u00e0 (popolato solo se l'AI ha estratto un prezzo per questa unit\u00e0)
+            buy:String(car.precio||car.price||car.buy||car.pcompra||'').trim(),
+            sell:'',           // nessun prezzo di vendita di default
+            marginAmount:'',   // calcolato al momento della Generaci\u00f3n Word
+            sent:false,
+            sentAt:null
           };
         }
         // Helper: chiave univoca singolo veicolo per anti-duplicato (within group)
@@ -8176,6 +8325,27 @@ function provStockProcessOne(mailId){
               var avg=Math.round(dmgNum.reduce(function(a,b){return a+b;},0)/dmgNum.length);
               dmgAgg=avg+' \u20ac';
             }
+            // SMART INHERITANCE PREZZI:
+            // - Se tutte le unit\u00e0 hanno lo STESSO prezzo (o nessuna ha prezzo): metti il prezzo a livello gruppo, e svuota buy nei vehicles[]
+            // - Se i prezzi differiscono: lascia ogni unit\u00e0 con il suo prezzo, e a livello gruppo metti la media
+            var allBuys=vehicles.map(function(v){return String(v.buy||'').trim();});
+            var distinctBuys=allBuys.filter(function(b,i,arr){return b&&arr.indexOf(b)===i;});
+            var groupBuy='';
+            if(distinctBuys.length===0){
+              // Nessun prezzo
+              groupBuy=String(firstCar.precio||firstCar.price||firstCar.buy||firstCar.pcompra||'').trim();
+              vehicles.forEach(function(v){v.buy='';});
+            }else if(distinctBuys.length===1){
+              // Tutti uguali: metti a gruppo, vehicles ereditano
+              groupBuy=distinctBuys[0];
+              vehicles.forEach(function(v){v.buy='';}); // ereditato dal gruppo
+            }else{
+              // Prezzi differenti: lascia su ogni unit\u00e0, a livello gruppo metti la media
+              var buyNums=allBuys.map(function(b){return parseFloat(b.replace(/[^0-9.]/g,''))||0;}).filter(Boolean);
+              var avgBuy=buyNums.length?Math.round(buyNums.reduce(function(a,b){return a+b;},0)/buyNums.length):0;
+              groupBuy=avgBuy?avgBuy.toLocaleString('es-ES')+' \u20ac':'';
+              // I prezzi su vehicles rimangono cos\u00ec come sono
+            }
             var item={
               brand:g.brand,
               model:g.model,
@@ -8186,7 +8356,7 @@ function provStockProcessOne(mailId){
               colors:Object.keys(allColors).join(', ')||String(firstCar.colores||firstCar.colors||'').trim(),
               damage:dmgAgg||String(firstCar.danos||firstCar.damages||firstCar.damage||'').trim(),
               equip:String(firstCar.equipamiento||firstCar.equipment||firstCar.equip||'').trim(),
-              buy:String(firstCar.precio||firstCar.price||firstCar.buy||firstCar.pcompra||'').trim(),
+              buy:groupBuy,
               sell:'',
               supplier:supplierName,
               status:'Stock',
@@ -8281,14 +8451,14 @@ function provStockExtractCarsFromMail(mailData){
     var prompt='Extrae TODOS los veh\u00edculos disponibles que se mencionan en este email del proveedor. '
       +'Combina informaci\u00f3n del cuerpo del email Y de los anexos.\n\n'
       +'Cuerpo del email:\n"""\n'+(mailData.body||'').slice(0,30000)+'\n"""\n\n'
-      +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). IMPORTANTE: si hay 5 unidades de la misma versi\u00f3n con kms/colores/da\u00f1os distintos, devuelve 5 entradas separadas, una por unidad fisica. Cada veh\u00edculo:\n'
+      +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). IMPORTANTE: si hay N unidades de la misma versi\u00f3n con kms/colores/da\u00f1os/precios distintos, devuelve N entradas separadas, una por unidad fisica. Cada veh\u00edculo:\n'
       +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"05/2024","kms":"15000","colores":"Negro Mythos","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28.500 \u20ac","pais":"Espa\u00f1a","vin":""}\n\n'
       +'Reglas:\n'
       +'- "primer" es la fecha 1\u00aa matriculaci\u00f3n (formato MM/YYYY) o "Km 0" o "Al pagamento" (nuevo).\n'
       +'- "kms" solo n\u00famero, sin "km".\n'
-      +'- "precio" formato "X.XXX \u20ac".\n'
+      +'- "precio" formato "X.XXX \u20ac". IMPORTANTE: si el provider menciona UN solo precio para todas las unidades, replica el mismo precio en cada entrada. Si los precios son distintos por unidad, asigna a cada unidad su precio individual. Si no hay precio mencionado, deja "".\n'
       +'- "colores" un solo color por unidad (ej "Negro Mythos"), no lista.\n'
-      +'- Si hay m\u00faltiples unidades de la misma versi\u00f3n con datos distintos (kms/colores/da\u00f1os), s\u00ed haz una entrada para cada unidad.\n'
+      +'- Si hay m\u00faltiples unidades de la misma versi\u00f3n con datos distintos (kms/colores/da\u00f1os/precios), s\u00ed haz una entrada para cada unidad.\n'
       +'- Si hay m\u00faltiples versiones del mismo modelo, listalas como entradas separadas.\n'
       +'- "vin" si est\u00e1 presente, si no dejarlo vac\u00edo "".\n'
       +'- Si una info no est\u00e1 disponible, deja el campo vac\u00edo "".\n'
