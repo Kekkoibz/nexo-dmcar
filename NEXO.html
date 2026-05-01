@@ -849,7 +849,7 @@ En que te puedo ayudar hoy?</div></div>
         <button class="btn bg" id="camp-tab-prog" onclick="campSwitchTab('programadas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128338; Programadas <span id="camp-cnt-prog" style="font-size:10px;color:var(--t4)">(0)</span></button>
         <div style="flex:1;border-bottom:1px solid var(--border)"></div>
         <button class="btn bg" id="camp-tab-tpl" onclick="campSwitchTab('templates')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128196; Templates <span id="camp-cnt-tpl" style="font-size:10px;color:var(--t4)">(0)</span></button>
-        <button class="btn bg" id="camp-tab-fir" onclick="campSwitchTab('firmas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#9997;&#65039; Firmas <span id="camp-cnt-fir" style="font-size:10px;color:var(--t4)">(0)</span></button>
+        <button class="btn bg" id="camp-tab-fir" onclick="campSwitchTab('firmas')" style="border-radius:7px 7px 0 0;border-bottom:none">&#128100; Vendedores <span id="camp-cnt-fir" style="font-size:10px;color:var(--t4)">(0)</span></button>
       </div>
 
       <!-- TAB: Borradores -->
@@ -898,18 +898,18 @@ En que te puedo ayudar hoy?</div></div>
         </div>
       </div>
 
-      <!-- TAB: Firmas -->
+      <!-- TAB: Vendedores -->
       <div id="camp-pane-fir" style="display:none">
         <div class="fbet mb12">
-          <div style="font-size:12px;color:var(--t3)">Firmas comerciales reutilizables. Cada campa&ntilde;a usa la firma seleccionada al momento del env&iacute;o.</div>
-          <button class="btn bp" onclick="firOpenNew()">+ Nueva firma</button>
+          <div style="font-size:12px;color:var(--t3)">Vendedores con su firma personalizada en HTML. Pega la firma desde Direct Mail u otro origen.</div>
+          <button class="btn bp" onclick="firOpenNew()">+ Nuevo vendedor</button>
         </div>
-        <div id="fir-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px"></div>
+        <div id="fir-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px"></div>
         <div id="fir-empty" style="text-align:center;padding:60px;color:var(--t3);display:none">
-          <div style="font-size:48px;margin-bottom:14px">&#9997;&#65039;</div>
-          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay firmas creadas</div>
-          <div style="font-size:12px;margin-bottom:14px">Crea la firma de cada comercial: foto, t&iacute;tulo, tel&eacute;fono, contactos</div>
-          <button class="btn bp" onclick="firOpenNew()">+ Crear primera firma</button>
+          <div style="font-size:48px;margin-bottom:14px">&#128100;</div>
+          <div style="font-size:16px;font-weight:600;color:var(--t2);margin-bottom:6px">No hay vendedores creados</div>
+          <div style="font-size:12px;margin-bottom:14px">Crea un vendedor con su firma HTML personalizada (puedes copiarla de Direct Mail)</div>
+          <button class="btn bp" onclick="firOpenNew()">+ Crear primer vendedor</button>
         </div>
       </div>
 
@@ -1858,42 +1858,34 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- CAMPA\u00d1AS: NUEVA / EDITAR FIRMA -->
+<!-- CAMPA\u00d1AS: NUEVO / EDITAR VENDEDOR -->
 <div class="ovl" id="m-fir-edit">
-  <div class="modal" style="max-width:720px">
+  <div class="modal" style="max-width:900px">
     <div class="fbet mb14"><div class="mt">&#9997;&#65039; Firma comercial</div><button class="btn bg" onclick="closeM('m-fir-edit')" style="padding:5px 10px">X</button></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-      <div>
-        <div class="mb10"><label>Nombre completo *</label><input type="text" id="fir-name" placeholder="ej: Francesco Dell'Agli"></div>
-        <div class="mb10"><label>Cargo / T&iacute;tulo</label><input type="text" id="fir-role" placeholder="ej: CEO - GENERAL MANAGER, DMCAR GROUP"></div>
-        <div class="mb10"><label>Email</label><input type="email" id="fir-email" placeholder="info@dmcargroup.com"></div>
-        <div class="mb10"><label>Tel&eacute;fono principal</label><input type="text" id="fir-phone1" placeholder="+39 342 9624234"></div>
-        <div class="mb10"><label>Tel&eacute;fono secundario</label><input type="text" id="fir-phone2" placeholder="+34 915 43 52 28"></div>
-        <div class="mb10"><label>Sitio web</label><input type="text" id="fir-web" placeholder="dmcargroup.com"></div>
+    <div style="font-size:11px;color:var(--t3);margin-bottom:12px;line-height:1.5;background:var(--bg3);padding:10px;border-radius:7px;border-left:3px solid var(--acc)">
+      &#128161; <strong>C\u00f3mo crear una firma:</strong> Abre tu firma actual en Direct Mail (o Gmail/Outlook), copia el bloque HTML completo (con foto, datos, links) y p\u00e9galo abajo en &laquo;Firma HTML&raquo;.
+    </div>
+    <div class="g2 mb10">
+      <div><label>Nombre identificador *</label><input type="text" id="fir-name" placeholder="ej: Francesco IT, Mauricio ES..." oninput="firPreviewSig()"></div>
+      <div><label>Idioma de la firma</label>
+        <select id="fir-lang">
+          <option value="es">&#127466;&#127480; Espa\u00f1ol</option>
+          <option value="it">&#127470;&#127481; Italiano</option>
+          <option value="en">&#127468;&#127463; Ingl\u00e9s</option>
+          <option value="fr">&#127467;&#127479; Franc\u00e9s</option>
+          <option value="de">&#127465;&#127466; Alem\u00e1n</option>
+        </select>
       </div>
-      <div>
-        <div class="mb10">
-          <label>Foto / Avatar (URL)</label>
-          <input type="text" id="fir-photo" placeholder="https://..." oninput="firPreviewPhoto()">
-          <div id="fir-photo-prev" style="margin-top:8px;text-align:center;background:var(--bg3);border-radius:8px;padding:14px;min-height:80px;display:flex;align-items:center;justify-content:center">
-            <div style="font-size:10px;color:var(--t4)">Sin foto</div>
-          </div>
-        </div>
-        <div class="mb10">
-          <label>Idioma de la firma</label>
-          <select id="fir-lang">
-            <option value="es">Espa&ntilde;ol (Saludos cordiales)</option>
-            <option value="it">Italiano (Cordiali saluti)</option>
-            <option value="en">Ingl&eacute;s (Kind regards)</option>
-            <option value="fr">Franc&eacute;s (Cordialement)</option>
-            <option value="de">Alem&aacute;n (Mit freundlichen Gr&uuml;&szlig;en)</option>
-          </select>
-        </div>
-        <div class="mb10"><label>Cierre personalizado (opcional)</label><input type="text" id="fir-closing" placeholder="ej: Best regards, Francesco."></div>
-        <div class="mb10">
-          <label>Notas adicionales (opcional)</label>
-          <textarea id="fir-notes" placeholder="Direcciones de las empresas del grupo, etc..." style="min-height:60px;font-size:11px"></textarea>
-        </div>
+    </div>
+    <div class="mb10"><label>Email del vendedor (Reply-To)</label><input type="email" id="fir-email" placeholder="info@dmcargroup.com"></div>
+    <div class="mb6">
+      <label>Firma HTML *</label>
+      <textarea id="fir-html" placeholder="<table>...</table>  o  texto plano con HTML simple" style="min-height:200px;font-family:monospace;font-size:11px" oninput="firPreviewSig()"></textarea>
+    </div>
+    <div class="mb10">
+      <label style="font-size:11px;color:var(--t3)">&#128064; Vista previa (c&oacute;mo aparecer&aacute; en los emails)</label>
+      <div id="fir-html-prev" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:14px;min-height:100px;color:#1a1a1a;font-family:Arial,sans-serif;font-size:13px;overflow:auto;max-height:340px">
+        <div style="color:#999;font-size:11px;font-style:italic">La vista previa aparecer&aacute; aqu&iacute; cuando pegues la firma HTML...</div>
       </div>
     </div>
     <div class="fc g8" style="margin-top:14px">
@@ -11462,22 +11454,19 @@ function firRender(){
   if(!mkFirmas.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
   if(empty)empty.style.display='none';
   grid.innerHTML=mkFirmas.map(function(f){
-    var photo=f.photo?'<img src="'+esc(f.photo)+'" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" onerror="this.style.display=\'none\'">':'<div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,var(--acc),#8b5cf6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:700">'+esc((f.name||'?').charAt(0).toUpperCase())+'</div>';
     var langFlag=FIR_LANG_FLAG[f.lang]||'';
+    var langLabel=FIR_LANG_LABEL[f.lang]||f.lang||'';
+    // Vista previa miniaturada del HTML (sin scripts, sandbox-style)
+    var previewHtml=f.html||'';
     return '<div class="card" style="padding:14px">'
-      +'<div class="fc g12 mb10">'
-        +'<div>'+photo+'</div>'
-        +'<div style="flex:1;min-width:0">'
-          +'<div style="font-weight:700;font-size:13px;color:var(--t1);overflow:hidden;text-overflow:ellipsis">'+esc(f.name||'(sin nombre)')+'</div>'
-          +(f.role?'<div style="font-size:10px;color:var(--t3);overflow:hidden;text-overflow:ellipsis">'+esc(f.role)+'</div>':'')
-          +(f.lang?'<div style="font-size:10px;color:var(--t4);margin-top:3px">'+langFlag+' '+esc(FIR_LANG_LABEL[f.lang]||f.lang)+'</div>':'')
-        +'</div>'
+      +'<div class="fbet mb6">'
+        +'<div style="font-weight:700;font-size:13px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;flex:1">'+esc(f.name||'(sin nombre)')+'</div>'
+        +'<span style="background:var(--bg3);color:var(--t3);padding:2px 7px;border-radius:6px;font-size:9px;font-weight:600;white-space:nowrap;margin-left:6px">'+langFlag+' '+esc(langLabel)+'</span>'
       +'</div>'
-      +'<div style="font-size:10px;color:var(--t3);background:var(--bg3);padding:8px;border-radius:6px;line-height:1.5">'
-        +(f.email?'\ud83d\udce7 '+esc(f.email)+'<br>':'')
-        +(f.phone1?'\ud83d\udcde '+esc(f.phone1)+'<br>':'')
-        +(f.phone2?'\ud83d\udcde '+esc(f.phone2)+'<br>':'')
-        +(f.web?'\ud83c\udf10 '+esc(f.web):'')
+      +(f.email?'<div style="font-size:10px;color:var(--t3);margin-bottom:8px">\ud83d\udce7 '+esc(f.email)+'</div>':'')
+      +'<div style="background:#fff;color:#000;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:160px;overflow:hidden;position:relative;font-family:Arial,sans-serif;font-size:11px">'
+        +(previewHtml||'<span style="color:#999;font-style:italic;font-size:11px">(sin contenido)</span>')
+        +'<div style="position:absolute;bottom:0;left:0;right:0;height:30px;background:linear-gradient(transparent,#fff)"></div>'
       +'</div>'
       +'<div class="fc g6" style="margin-top:10px">'
         +'<button class="btn bs" onclick="firOpenEdit(\''+esc(f.id)+'\')" style="font-size:10px;padding:4px 10px;flex:1">&#9998; Editar</button>'
@@ -11488,9 +11477,9 @@ function firRender(){
 }
 
 function firOpenNew(){
-  ['fir-name','fir-role','fir-email','fir-phone1','fir-phone2','fir-web','fir-photo','fir-closing','fir-notes'].forEach(function(i){if(n(i))n(i).value='';});
+  ['fir-name','fir-email','fir-html'].forEach(function(i){if(n(i))n(i).value='';});
   if(n('fir-lang'))n('fir-lang').value='es';
-  firPreviewPhoto();
+  firPreviewSig();
   n('m-fir-edit').removeAttribute('data-fir-id');
   openM('m-fir-edit');
 }
@@ -11499,46 +11488,38 @@ function firOpenEdit(id){
   var f=mkFirmas.find(function(x){return x.id===id;});
   if(!f)return;
   if(n('fir-name'))n('fir-name').value=f.name||'';
-  if(n('fir-role'))n('fir-role').value=f.role||'';
   if(n('fir-email'))n('fir-email').value=f.email||'';
-  if(n('fir-phone1'))n('fir-phone1').value=f.phone1||'';
-  if(n('fir-phone2'))n('fir-phone2').value=f.phone2||'';
-  if(n('fir-web'))n('fir-web').value=f.web||'';
-  if(n('fir-photo'))n('fir-photo').value=f.photo||'';
+  if(n('fir-html'))n('fir-html').value=f.html||'';
   if(n('fir-lang'))n('fir-lang').value=f.lang||'es';
-  if(n('fir-closing'))n('fir-closing').value=f.closing||'';
-  if(n('fir-notes'))n('fir-notes').value=f.notes||'';
-  firPreviewPhoto();
+  firPreviewSig();
   n('m-fir-edit').setAttribute('data-fir-id',f.id);
   openM('m-fir-edit');
 }
 
-function firPreviewPhoto(){
-  var url=(n('fir-photo')&&n('fir-photo').value||'').trim();
-  var prev=n('fir-photo-prev');
+// Vista previa en tiempo real del HTML pegado
+function firPreviewSig(){
+  var html=(n('fir-html')&&n('fir-html').value||'').trim();
+  var prev=n('fir-html-prev');
   if(!prev)return;
-  if(url){
-    prev.innerHTML='<img src="'+esc(url)+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--border)" onerror="this.parentNode.innerHTML=\'<div style=\\\'font-size:10px;color:var(--red)\\\'>\u26a0\ufe0f URL no v\u00e1lida</div>\'">';
-  }else{
-    prev.innerHTML='<div style="font-size:10px;color:var(--t4)">Sin foto</div>';
+  if(!html){
+    prev.innerHTML='<div style="color:#999;font-size:11px;font-style:italic">La vista previa aparecer\u00e1 aqu\u00ed cuando pegues la firma HTML...</div>';
+    return;
   }
+  // Inietto direttamente l'HTML (sicuro: \u00e8 contenuto dell'utente, mostrato in un sandbox visivo)
+  prev.innerHTML=html;
 }
 
 function firSave(){
   var name=(n('fir-name').value||'').trim();
-  if(!name){alert('El nombre es obligatorio.');return;}
+  var html=(n('fir-html').value||'').trim();
+  if(!name){alert('El nombre identificador es obligatorio.');return;}
+  if(!html){alert('Debes pegar el HTML de la firma.');return;}
   var existingId=n('m-fir-edit').getAttribute('data-fir-id');
   var data={
     name:name,
-    role:(n('fir-role').value||'').trim(),
     email:(n('fir-email').value||'').trim(),
-    phone1:(n('fir-phone1').value||'').trim(),
-    phone2:(n('fir-phone2').value||'').trim(),
-    web:(n('fir-web').value||'').trim(),
-    photo:(n('fir-photo').value||'').trim(),
+    html:html,
     lang:n('fir-lang').value||'es',
-    closing:(n('fir-closing').value||'').trim(),
-    notes:(n('fir-notes').value||'').trim(),
     updatedAt:new Date().toISOString()
   };
   if(existingId){
@@ -11569,26 +11550,11 @@ function firDel(id){
   if(typeof showToast==='function')showToast('\u2713 Firma eliminada');
 }
 
-// Helper: render HTML della firma per le email
-// Genera l'HTML della firma in base ai dati, simile al PDF di esempio Direct Mail
+// Helper: devuelve el HTML de la firma listo para insertar en email
+// Como ya guardamos el bloque HTML completo, lo devolvemos tal cual
 function firRenderHTML(firma){
-  if(!firma)return '';
-  var closing=firma.closing||FIR_LANG_CLOSING[firma.lang]||'Saludos cordiales,';
-  var photoHtml=firma.photo?'<img src="'+esc(firma.photo)+'" alt="" style="width:120px;height:auto;display:block;margin:10px 0">':'';
-  var html='<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;line-height:1.6;margin-top:20px">'
-    +'<div style="margin-bottom:12px">'+esc(closing)+'</div>'
-    +photoHtml
-    +'<div style="font-weight:700;font-size:14px;color:#1a1a1a">'+esc(firma.name||'')+'</div>';
-  if(firma.role)html+='<div style="font-style:italic;font-size:12px;color:#555">'+esc(firma.role)+'</div>';
-  html+='<div style="margin-top:8px;font-size:12px">';
-  if(firma.email)html+='&#9993;&#65039; <a href="mailto:'+esc(firma.email)+'" style="color:#2563eb;text-decoration:none">'+esc(firma.email)+'</a> &nbsp; ';
-  if(firma.phone1)html+='&#128241; '+esc(firma.phone1);
-  if(firma.phone2)html+=' &nbsp; '+esc(firma.phone2);
-  html+='</div>';
-  if(firma.web)html+='<div style="font-size:12px;margin-top:4px">&#127760; <a href="https://'+esc(firma.web.replace(/^https?:\/\//,''))+'" style="color:#2563eb;text-decoration:none">'+esc(firma.web)+'</a></div>';
-  if(firma.notes)html+='<div style="margin-top:10px;font-size:11px;color:#666;line-height:1.5">'+firma.notes.replace(/\n/g,'<br>')+'</div>';
-  html+='</div>';
-  return html;
+  if(!firma||!firma.html)return '';
+  return firma.html;
 }
 
 // ===========================================================================
