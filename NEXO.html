@@ -12255,78 +12255,78 @@ function campSaveDraft(){
 }
 
 // Construye config de Card Auto desde un grupo de unidades
-// Si qty=1 \u2192 toma los detalles completos de la primera unidad
-// Si qty>1 \u2192 calcula medias del lote (precio, kms, da\u00f1os) + lista colores
+// SIGUE LAS MISMAS REGLAS DEL GENERADOR DE OFERTAS WORD
+// Si qty=1 \u2192 toma los detalles completos de la primera unidad (incluyendo VIN)
+// Si qty>1 \u2192 calcula medias del lote (rangos de kms, da\u00f1os medios) + lista colores SIN conteo
 function campBuildCardConfigFromGroup(groupKey,qty){
-  // Reusa la l\u00f3gica de agrupaci\u00f3n para tener todas las unidades reales del lote
   var groups=campGroupStockByModel();
   var group=groups.find(function(g){return g.key===groupKey;});
   if(!group||!group.units||group.units.length===0)return null;
-  // Toma las primeras qty unidades del grupo
   var selected=group.units.slice(0,qty);
   var first=selected[0];
-  // Saca el "padre" del stock (de donde vienen los datos comunes: notes, salePrice, regDate, etc.)
   var parent=group.parentStock&&group.parentStock[0]?group.parentStock[0]:first;
   var brandLogo=parent.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+parent.brand+'.png':''):'';
+  // T\u00edtulo: brand + model + version (igual al Word)
+  var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
+  // Precio
+  var priceFmt=parent.salePrice?(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+' \u20ac':'';
   if(qty===1){
-    // 1 unidad: detalles completos del coche espec\u00edfico
+    // 1 unidad: detalles completos del coche espec\u00edfico (con VIN)
     return {
       stockId:first.id||first.parentId,
-      title:((parent.brand||'')+' '+(parent.model||'')).trim(),
-      price:parent.salePrice?(typeof parent.salePrice==='number'?parent.salePrice.toLocaleString('es-ES'):parent.salePrice)+'\u20ac':'',
-      reference:first.unit||first.vin||parent.unit||parent.id||'',
+      title:fullTitle,
+      price:priceFmt,
+      vin:first.vin||first.unit||parent.unit||'',
       firstReg:first.reg||parent.regDate||'',
+      avgKms:first.kms?(typeof first.kms==='number'?first.kms.toLocaleString('es-ES'):first.kms):'',
+      avgDamages:first.damage?(typeof first.damage==='number'?first.damage.toLocaleString('es-ES'):first.damage)+' \u20ac':(parent.damages?parent.damages+' \u20ac':''),
       extColor:first.color||parent.color||'',
+      availableUnits:'1',
       delivery:'Stock',
-      equipment:parent.notes||'',
+      equipment:parent.notes||'Standard',
       photo1:parent.photo1||'',
       photo2:parent.photo2||'',
       photo3:parent.photo3||'',
       brandLogo:brandLogo
     };
   }
-  // Lote: calcula medias
-  var prices=selected.map(function(u){
-    var p=u.salePrice||parent.salePrice;
-    return typeof p==='number'?p:parseFloat(String(p||'').replace(/[^0-9.,]/g,'').replace(',','.'));
-  }).filter(function(p){return !isNaN(p)&&p>0;});
-  var avgPrice=prices.length?Math.round(prices.reduce(function(s,p){return s+p;},0)/prices.length):0;
+  // LOTE: calcula valores agregados como Word
+  // Kms: rango min-max (ej: "14125-31751")
   var kms=selected.map(function(u){
     var k=u.kms;
     return typeof k==='number'?k:parseInt(String(k||'').replace(/[^0-9]/g,''),10);
   }).filter(function(k){return !isNaN(k)&&k>=0;});
-  var avgKms=kms.length?Math.round(kms.reduce(function(s,k){return s+k;},0)/kms.length):0;
+  var kmsLabel='';
+  if(kms.length>0){
+    var minK=Math.min.apply(null,kms);
+    var maxK=Math.max.apply(null,kms);
+    kmsLabel=minK===maxK?minK.toLocaleString('es-ES'):minK.toLocaleString('es-ES')+' - '+maxK.toLocaleString('es-ES');
+  }
+  // Damages: media
   var damages=selected.map(function(u){
     var d=u.damage||u.damages;
     return typeof d==='number'?d:parseFloat(String(d||'').replace(/[^0-9.,]/g,'').replace(',','.'));
   }).filter(function(d){return !isNaN(d)&&d>=0;});
   var avgDamages=damages.length?Math.round(damages.reduce(function(s,d){return s+d;},0)/damages.length):0;
-  // Lista colores con conteo
-  var colorMap={};
+  // Available Colors: lista SIN conteo (como Word: "Mythos Black, Danish Blue, Glacier White")
+  var colorSet={};
   selected.forEach(function(u){
     var c=u.color||parent.color;
-    if(c)colorMap[c]=(colorMap[c]||0)+1;
+    if(c)colorSet[c]=true;
   });
-  var colorList=Object.keys(colorMap).map(function(c){return colorMap[c]+'x '+c;}).join(', ');
-  // Equipment del padre
-  var equipment=parent.notes||'';
-  if(equipment){
-    equipment='Lote de '+qty+' unidades \u2014 mismo equipamiento:\n\n'+equipment;
-  }
-  // A\u00f1ade medias al equipment
-  var extras=[];
-  if(avgKms)extras.push('Media Kms: '+avgKms.toLocaleString('es-ES'));
-  if(avgDamages)extras.push('Media Damage: '+avgDamages.toLocaleString('es-ES')+'\u20ac');
-  if(extras.length)equipment+=(equipment?'\n\n':'')+extras.join('\n');
+  var colorList=Object.keys(colorSet).join(', ');
   return {
     stockId:'group_'+groupKey,
-    title:((parent.brand||'')+' '+(parent.model||'')).trim()+' \u2014 LOTE '+qty+' UDS',
-    price:avgPrice?avgPrice.toLocaleString('es-ES')+'\u20ac (medio)':'',
-    reference:'Lote '+qty+' uds',
-    firstReg:parent.regDate?'desde '+parent.regDate:'',
-    extColor:colorList||'(varios)',
-    delivery:'Stock \u00b7 '+qty+' unidades disponibles',
-    equipment:equipment,
+    title:fullTitle,
+    price:priceFmt,
+    vin:'',  // No VIN en lote, es un campo solo de 1 unidad
+    firstReg:parent.regDate||first.reg||'',
+    avgKms:kmsLabel,
+    avgDamages:avgDamages?avgDamages.toLocaleString('es-ES')+' \u20ac':'',
+    extColor:colorList,
+    availableUnits:String(qty),
+    delivery:'Stock',
+    equipment:parent.notes||'Standard',
     photo1:parent.photo1||'',
     photo2:parent.photo2||'',
     photo3:parent.photo3||'',
@@ -12356,23 +12356,12 @@ function campBuildHTML(vars){
     _campEditing.selectedCarIds.forEach(function(item){
       var cardConfig=null;
       if(typeof item==='string'){
-        // Legacy: stock.id directo
+        // Legacy: stock.id directo \u2014 usa la nueva l\u00f3gica de grupo si es posible
         var car=stock.find(function(s){return String(s.id)===String(item);});
         if(car){
-          cardConfig={
-            stockId:car.id,
-            title:((car.brand||'')+' '+(car.model||'')).trim(),
-            price:car.salePrice?(typeof car.salePrice==='number'?car.salePrice.toLocaleString('es-ES'):car.salePrice)+'\u20ac':'',
-            reference:car.unit||car.id||'',
-            firstReg:car.regDate||'',
-            extColor:car.color||'',
-            delivery:'Stock',
-            equipment:car.notes||'',
-            photo1:car.photo1||'',
-            photo2:car.photo2||'',
-            photo3:car.photo3||'',
-            brandLogo:car.brand?(typeof LOGOS_GITHUB_BASE!=='undefined'?LOGOS_GITHUB_BASE+car.brand+'.png':''):''
-          };
+          // Convertimos a grupo+qty=1 para usar la l\u00f3gica nueva
+          var legacyKey=((car.brand||'').toUpperCase()+'||'+(car.model||'').toUpperCase()).trim();
+          cardConfig=campBuildCardConfigFromGroup(legacyKey,1);
         }
       }else if(item&&item.groupKey){
         // Nuevo formato: grupo + cantidad
@@ -12987,31 +12976,35 @@ function tplRenderBlockHTML(block){
       var color=c.color||'#e5e7eb';
       return '<div style="padding:14px 20px"><hr style="border:none;border-top:1px '+style+' '+color+';margin:0"></div>';
     case 'auto_card':
-      // Render email-safe con tablas (compatible Outlook/Gmail/Apple Mail)
-      var ah='<div style="padding:14px 20px">';
+      // Render email-safe con etiquetas IDENTICAS al Word/PDF (Generador Ofertas)
+      // Etiquetas: Net Price, Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery, Equipment
+      var ah='<div style="padding:14px 20px;text-align:center;font-family:Arial,Helvetica,sans-serif">';
       // Logo marca centrado (si existe)
       if(c.brandLogo){
         ah+='<div style="text-align:center;margin-bottom:14px"><img src="'+esc(c.brandLogo)+'" alt="" style="max-width:120px;height:auto;display:inline-block;border:0"></div>';
       }
-      // T\u00edtulo coche (azul, bold, grande)
+      // T\u00edtulo coche (azul #0000F5, bold, grande - como Word)
       if(c.title){
-        ah+='<div style="text-align:center;font-size:22px;font-weight:700;color:#1e40af;margin-bottom:8px;line-height:1.2;font-family:Arial,Helvetica,sans-serif">'+esc(c.title)+'</div>';
+        ah+='<div style="text-align:center;font-size:22px;font-weight:700;color:#0000F5;margin-bottom:8px;line-height:1.2">'+esc(c.title)+'</div>';
       }
-      // Precio (centrado, bold, negro)
+      // Net Price (centrado, bold, negro)
       if(c.price){
-        ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px;font-family:Arial,Helvetica,sans-serif">Net Price: '+esc(c.price)+'</div>';
+        ah+='<div style="text-align:center;font-size:18px;font-weight:700;color:#000;margin-bottom:14px"><strong>Net Price:</strong> '+esc(c.price)+'</div>';
       }
-      // Datos b\u00e1sicos (Ref, Reg, Color, Delivery)
-      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:18px;font-family:Arial,Helvetica,sans-serif">';
-      if(c.reference)ah+='<div><strong>Ref:</strong> '+esc(c.reference)+'</div>';
-      if(c.firstReg)ah+='<div><strong>1\u00ba Reg:</strong> '+esc(c.firstReg)+'</div>';
-      if(c.extColor)ah+='<div><strong>Ext.Color:</strong> '+esc(c.extColor)+'</div>';
+      // Datos b\u00e1sicos (Ex. VIN, 1st Reg, Average Kms, Avg. Damages, Available Colors, Available Units, Delivery)
+      ah+='<div style="text-align:center;font-size:13px;color:#333;line-height:1.7;margin-bottom:18px">';
+      if(c.vin)ah+='<div><strong>Ex. VIN:</strong> '+esc(c.vin)+'</div>';
+      if(c.firstReg)ah+='<div><strong>1st Reg:</strong> '+esc(c.firstReg)+'</div>';
+      if(c.avgKms)ah+='<div><strong>Average Kms:</strong> '+esc(c.avgKms)+'</div>';
+      if(c.avgDamages)ah+='<div><strong>Avg. Damages:</strong> '+esc(c.avgDamages)+'</div>';
+      if(c.extColor)ah+='<div><strong>Available Colors:</strong> '+esc(c.extColor)+'</div>';
+      if(c.availableUnits)ah+='<div><strong>Available Units:</strong> '+esc(c.availableUnits)+'</div>';
       if(c.delivery)ah+='<div><strong>Delivery:</strong> '+esc(c.delivery)+'</div>';
       ah+='</div>';
-      // Equipment list (PRIMERO, antes de las fotos)
+      // Equipment (header azul + texto)
       if(c.equipment){
-        ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#1e40af;margin:18px 0 8px 0;font-family:Arial,Helvetica,sans-serif">Equipment:</div>';
-        ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;font-family:Arial,Helvetica,sans-serif;white-space:pre-line;margin-bottom:18px">'+esc(c.equipment)+'</div>';
+        ah+='<div style="text-align:center;font-size:14px;font-weight:600;color:#0000F5;margin:18px 0 8px 0">Equipment:</div>';
+        ah+='<div style="text-align:center;font-size:12px;color:#333;line-height:1.7;white-space:pre-line;margin-bottom:18px">'+esc(c.equipment)+'</div>';
       }
       // 3 fotos en fila SIEMPRE horizontal, dimensiones fijas (220x165 visual = 440x330 retina)
       var photos=[c.photo1,c.photo2,c.photo3].filter(function(p){return !!p;});
@@ -13086,6 +13079,8 @@ function tplRenderBlockForm(block){
       html+='</div>';
       break;
     case 'auto_card':
+      // Aviso: este bloque es PLACEHOLDER. Los datos los inyecta NEXO al crear la campa\u00f1a.
+      html+='<div class="mb10" style="background:#fef3c7;border-left:3px solid #f59e0b;padding:10px;border-radius:6px;font-size:11px;color:#78350f;line-height:1.5">\ud83d\udca1 <strong>Bloque placeholder.</strong> Los datos del coche se inyectan autom\u00e1ticamente al crear una campa\u00f1a desde el Stock Vivo. Aqu\u00ed puedes definir un veh\u00edculo de muestra para vista previa.</div>';
       // Selector auto-fill desde Stock Vivo
       html+='<div class="mb10" style="background:var(--bg3);padding:10px;border-radius:7px;border-left:3px solid var(--acc)">';
       html+='<label style="font-size:11px;color:var(--t1);margin-bottom:6px;display:block">\u26a1 Auto-fill desde Stock Vivo</label>';
@@ -13093,7 +13088,7 @@ function tplRenderBlockForm(block){
       html+='<option value="">-- Selecciona un veh\u00edculo del stock (opcional) --</option>';
       if(typeof stock!=='undefined'&&Array.isArray(stock)){
         stock.forEach(function(s){
-          var lbl=(s.brand||'')+' '+(s.model||'')+(s.unit?' (Unit '+s.unit+')':'');
+          var lbl=(s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:'')+(s.unit?' (Unit '+s.unit+')':'');
           var sel=(c.stockId===s.id)?' selected':'';
           html+='<option value="'+esc(s.id)+'"'+sel+'>'+esc(lbl.trim())+'</option>';
         });
@@ -13101,24 +13096,30 @@ function tplRenderBlockForm(block){
       html+='</select>';
       html+='<div style="font-size:10px;color:var(--t4);margin-top:5px">Selecciona un coche para rellenar autom\u00e1ticamente todos los campos</div>';
       html+='</div>';
-      // Datos b\u00e1sicos
+      // Datos b\u00e1sicos (etiquetas iguales al Word)
       html+='<div class="g2 mb10">';
-      html+='<div><label>T\u00edtulo / Modelo *</label><input type="text" id="bf-title" value="'+esc(c.title||'')+'" placeholder="AUDI Q5 SPORTBACK 2.0 TFSI..."></div>';
-      html+='<div><label>Precio</label><input type="text" id="bf-price" value="'+esc(c.price||'')+'" placeholder="50.595\u20ac"></div>';
+      html+='<div><label>T\u00edtulo / Modelo *</label><input type="text" id="bf-title" value="'+esc(c.title||'')+'" placeholder="AUDI A3 SPORTBACK S LINE..."></div>';
+      html+='<div><label>Net Price</label><input type="text" id="bf-price" value="'+esc(c.price||'')+'" placeholder="26.650 \u20ac"></div>';
       html+='</div>';
       html+='<div class="g2 mb10">';
-      html+='<div><label>Referencia</label><input type="text" id="bf-reference" value="'+esc(c.reference||'')+'" placeholder="ej: 19.91"></div>';
-      html+='<div><label>1\u00ba Registro</label><input type="text" id="bf-firstReg" value="'+esc(c.firstReg||'')+'" placeholder="04-2026"></div>';
+      html+='<div><label>Ex. VIN</label><input type="text" id="bf-vin" value="'+esc(c.vin||'')+'" placeholder="WAUZZZGY6SA125267"></div>';
+      html+='<div><label>1st Reg</label><input type="text" id="bf-firstReg" value="'+esc(c.firstReg||'')+'" placeholder="05/2025"></div>';
       html+='</div>';
       html+='<div class="g2 mb10">';
-      html+='<div><label>Color exterior</label><input type="text" id="bf-extColor" value="'+esc(c.extColor||'')+'" placeholder="1x Black Mito"></div>';
+      html+='<div><label>Average Kms</label><input type="text" id="bf-avgKms" value="'+esc(c.avgKms||'')+'" placeholder="14125-31751"></div>';
+      html+='<div><label>Avg. Damages</label><input type="text" id="bf-avgDamages" value="'+esc(c.avgDamages||'')+'" placeholder="584 \u20ac"></div>';
+      html+='</div>';
+      html+='<div class="g2 mb10">';
+      html+='<div><label>Available Colors</label><input type="text" id="bf-extColor" value="'+esc(c.extColor||'')+'" placeholder="Mythos Black, Danish Blue..."></div>';
+      html+='<div><label>Available Units</label><input type="text" id="bf-availableUnits" value="'+esc(c.availableUnits||'')+'" placeholder="12"></div>';
+      html+='</div>';
+      html+='<div class="g2 mb10">';
       html+='<div><label>Delivery</label><input type="text" id="bf-delivery" value="'+esc(c.delivery||'')+'" placeholder="Stock"></div>';
+      html+='<div><label>Logo marca (URL)</label><input type="text" id="bf-brandLogo" value="'+esc(c.brandLogo||'')+'" placeholder="https://..."></div>';
       html+='</div>';
-      // Logo marca
-      html+='<div class="mb10"><label>URL logo marca (opcional, auto desde stock)</label><input type="text" id="bf-brandLogo" value="'+esc(c.brandLogo||'')+'" placeholder="https://..."></div>';
       // 3 fotos
       html+='<div style="font-weight:600;font-size:12px;color:var(--t1);margin:14px 0 6px 0">\ud83d\udcf8 Fotos del veh\u00edculo (m\u00e1x 3, en fila horizontal)</div>';
-      html+='<div style="font-size:10px;color:var(--t4);margin-bottom:10px;line-height:1.5;background:var(--bg3);padding:8px 10px;border-radius:6px">\u2728 NEXO redimensiona y recorta autom\u00e1ticamente cada foto a 220\u00d7165 px (4:3) optimizadas para email. Sube cualquier tama\u00f1o, NEXO se encarga del resto.</div>';
+      html+='<div style="font-size:10px;color:var(--t4);margin-bottom:10px;line-height:1.5;background:var(--bg3);padding:8px 10px;border-radius:6px">\u2728 NEXO redimensiona y recorta autom\u00e1ticamente cada foto a 220\u00d7165 px (4:3) optimizadas para email.</div>';
       ['photo1','photo2','photo3'].forEach(function(pk,i){
         var pv=c[pk]||'';
         html+='<div class="mb10" style="background:var(--bg3);padding:10px;border-radius:7px">';
@@ -13136,7 +13137,7 @@ function tplRenderBlockForm(block){
         html+='</div>';
       });
       // Equipment
-      html+='<div class="mb10"><label>Equipment (una l\u00ednea por item)</label><textarea id="bf-equipment" placeholder="Audi Sport alloy wheels, 5-spoke design, 20\u201d&#10;Sports suspension (lowered by 20 mm)&#10;Tow bar preparation&#10;..." style="min-height:140px;font-family:Arial,sans-serif;font-size:12px">'+esc(c.equipment||'')+'</textarea></div>';
+      html+='<div class="mb10"><label>Equipment</label><textarea id="bf-equipment" placeholder="Standard&#10;O lista personalizada..." style="min-height:120px;font-family:Arial,sans-serif;font-size:12px">'+esc(c.equipment||'')+'</textarea></div>';
       break;
     case 'signature':
       html+='<div class="mb10"><label>Selecciona una firma de la r\u00fabrica</label>';
