@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.38 — DMCAR GROUP CRM | 2026-05-01 | Pulsante Margen + warning sell mancante, fix gap Net Price/1st Reg, fix parser numerico ES (18.500 → 18500) -->
+<!-- NEXO v9.39 — DMCAR GROUP CRM | 2026-05-01 | nxBuildOfferTitle: detecta auto New/Used/Km 0; nombre campaña + asunto + card title todos con el mismo título -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -11951,6 +11951,38 @@ function campOpenNew(preselectedCarIds){
 }
 
 // v9.37: rellena el nombre de la campaña con "<MARCA MODELO> #ID"
+// === HELPER: build titolo offerta unificato (v9.39) ===
+// Decide automaticamente prefisso New/Used/Km 0 secondo regole DMCAR:
+// - kms=0 (o vuoto) AND damage=0 (o vuoto)  → "New"
+// - version contiene "Km 0"                  → "Km 0"
+// - altrimenti                                → "Used"
+// Restituisce stringa: "<Prefijo> BRAND MODEL VERSION"
+function nxBuildOfferTitle(s){
+  if(!s)return '';
+  var brand=(s.brand||'').trim();
+  var model=(s.model||'').trim();
+  var version=(s.version||'').trim();
+  // Detect Km 0 in version
+  var hasKm0=/\bkm\s*0\b/i.test(version);
+  // Detect "new": kms vacío o 0 AND damage vacío o 0
+  function isZeroOrEmpty(v){
+    if(v==null||v==='')return true;
+    var n=parseFloat(String(v).replace(/[^0-9.,]/g,'').replace(',','.'))||0;
+    return n===0;
+  }
+  var kmsZero=isZeroOrEmpty(s.kms);
+  var dmgZero=isZeroOrEmpty(s.damage);
+  var prefix='Used';
+  if(hasKm0)prefix='Km 0';
+  else if(kmsZero&&dmgZero)prefix='New';
+  // Quita eventuali "Km 0" dalla version (se hasKm0, va come prefijo)
+  var cleanVersion=version;
+  if(hasKm0)cleanVersion=cleanVersion.replace(/\bkm\s*0\b/gi,'').replace(/\s+/g,' ').trim();
+  var title=(prefix+' '+brand+' '+model+' '+cleanVersion).replace(/\s+/g,' ').trim();
+  return title;
+}
+window.nxBuildOfferTitle=nxBuildOfferTitle;
+
 function campAutoFillName(){
   var inp=n('camp-name');if(!inp)return;
   var sel=(_campEditing&&_campEditing.selectedCarIds)||[];
@@ -11968,9 +12000,10 @@ function campAutoFillName(){
     });
   }
   if(!s)return;
-  var label=((s.brand||'')+' '+(s.model||'')).trim();
+  // v9.39: usa el mismo titulo de la oferta (con New/Used/Km 0)
+  var fullTitle=nxBuildOfferTitle(s);
   var oid=_campEditing.offerId||nxPeekOfferId();
-  inp.value=label+' #'+oid;
+  inp.value=fullTitle+' #'+oid;
   _campEditing.name=inp.value;
 }
 window.campAutoFillName=campAutoFillName;
@@ -12539,12 +12572,9 @@ function campAutoFillSubject(){
   if(sel.length===0){alert('\u26a0\ufe0f Selecciona al menos 1 coche abajo (paso 5) para usar Auto.');return;}
   var first=sel[0];
   var s=null;
-  // Formato legacy: string ID
   if(typeof first==='string'){
     s=stock.find(function(x){return String(x.id)===String(first);});
-  }
-  // Formato nuevo: {groupKey: "BRAND||MODEL", qty, specificIndices?}
-  else if(first&&first.groupKey){
+  }else if(first&&first.groupKey){
     var parts=String(first.groupKey).split('||');
     var brand=(parts[0]||'').toUpperCase();
     var model=(parts[1]||'').toUpperCase();
@@ -12553,16 +12583,9 @@ function campAutoFillSubject(){
     });
   }
   if(!s){alert('\u26a0\ufe0f Coche no encontrado en stock.\nRevisa que la selecci\u00f3n del paso 5 corresponda a un veh\u00edculo del Stock Vivo.');return;}
-  // Normaliza versión por si stock legacy aún no normalizado
-  var version=s.version||'';
-  if(version&&typeof nxNormalizeVersion==='function'){
-    var ctxV=((s.brand||'')+' '+(s.model||'')+' '+version);
-    version=nxNormalizeVersion(version,ctxV);
-  }
-  var title='Used '+(s.brand||'')+' '+(s.model||'');
-  if(version)title+=' '+version;
-  title=title.replace(/\s+/g,' ').trim();
-  // Aplica reglas asunto: Used / New / Km 0
+  // v9.39: usa el helper unificado (decide New/Used/Km 0 + normaliza version)
+  var title=nxBuildOfferTitle(s);
+  // Aplica reglas finales (Used→Used, Km 0→Km 0, kW removido si ICE)
   if(typeof nxNormalizeVersion==='function'){
     title=nxNormalizeVersion(title,title);
   }
@@ -12842,8 +12865,8 @@ function campBuildCardConfigFromGroup(groupKey,qty,specificIndices){
   // Si está vacío o es "--", usa fallback "Standard" (regla DMCAR como en Word).
   var rawEquip=(parent.equip&&parent.equip!=='--')?parent.equip:'';
   var cleanEquipment=campCleanEquipment(rawEquip);
-  // T\u00edtulo: brand + model + version (igual al Word)
-  var fullTitle=((parent.brand||'')+' '+(parent.model||'')+(parent.version?' '+parent.version:'')).trim();
+  // T\u00edtulo: usa helper unificado para incluir prefijo New/Used/Km 0 (v9.39)
+  var fullTitle=nxBuildOfferTitle(parent);
   // Precio: prioriza salePrice → sell → calcula desde buy + margin (como Word)
   var priceFmt='';
   if(parent.salePrice){
