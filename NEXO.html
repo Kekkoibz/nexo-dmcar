@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.57 — DMCAR GROUP CRM | 2026-05-02 | Sync Marketing→B2B: 1) helper mkSyncToB2B(mkContact) crea record contacts B2B SOLO se email non esiste già (no duplicate update), 2) MIGRATION one-shot al boot per backlog mkContacts esistenti, 3) hook real-time in tutti i punti di add mkContacts (manuale, import CSV/XLSX, paste, lead_promote skipped — già in B2B). Tag default 'reg', role 'Comprador', myCompany 'DMCAR GROUP'. Bottone manuale "🔃 Sync Marketing→B2B" in toolbar Marketing per ri-sync on-demand. -->
+<!-- NEXO v9.58 — DMCAR GROUP CRM | 2026-05-02 | Stock Vivo upgrade: 1) NUOVA colonna "Estado comercial" (libre/en_negociacion/reservado/vendido) separata da Status (disponibilità); 2) Campo "Asignado a" (free-text con auto-complete dei nomi già usati, prep futuro user system); 3) Campo "Ownership" (propio/live_trading) con 2 TAB di navigazione: 🌐 Trading e 📦 En propiedad; 4) Auto-update Hot kanban → veicoli a "en_negociacion" + assignedTo; auto Won → "vendido"; 5) Sistema alert 24h: badge sidebar conteggio stale + banner header + bottoni quick-action "✓ Mantener" / "✗ Liberar" per ogni riga stale. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -117,6 +117,11 @@ tr:hover>td{background:rgba(0,0,0,.03)}
 .t-1s{background:#fef9c3;color:#854d0e;border-color:#fde047}
 .t-2s{background:#fed7aa;color:#9a3412;border-color:#fdba74}
 .t-ped{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
+/* v9.58: Estado comercial */
+.cs-libre{background:#dcfce7;color:#166534;border-color:#86efac}
+.cs-neg{background:#fef3c7;color:#92400e;border-color:#fcd34d}
+.cs-res{background:#dbeafe;color:#1e40af;border-color:#93c5fd}
+.cs-ven{background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe}
 .pdot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
 .pu{background:var(--red)}.pa{background:var(--orange)}.pm{background:#eab308}.pb{background:var(--t3)}
 .pill{font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(59,130,246,.1);color:var(--b2);border:1px solid rgba(59,130,246,.15);display:inline-block}
@@ -268,7 +273,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni on" id="n-dashboard" onclick="go('dashboard')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2L2 9v13h7v-7h6v7h7V9z"/></svg></span>Dashboard</div>
     <div class="ni" id="n-asistente" onclick="go('asistente')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l2 2 4-4 2 2"/></svg></span>Asistente NEXO</div>
     <div class="sb-sec">Negocio</div>
-    <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.5-4.5A2 2 0 018.4 7h7.2a2 2 0 011.9 1.5L19 13M5 13h14M5 13v4a1 1 0 001 1h1a1 1 0 001-1v-1h8v1a1 1 0 001 1h1a1 1 0 001-1v-4"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/><circle cx="17" cy="16.5" r="1" fill="currentColor"/></svg></span>Stock Vivo<span class="ni-cnt cg" id="cnt-stock">0</span></div>
+    <div class="ni" id="n-stock" onclick="go('stock')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.5-4.5A2 2 0 018.4 7h7.2a2 2 0 011.9 1.5L19 13M5 13h14M5 13v4a1 1 0 001 1h1a1 1 0 001-1v-1h8v1a1 1 0 001 1h1a1 1 0 001-1v-4"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/><circle cx="17" cy="16.5" r="1" fill="currentColor"/></svg></span>Stock Vivo<span class="ni-cnt cr" id="cnt-stock-stale" style="display:none;cursor:pointer" title="Veh&iacute;culos en negociaci&oacute;n sin actualizar &gt;24h" onclick="event.stopPropagation();window._stkStaleFilterFromBadge=true;window._stkStaleFilterActive=true;go('stock')">0</span><span class="ni-cnt cg" id="cnt-stock">0</span></div>
     <div class="ni" id="n-ofertas" onclick="go('ofertas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 12.5h8M8 16h5" stroke-linecap="round"/><path d="M9 8l1-1.5h4L15 8h.5v1.5h-7V8z" fill="currentColor" stroke="none"/></svg></span>Generador Ofertas</div>
     <div class="ni" id="n-contactos" onclick="go('contactos')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l3-3 3 3 3-3 3 3h3M3 12v6a2 2 0 002 2h14a2 2 0 002-2v-6M9 12l3 3 3-3"/></svg></span>Contactos B2B<span class="ni-cnt cr" id="cnt-inbox" style="display:none;cursor:pointer" title="Bandeja de respuestas B2B" onclick="event.stopPropagation();inboxOpen()">0</span></div>
     <div class="ni" id="n-providers" onclick="go('providers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h2M13 9h2M9 13h2M13 13h2M9 17h2M13 17h2" stroke-linecap="round"/></svg></span>Providers<span class="ni-cnt cr" id="cnt-prov-inbox" style="display:none;cursor:pointer" title="Bandeja de ofertas Provider" onclick="event.stopPropagation();provInboxOpen()">0</span><span class="ni-cnt cg" id="cnt-providers" style="display:none">0</span></div>
@@ -352,14 +357,44 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bp" onclick="openM('m-sadd')">+ Nueva</button>
         </div>
       </div>
+      <!-- v9.58: BANNER ALERT 24h stale -->
+      <div id="stk-stale-banner" class="card" style="display:none;padding:10px 14px;margin-bottom:12px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-left:4px solid #f59e0b">
+        <div class="fbet">
+          <div>
+            <div style="font-weight:700;font-size:13px;color:#92400e">&#9888;&#65039; <span id="stk-stale-count">0</span> veh&iacute;culos en negociaci&oacute;n sin actualizar &gt;<span id="stk-stale-thr">24</span>h</div>
+            <div style="font-size:11px;color:#92400e;opacity:.85;margin-top:2px">Revisa cada uno: &iquest;sigue interesado el cliente?</div>
+          </div>
+          <div class="fc g6">
+            <button class="btn bs" onclick="stkFilterStale()" style="font-size:11px;background:#f59e0b;color:#fff;border:none">&#128269; Ver stale</button>
+            <button class="btn bg" onclick="stkDismissBanner()" style="font-size:11px">Cerrar</button>
+          </div>
+        </div>
+      </div>
+      <!-- v9.58: datalist per autocomplete asignados -->
+      <datalist id="stk-assigned-list"></datalist>
+      <!-- v9.58: TABS Ownership -->
+      <div class="fc g4 mb12" style="border-bottom:1px solid var(--border)">
+        <button id="stk-tab-trading" class="btn bg" onclick="stkSwitchTab('trading')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff">&#127760; Trading <span id="stk-tab-cnt-tr" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+        <button id="stk-tab-propios" class="btn bg" onclick="stkSwitchTab('propios')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none">&#128230; En propiedad <span id="stk-tab-cnt-pr" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+      </div>
       <!-- FILTROS -->
       <div class="fbar mb12">
-        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 0.7fr 0.7fr auto;gap:10px;align-items:end">
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 0.7fr 0.7fr 1fr 1fr auto;gap:10px;align-items:end">
           <div><label>Proveedor</label><input type="text" id="f-sup" placeholder="Todos" oninput="fStk()"></div>
           <div><label>Marca</label><select id="f-brand" onchange="fStk()"><option value="">Todas</option></select></div>
           <div><label>Modelo</label><input type="text" id="f-mod" placeholder="Todos" oninput="fStk()"></div>
           <div><label>Ano desde</label><input type="number" id="f-y1" placeholder="2020" oninput="fStk()"></div>
           <div><label>Ano hasta</label><input type="number" id="f-y2" placeholder="2026" oninput="fStk()"></div>
+          <div><label>Estado comercial</label>
+            <select id="f-cstatus" onchange="fStk()">
+              <option value="">Todos</option>
+              <option value="libre">Libre</option>
+              <option value="en_negociacion">En negociaci&oacute;n</option>
+              <option value="reservado">Reservado</option>
+              <option value="vendido">Vendido</option>
+            </select>
+          </div>
+          <div><label>Asignado a</label><input type="text" id="f-assigned" placeholder="Todos" oninput="fStk()" autocomplete="off"></div>
           <div style="padding-bottom:1px"><button class="btn bg" onclick="rstF()" style="font-size:11px" title="Reset filtros">&#10006;</button></div>
         </div>
       </div>
@@ -373,6 +408,7 @@ En que te puedo ayudar hoy?</div></div>
           <div class="fc g8">
             <button class="btn bg" onclick="clrSel()" style="font-size:11px">Deseleccionar</button>
             <button class="btn bd" onclick="delSel()" style="font-size:11px">&#128465; Eliminar</button>
+            <button class="btn bs" onclick="stkBulkSetOwnership()" style="font-size:11px" title="Cambiar entre Trading y En propiedad">&#128230; Cambiar tipo</button>
             <button class="btn bp" onclick="openGenStk()">&#9889; Generar Word</button>
             <button class="btn bs" onclick="campNewFromStockSel()" style="background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none;padding:6px 14px">&#128231; Crear campa&ntilde;a NEXO</button>
           </div>
@@ -389,7 +425,7 @@ En que te puedo ayudar hoy?</div></div>
               <th>1a Reg</th><th>Uds</th><th>Kms</th><th>Colores</th><th>Danos</th>
               <th>Equipamiento</th><th>P.Compra</th>
               <th>P.Venta</th><th>Margen</th>
-              <th>Pick Up</th><th>Status</th><th>Notas</th><th style="width:100px"></th>
+              <th>Pick Up</th><th>Status</th><th>Estado com.</th><th>Asignado</th><th>Notas</th><th style="width:160px"></th>
             </tr></thead>
             <tbody id="stk-body"></tbody>
           </table>
@@ -4636,6 +4672,8 @@ function go(v){
   var nEl=document.getElementById('n-'+v);
   if(nEl) nEl.classList.add('on');
   document.getElementById('tb-t').textContent=TITLES[v]||v;
+  // v9.58: aggiorna badge stale ad ogni navigation (ricalcolato live)
+  if(typeof stkUpdateSidebarBadge==='function')stkUpdateSidebarBadge();
   if(v==='dashboard') renderDash();
   if(v==='stock') renderStk();
   if(v==='contactos') renderCont();
@@ -4928,7 +4966,17 @@ function renderDash(){
 // -- STOCK VIVO -----------------------------------------------
 var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. TRANSMISION: AT8=AUT, eDCS6=AUT, DSG=DSG (no anadas AUT), S-TRONIC=S-TRONIC (no anadas AUT), Steptronic=Steptronic (no anadas AUT), DCT=DCT (no anadas AUT), X-TRONIC=X-TRONIC (no anadas AUT), MAN=M/T. IMPORTANTE: si el vehiculo es ELECTRICO (Full Electric, BEV, EV, electric) o HIBRIDO (Hybrid, HEV, PHEV, plug-in), siempre es AUTOMATICO -> usa AUT (NUNCA M/T para electricos/hibridos). Si no se indica transmision y no es electrico/hibrido -> M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA"}]}]}';
 
-function renderStk(){updBF();fStk();}
+function renderStk(){
+  updBF();
+  // v9.58: reset filtro stale all'apertura (eccetto se appena clickato badge)
+  if(!window._stkStaleFilterFromBadge){
+    _stkStaleFilterActive=false;
+  }
+  window._stkStaleFilterFromBadge=false;
+  // v9.58: refresh datalist autocomplete asignados
+  if(typeof stkRefreshAssignedDatalist==='function')stkRefreshAssignedDatalist();
+  fStk();
+}
 
 function updBF(){
   var sel=n('f-brand');if(!sel)return;
@@ -4946,6 +4994,12 @@ function fStk(){
   var mod=(n('f-mod').value||'').toLowerCase();
   var y1=parseInt(n('f-y1').value)||0;
   var y2=parseInt(n('f-y2').value)||9999;
+  // v9.58: nuovi filtri
+  var cstatus=(n('f-cstatus')&&n('f-cstatus').value||'').toLowerCase();
+  var assigned=(n('f-assigned')&&n('f-assigned').value||'').toLowerCase().trim();
+  var staleOnly=window._stkStaleFilterActive===true;
+  // v9.58: TAB ownership filter
+  var currentTab=window._stkActiveTab||'trading';
   stkFlt=stock.filter(function(i){
     if(sup&&!(i.supplier||'').toLowerCase().includes(sup)) return false;
     if(brand&&i.brand!==brand) return false;
@@ -4953,6 +5007,16 @@ function fStk(){
     var yr=parseInt((i.reg||'').split('/')[1])||0;
     if(y1&&yr<y1) return false;
     if(y2<9999&&yr>y2) return false;
+    // v9.58: tab filter
+    var ownership=i.ownership||'live_trading';
+    if(currentTab==='trading'&&ownership!=='live_trading')return false;
+    if(currentTab==='propios'&&ownership!=='propio')return false;
+    // v9.58: estado comercial
+    if(cstatus&&(i.commercialStatus||'libre')!==cstatus)return false;
+    // v9.58: asignado
+    if(assigned&&!(i.assignedTo||'').toLowerCase().includes(assigned))return false;
+    // v9.58: stale only
+    if(staleOnly&&!stkIsStale(i))return false;
     return true;
   });
   // Ordina por timestamp DESC (más recientes arriba). Los IDs tienen formato 's'+Date.now()+'_xxxx',
@@ -4982,6 +5046,9 @@ function fStk(){
       undoBtn.innerHTML='&#8617; Deshacer ('+n_+')';
     }
   }
+  // v9.58: aggiorna counter tab + banner stale
+  stkUpdateTabCounters();
+  stkUpdateStaleBanner();
   renderStkTbl();
 }
 
@@ -5092,11 +5159,32 @@ function renderStkTbl(){
     });
     if(!found) html='<option value="'+esc(curStatus)+'" selected>'+esc(curStatus)+'</option>'+html;
     html+='</select></td>';
+    // v9.58: Estado comercial dropdown
+    var cs=item.commercialStatus||'libre';
+    var csClass=stkCommercialStatusClass(cs);
+    html+='<td style="white-space:nowrap"><select class="cstatus-sel tag '+csClass+'" data-id="'+item.id+'" style="border:none;cursor:pointer;font-weight:700;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px;border-radius:6px">';
+    var COMMERCIAL_STATES=[{v:'libre',l:'Libre'},{v:'en_negociacion',l:'En negoc.'},{v:'reservado',l:'Reservado'},{v:'vendido',l:'Vendido'}];
+    COMMERCIAL_STATES.forEach(function(opt){
+      var isSel=opt.v===cs;
+      html+='<option value="'+esc(opt.v)+'"'+(isSel?' selected':'')+'>'+esc(opt.l)+'</option>';
+    });
+    html+='</select></td>';
+    // v9.58: Asignado (free-text)
+    var assignedDisp=item.assignedTo||'';
+    var isStale=stkIsStale(item);
+    var staleIcon=isStale?'<span title="Sin actualizar &gt;24h" style="color:#f59e0b;font-weight:700">&#9888;&#65039; </span>':'';
+    html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)"></td>';
+    // Notas
     html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
       (noteDisp?'&#128221; '+esc(noteDisp):'&#128221; Nota')+'</button></td>';
+    // Acciones - v9.58: aggiunta quick-action stale
     html+='<td><div class="fc g4">';
     if(hasD) html+='<button class="btn bg det-btn" data-id="'+item.id+'" data-sid="'+sid+'" style="padding:2px 8px;font-size:10px">&#9660; '+item.vehicles.length+'</button>';
     else html+='<span style="font-size:10px;color:var(--t4);padding:2px 8px">&#8212;</span>';
+    if(isStale){
+      html+='<button class="btn bs stk-keep-btn" data-id="'+item.id+'" title="Mantener: cliente sigue interesado, resetea timer" style="padding:2px 7px;font-size:10px;background:#10b981;color:#fff;border:none">&#10003;</button>';
+      html+='<button class="btn bd stk-release-btn" data-id="'+item.id+'" title="Liberar: vuelve a Libre" style="padding:2px 7px;font-size:10px">&#10006;</button>';
+    }
     html+='<button class="btn bs edit-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">&#9998;</button>';
     html+='<button class="btn bd del-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">x</button>';
     html+='</div></td>';
@@ -5105,7 +5193,7 @@ function renderStkTbl(){
     // Detail row
     if(hasD){
       html+='<tr class="det-row" id="det-'+sid+'" style="display:none">';
-      html+='<td colspan="20">';
+      html+='<td colspan="22">';
       html+='<div class="det-inner">';
       html+='<div style="font-size:10px;font-weight:700;color:var(--acc);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">&#9660; Vehiculos del lote ('+item.vehicles.length+')</div>';
       html+='<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
@@ -5254,6 +5342,54 @@ function renderStkTbl(){
     sel.addEventListener('click',function(e){e.stopPropagation();});
   });
 
+  // v9.58: Estado comercial inline editor
+  tbody.querySelectorAll('.cstatus-sel').forEach(function(sel){
+    sel.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+      if(idx<0)return;
+      var newCs=this.value;
+      stock[idx].commercialStatus=newCs;
+      stock[idx].commercialUpdatedAt=new Date().toISOString();
+      SS('stock',stock);
+      // Update tag class
+      this.classList.remove('t-stk','t-1s','t-2s','t-ped','cs-libre','cs-neg','cs-res','cs-ven');
+      this.classList.add(stkCommercialStatusClass(newCs));
+      // Re-render per riflettere stale + banner
+      fStk();
+    });
+    sel.addEventListener('click',function(e){e.stopPropagation();});
+  });
+  // v9.58: Asignado a — inline edit con autocomplete
+  tbody.querySelectorAll('.assigned-inp').forEach(function(inp){
+    inp.addEventListener('change',function(){
+      var id=this.getAttribute('data-id');
+      var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+      if(idx<0)return;
+      var v=String(this.value||'').trim();
+      stock[idx].assignedTo=v;
+      stock[idx].commercialUpdatedAt=new Date().toISOString();
+      SS('stock',stock);
+      stkRefreshAssignedDatalist();
+    });
+    inp.addEventListener('click',function(e){e.stopPropagation();});
+  });
+  // v9.58: Quick-action stale buttons
+  tbody.querySelectorAll('.stk-keep-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      stkKeepInNegotiation(id);
+    });
+  });
+  tbody.querySelectorAll('.stk-release-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      stkReleaseFromNegotiation(id);
+    });
+  });
+
   tbody.querySelectorAll('.eq-btn').forEach(function(b){
     b.addEventListener('click',function(e){
       e.stopPropagation();
@@ -5310,6 +5446,228 @@ function renderStkTbl(){
   updSelBar();
   makeResizable('stk-tbl');
 }
+
+// ========================================================================
+// v9.58: Stock Vivo — Estado Comercial / Asignado / Stale alerts / Tabs
+// ========================================================================
+// CSS classes per estado comercial (definite in <style> aggiunte al boot)
+var STK_STALE_HOURS=24; // soglia stale in ore
+var _stkActiveTab='trading'; // 'trading' | 'propios'
+var _stkStaleFilterActive=false;
+var _stkBannerDismissed=false;
+
+// Mappa stato commerciale → classe CSS tag
+function stkCommercialStatusClass(cs){
+  cs=String(cs||'libre').toLowerCase();
+  if(cs==='libre')return 'cs-libre';
+  if(cs==='en_negociacion')return 'cs-neg';
+  if(cs==='reservado')return 'cs-res';
+  if(cs==='vendido')return 'cs-ven';
+  return 'cs-libre';
+}
+
+// Verifica se item è "stale": en_negociacion + commercialUpdatedAt > 24h
+function stkIsStale(item){
+  if(!item)return false;
+  if(item.commercialStatus!=='en_negociacion')return false;
+  var ts=item.commercialUpdatedAt;
+  if(!ts)return true; // se manca timestamp, considera stale
+  var t=new Date(ts).getTime();
+  if(isNaN(t))return true;
+  var hoursSince=(Date.now()-t)/(1000*60*60);
+  return hoursSince>=STK_STALE_HOURS;
+}
+
+// Conta gli stale globali (per badge sidebar)
+function stkCountStale(){
+  if(typeof stock==='undefined'||!Array.isArray(stock))return 0;
+  return stock.filter(stkIsStale).length;
+}
+
+// Aggiorna badge sidebar
+function stkUpdateSidebarBadge(){
+  var b=n('cnt-stock-stale');
+  if(!b)return;
+  var cnt=stkCountStale();
+  if(cnt>0){
+    b.textContent=cnt;
+    b.style.display='';
+  }else{
+    b.style.display='none';
+  }
+}
+
+// Switch tab (Trading / En propiedad)
+function stkSwitchTab(tab){
+  _stkActiveTab=tab||'trading';
+  var btr=n('stk-tab-trading'),bpr=n('stk-tab-propios');
+  if(btr&&bpr){
+    if(_stkActiveTab==='trading'){
+      btr.style.background='var(--acc)';btr.style.color='#fff';
+      bpr.style.background='';bpr.style.color='';
+    }else{
+      bpr.style.background='var(--acc)';bpr.style.color='#fff';
+      btr.style.background='';btr.style.color='';
+    }
+  }
+  fStk();
+}
+window.stkSwitchTab=stkSwitchTab;
+
+// Update counter tab
+function stkUpdateTabCounters(){
+  if(typeof stock==='undefined'||!Array.isArray(stock))return;
+  var trCnt=0,prCnt=0;
+  stock.forEach(function(s){
+    var ow=s.ownership||'live_trading';
+    if(ow==='propio')prCnt++;
+    else trCnt++;
+  });
+  if(n('stk-tab-cnt-tr'))n('stk-tab-cnt-tr').textContent='('+trCnt+')';
+  if(n('stk-tab-cnt-pr'))n('stk-tab-cnt-pr').textContent='('+prCnt+')';
+}
+
+// Update banner stale
+function stkUpdateStaleBanner(){
+  var banner=n('stk-stale-banner');
+  if(!banner)return;
+  if(_stkBannerDismissed){banner.style.display='none';return;}
+  var staleCnt=stkCountStale();
+  if(staleCnt>0){
+    banner.style.display='';
+    if(n('stk-stale-count'))n('stk-stale-count').textContent=staleCnt;
+    if(n('stk-stale-thr'))n('stk-stale-thr').textContent=STK_STALE_HOURS;
+  }else{
+    banner.style.display='none';
+  }
+}
+
+// Filtra solo stale
+function stkFilterStale(){
+  _stkStaleFilterActive=true;
+  fStk();
+  if(typeof showToast==='function')showToast('\ud83d\udd0d Filtro stale activado');
+}
+window.stkFilterStale=stkFilterStale;
+
+// Chiudi banner per la sessione
+function stkDismissBanner(){
+  _stkBannerDismissed=true;
+  var banner=n('stk-stale-banner');if(banner)banner.style.display='none';
+}
+window.stkDismissBanner=stkDismissBanner;
+
+// Quick-action: "Mantener" (resetta timer, resta in negoziazione)
+function stkKeepInNegotiation(id){
+  var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+  if(idx<0)return;
+  stock[idx].commercialUpdatedAt=new Date().toISOString();
+  SS('stock',stock);
+  if(typeof showToast==='function')showToast('\u2713 Timer reseteado para '+stock[idx].brand+' '+stock[idx].model);
+  fStk();
+}
+window.stkKeepInNegotiation=stkKeepInNegotiation;
+
+// Quick-action: "Liberar" (torna a libre)
+function stkReleaseFromNegotiation(id){
+  var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
+  if(idx<0)return;
+  if(!confirm('Liberar este veh\u00edculo?\n\n'+stock[idx].brand+' '+stock[idx].model+'\n\nVolver\u00e1 a estado "Libre" y se quitar\u00e1 el asignado.'))return;
+  stock[idx].commercialStatus='libre';
+  stock[idx].assignedTo='';
+  stock[idx].commercialUpdatedAt=new Date().toISOString();
+  SS('stock',stock);
+  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo liberado');
+  fStk();
+}
+window.stkReleaseFromNegotiation=stkReleaseFromNegotiation;
+
+// Aggiorna datalist con nomi unici già usati (per autocomplete)
+function stkRefreshAssignedDatalist(){
+  var dl=n('stk-assigned-list');
+  if(!dl){
+    dl=document.createElement('datalist');
+    dl.id='stk-assigned-list';
+    document.body.appendChild(dl);
+  }
+  var seen={};
+  stock.forEach(function(s){
+    if(s.assignedTo&&s.assignedTo.trim()){
+      seen[s.assignedTo.trim()]=true;
+    }
+  });
+  dl.innerHTML=Object.keys(seen).sort().map(function(name){
+    return '<option value="'+esc(name)+'">';
+  }).join('');
+}
+window.stkRefreshAssignedDatalist=stkRefreshAssignedDatalist;
+
+// Bulk: cambia ownership dei selezionati
+function stkBulkSetOwnership(){
+  if(!stkSel.size){alert('Selecciona veh\u00edculos primero.');return;}
+  var choice=prompt('Cambiar tipo de stock para '+stkSel.size+' veh\u00edculo'+(stkSel.size!==1?'s':'')+':\n\n  1. Trading (no en propiedad)\n  2. En propiedad\n\nEscribe 1 o 2:');
+  if(!choice)return;
+  var newOw=choice==='2'?'propio':'live_trading';
+  var changed=0;
+  stock.forEach(function(s){
+    if(stkSel.has(s.id)){
+      s.ownership=newOw;
+      changed++;
+    }
+  });
+  SS('stock',stock);
+  stkSel.clear();
+  if(typeof showToast==='function')showToast('\u2713 '+changed+' veh\u00edculos cambiados a '+(newOw==='propio'?'En propiedad':'Trading'));
+  fStk();
+}
+window.stkBulkSetOwnership=stkBulkSetOwnership;
+
+// === KANBAN INTEGRATION: Hot/Won → Stock Vivo update ===
+// Invocata quando un contact passa a hot/won con vehicleIds collegati.
+// Per Hot: passa veicoli a "en_negociacion" + assignedTo (utente)
+// Per Won: passa veicoli a "vendido"
+function stkUpdateFromKanban(contactId,newTag,assignedToName){
+  try{
+    if(typeof contacts==='undefined'||!Array.isArray(contacts))return;
+    var c=contacts.find(function(x){return String(x.id)===String(contactId);});
+    if(!c)return;
+    var vIds=c.vehicleIds||c.linkedVehicles||[];
+    if(!Array.isArray(vIds)||vIds.length===0)return;
+    var newCs=null;
+    if(newTag==='hot')newCs='en_negociacion';
+    else if(newTag==='won')newCs='vendido';
+    if(!newCs)return;
+    var changed=0;
+    vIds.forEach(function(vid){
+      var idx=stock.findIndex(function(s){return String(s.id)===String(vid);});
+      if(idx>=0){
+        stock[idx].commercialStatus=newCs;
+        stock[idx].commercialUpdatedAt=new Date().toISOString();
+        if(newCs==='en_negociacion'&&assignedToName){
+          stock[idx].assignedTo=assignedToName;
+        }
+        changed++;
+      }
+    });
+    if(changed>0){
+      SS('stock',stock);
+      console.log('[stkUpdateFromKanban] '+changed+' veh\u00edculos actualizados a '+newCs);
+      stkUpdateSidebarBadge();
+    }
+  }catch(err){
+    console.warn('[stkUpdateFromKanban] error:',err);
+  }
+}
+window.stkUpdateFromKanban=stkUpdateFromKanban;
+
+// Esposizione globale degli helper
+window.stkIsStale=stkIsStale;
+window.stkCountStale=stkCountStale;
+window.stkUpdateSidebarBadge=stkUpdateSidebarBadge;
+window.stkUpdateTabCounters=stkUpdateTabCounters;
+window.stkUpdateStaleBanner=stkUpdateStaleBanner;
+window.stkCommercialStatusClass=stkCommercialStatusClass;
+// === END Stock Vivo v9.58 ===
 
 function updSelBar(){
   var bar=n('sel-bar');var cnt=n('sel-cnt');
@@ -7233,6 +7591,14 @@ function changeContactStage(id,newTag,opts){
   SS('contacts',contacts);
   // Run automations
   runStageAutomation(c,newTag,oldTag);
+  // v9.58: Hook Stock Vivo update se è hot/won con vehicleIds collegati
+  if(typeof stkUpdateFromKanban==='function'&&(newTag==='hot'||newTag==='won')){
+    try{
+      // Per ora user libero — in futuro user system
+      var assignedName=opts.assignedTo||c.assignedTo||'';
+      stkUpdateFromKanban(id,newTag,assignedName);
+    }catch(eK){console.warn('[changeContactStage] stk hook error:',eK);}
+  }
   renderCont();renderDash();
   showToast('\u2713 '+esc(c.name||'Cliente')+' \u2192 '+esc(CONT_TAG_LABEL[newTag]||newTag));
   return true;
@@ -17428,6 +17794,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       SS('nx5_mk2b2b_sync_v957',true);
     }
   },3300);
+  // v9.58: init badge stale + datalist asignados al boot
+  setTimeout(function(){
+    if(typeof stkUpdateSidebarBadge==='function')stkUpdateSidebarBadge();
+    if(typeof stkRefreshAssignedDatalist==='function')stkRefreshAssignedDatalist();
+    console.log('[v9.58] Stock Vivo: badge stale + datalist inicializados');
+  },3500);
 })();
 
 </script>
