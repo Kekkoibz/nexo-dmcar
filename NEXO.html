@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.53 — DMCAR GROUP CRM | 2026-05-02 | FIX BUG CRITICO routing: 1) sanitizza mkContact prima di SS() (rimpiazza undefined→'' per compatibilità Firestore), 2) helper mkSanitizeForFirebase() applicato anche a mkLists; 3) NUOVO MODAL ROUTING con CHECKBOX per selezione esplicita liste (sostituisce confirm() opaco); 4) Country picker con bandiere + autocomplete in modal Lead (riusa mkCreateCountryDropdown già esistente in Marketing). Test 4 ora completamente non bloccante. -->
+<!-- NEXO v9.54 — DMCAR GROUP CRM | 2026-05-02 | Fix bottone "Ver" su card lista: ora passa al tab Contactos applicando il filtro lista (formato "static:id" o "dynamic:id") invece di mostrare un alert placeholder. Funziona per liste statiche, dinamiche legacy, e liste auto-create dal routing. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -12524,21 +12524,43 @@ function mkDelList(id){
 function mkOpenList(id){
   var l=mkLists.find(function(x){return x.id===id;});
   if(!l)return;
+  // v9.54: switcha al tab Contactos e applica filtro lista (formato "type:id")
+  // Reset altri filtri per pulizia
+  if(n('f-mk-q'))n('f-mk-q').value='';
+  if(n('f-mk-country'))n('f-mk-country').value='';
+  if(n('f-mk-type'))n('f-mk-type').value='';
+  if(n('f-mk-status'))n('f-mk-status').value='';
+  if(n('f-mk-interest'))n('f-mk-interest').value='';
+  if(n('f-mk-origin'))n('f-mk-origin').value='';
+  // Per dynamic legacy: ripopola filtri (per UX)
   if(l.type==='dynamic'&&l.filters){
-    // Applica i filtri ai contatti
     if(n('f-mk-q'))n('f-mk-q').value=l.filters.q||'';
     if(n('f-mk-country'))n('f-mk-country').value=l.filters.country||'';
     if(n('f-mk-type'))n('f-mk-type').value=l.filters.type||'';
     if(n('f-mk-status'))n('f-mk-status').value=l.filters.status||'';
     if(n('f-mk-interest'))n('f-mk-interest').value=l.filters.interest||'';
     if(n('f-mk-origin'))n('f-mk-origin').value=l.filters.origin||'';
-    mkSwitchTab('contactos');
-    mkRender();
-    if(typeof showToast==='function')showToast('Filtros aplicados de "'+l.name+'"');
-  }else{
-    // Static: mostro solo i contatti specifici (workaround: non possiamo "filtrare per ID" senza UI custom)
-    alert('Lista est\u00e1tica con '+(l.contactIds||[]).length+' contactos.\n\nFiltrar por ID no es soportado en esta vista, pero puedes verlos exportando esta lista (pr\u00f3xima funcionalidad).');
   }
+  // Switch al tab Contactos
+  if(typeof mkSwitchTab==='function')mkSwitchTab('contactos');
+  // Applica filtro lista (importante: dopo mkSwitchTab perché ricostruisce il select)
+  setTimeout(function(){
+    var sel=n('f-mk-list');
+    if(sel){
+      var key=(l.type==='static'?'static:':'dynamic:')+l.id;
+      sel.value=key;
+      // Se l'opzione non esiste (dropdown non ancora ripopolato), la aggiunge inline
+      if(sel.value!==key){
+        var opt=document.createElement('option');
+        opt.value=key;
+        opt.textContent=(l.type==='static'?'\ud83d\udcc4 ':'\u26a1 ')+l.name;
+        opt.selected=true;
+        sel.appendChild(opt);
+      }
+    }
+    if(typeof mkRender==='function')mkRender();
+    if(typeof showToast==='function')showToast('\ud83d\udcc4 Lista "'+l.name+'": '+(l.contactIds||[]).length+' contactos');
+  },50);
 }
 
 // END MARKETING MODULE
