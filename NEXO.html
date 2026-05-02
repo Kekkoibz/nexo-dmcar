@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.91 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT EXPEDIENTES PARTE 2: 1) Document Classifier intelligente — nxExtractVin (regex 17 caratteri), nxDetectDocType (score-based su keywords), NX_DOC_TYPES con 9 tipologie + cartella suggerita; 2) nxFindExpedienteSmart con priorità VIN → proformaId → stockId → clientId+date; 3) Modal di conferma archivado (nxDocConfirmUpload): mostra expediente riconosciuto + tipo doc + cartella destino, utente può cambiare manualmente prima di salvare; 4) nxDocSmartUpload(blob, fileName, hints) wrapper end-to-end; 5) Card Proforma riga: bottone 📁 Abrir expediente + 📤 Upload doc + 📁+ Crear expediente (se mancante); 6) Modal Proforma editing: sezione "Expediente SharePoint" con stato, link "Abrir en SharePoint", bottone "Generar y subir PDF", drag&drop area per upload manuale, lista documenti raggruppati per cartella; 7) nxProformaGeneratePDF(id, {uploadToExpediente}) — genera PDF reale dal record salvato + auto-upload in CLIENTE/; 8) Bottoni footer modal: 📥 PDF (download) + 📤 A SharePoint (upload diretto). -->
+<!-- NEXO v9.93 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS Vista Contable Master Sheet (38 colonne / 7 blocchi colorati): GENERAL (Data/NumExp/Impresa/VIN), FORNITORE acq, CLIENTE vend, TRASPORTO (acq+vend separati), AUTO (brand/model/version/reg/km/color/damage), MARGINI (Profit Auto + Profit Trasporto SEPARATI), BROKER (Seller/Destinatario/FT/DataInc/Imp + REAL FEES). KPI live: Vehículos, Profit Auto totale, Profit Trasporto totale, REAL FEES totale. Auto-popolato da Stock + Proformas + Facturas. Helper nxAccGetExtended() legge accDocs[] del stock (popolati da AI parser in Fase 2). Export XLSX (lazy-load SheetJS) + Export CSV (BOM UTF-8, separator ;). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1001,12 +1001,52 @@ En que te puedo ayudar hoy?</div></div>
       <!-- SUB-TAB NAVIGATION -->
       <div class="fc g4 mb14" style="border-bottom:1px solid var(--border);overflow-x:auto;flex-wrap:nowrap;padding-bottom:0">
         <button id="nb-tab-dashboard" class="btn bg" onclick="numbersGo('dashboard')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff;white-space:nowrap">&#128202; Dashboard</button>
+        <button id="nb-tab-vista" class="btn bg" onclick="numbersGo('vista')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128270; Vista Contable</button>
         <button id="nb-tab-proformas" class="btn bg" onclick="numbersGo('proformas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128203; Proformas <span id="nb-tab-cnt-pf" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
         <button id="nb-tab-facturas" class="btn bg" onclick="numbersGo('facturas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#129534; Facturas <span id="nb-tab-cnt-fa" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
         <button id="nb-tab-pagos" class="btn bg" onclick="numbersGo('pagos')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128176; Pagos</button>
         <button id="nb-tab-reporting" class="btn bg" onclick="numbersGo('reporting')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128200; Reporting</button>
         <button id="nb-tab-config" class="btn bg" onclick="numbersGo('config')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#9881;&#65039; Configuraci&oacute;n</button>
       </div>
+
+      <!-- VISTA CONTABLE SUB-VIEW (v9.92) -->
+      <div id="nb-sub-vista" class="nb-sub" style="display:none">
+        <!-- Sub-tabs interni -->
+        <div class="fc g6 mb12" style="flex-wrap:wrap">
+          <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
+          <button id="nbv-tab-propiedad" class="btn bg" onclick="numbersVistaTab('propiedad')" style="padding:6px 12px;font-size:11px">&#127968; En propiedad</button>
+          <button id="nbv-tab-expedientes" class="btn bg" onclick="numbersVistaTab('expedientes')" style="padding:6px 12px;font-size:11px">&#128193; Por expediente</button>
+          <button id="nbv-tab-pendientes" class="btn bg" onclick="numbersVistaTab('pendientes')" style="padding:6px 12px;font-size:11px">&#9888;&#65039; Pendientes archivar</button>
+          <div style="flex:1"></div>
+          <button class="btn bs" onclick="numbersExportVistaXLSX()" style="font-size:11px" title="Exportar Vista Contable a Excel (38 columnas)">&#128202; XLSX</button>
+          <button class="btn bs" onclick="numbersExportVistaCSV()" style="font-size:11px" title="Exportar a CSV">&#128202; CSV</button>
+          <button class="btn bp" onclick="numbersUploadProveedorDoc()" style="font-size:11px">&#128228; Subir doc proveedor</button>
+        </div>
+        <!-- Filtri -->
+        <div class="card" style="padding:12px;margin-bottom:12px">
+          <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 0.8fr 0.6fr auto;gap:8px;align-items:end">
+            <div><label style="font-size:10px;color:var(--t3)">Buscar (VIN / cliente / proveedor)</label><input type="text" id="nbv-f-q" placeholder="Buscar..." oninput="numbersRenderVista()" style="font-size:11px"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Empresa</label><select id="nbv-f-company" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todas</option></select></div>
+            <div><label style="font-size:10px;color:var(--t3)">Vendedor</label><input type="text" id="nbv-f-seller" placeholder="Todos" oninput="numbersRenderVista()" style="font-size:11px"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Estado pago</label><select id="nbv-f-pago" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todos</option><option value="pending">Pendiente</option><option value="partial">Parcial</option><option value="paid">Cobrado</option></select></div>
+            <div><label style="font-size:10px;color:var(--t3)">Desde</label><input type="date" id="nbv-f-from" onchange="numbersRenderVista()" style="font-size:11px"></div>
+            <div><label style="font-size:10px;color:var(--t3)">Hasta</label><input type="date" id="nbv-f-to" onchange="numbersRenderVista()" style="font-size:11px"></div>
+            <div><button class="btn bg" onclick="numbersResetVistaFilters()" style="font-size:11px;padding:6px 10px" title="Reset filtros">&#10006;</button></div>
+          </div>
+        </div>
+        <!-- KPI Mini -->
+        <div class="g4 mb12" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Veh\u00edculos</div><div id="nbv-kpi-cnt" style="font-size:22px;font-weight:800;color:var(--acc)">0</div></div>
+          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Auto</div><div id="nbv-kpi-billed" style="font-size:22px;font-weight:800;color:var(--green)">0 \u20ac</div></div>
+          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Trasporto</div><div id="nbv-kpi-pending" style="font-size:22px;font-weight:800;color:#0369a1">0 \u20ac</div></div>
+          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">REAL FEES</div><div id="nbv-kpi-margin" style="font-size:22px;font-weight:800;color:#7c3aed">0 \u20ac</div></div>
+        </div>
+        <!-- Tabella -->
+        <div class="card" style="padding:0;overflow-x:auto">
+          <div id="nbv-list" style="min-height:200px"></div>
+        </div>
+      </div>
+      <!-- /VISTA CONTABLE -->
 
       <!-- DASHBOARD SUB-VIEW -->
       <div id="nb-sub-dashboard" class="nb-sub" style="display:block">
@@ -20933,7 +20973,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
   window.numbersGo=function(subTab){
     if(!subTab)subTab='dashboard';
     window._nbActiveTab=subTab;
-    var validTabs=['dashboard','proformas','facturas','pagos','reporting','config'];
+    var validTabs=['dashboard','vista','proformas','facturas','pagos','reporting','config'];
     if(validTabs.indexOf(subTab)<0)subTab='dashboard';
     // Update tab buttons
     validTabs.forEach(function(t){
@@ -20952,6 +20992,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     });
     // Render contenuto specifico
     if(subTab==='dashboard')numbersRenderDashboard();
+    else if(subTab==='vista')numbersRenderVista();
     else if(subTab==='proformas')numbersRenderProformas();
     else if(subTab==='facturas')numbersRenderFacturas();
     else if(subTab==='pagos')numbersRenderPagos();
@@ -22893,6 +22934,763 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // v9.91: Helper esterni per chiamata da card Proforma row buttons
   window.nxProformaUploadDoc=window.nxProformaUploadDoc;  // già definito in modulo expedientes
+
+  // ========================================================================
+  // v9.92: VISTA CONTABLE - panel operativo per il contabile
+  // ========================================================================
+  window._nbvActiveSubTab='vendidos';
+
+  window.numbersVistaTab=function(t){
+    window._nbvActiveSubTab=t;
+    ['vendidos','propiedad','expedientes','pendientes'].forEach(function(x){
+      var btn=document.getElementById('nbv-tab-'+x);
+      if(btn){btn.style.background=(x===t)?'var(--acc)':'';btn.style.color=(x===t)?'#fff':'';}
+    });
+    numbersRenderVista();
+  };
+
+  window.numbersResetVistaFilters=function(){
+    ['nbv-f-q','nbv-f-seller','nbv-f-from','nbv-f-to'].forEach(function(id){var e=n(id);if(e)e.value='';});
+    ['nbv-f-company','nbv-f-pago'].forEach(function(id){var e=n(id);if(e)e.value='';});
+    numbersRenderVista();
+  };
+
+  // Costruisce vista unificata: ogni vehicle (espandendo lots) con dati documentali
+  window.nxBuildVistaRecords=function(){
+    var records=[];
+    (stock||[]).forEach(function(s){
+      // Helper: trova proforma+factura per stock id
+      var proformas=(window.nxProformas||[]).filter(function(p){
+        return (p.items||[]).some(function(it){return String(it.stockId)===String(s.id);});
+      });
+      var invoices=(window.nxInvoices||[]).filter(function(f){
+        return (f.items||[]).some(function(it){return String(it.stockId)===String(s.id);});
+      });
+      var creditNotes=(window.nxCreditNotes||[]).filter(function(c){return String(c.stockId)===String(s.id);});
+      var exp=(window.nxExpedientes||[]).find(function(e){
+        return e.vehicleIds&&e.vehicleIds.indexOf(s.id)>=0;
+      });
+      var hasVehicles=s.vehicles&&s.vehicles.length>0;
+      var commercialStatus=String(s.commercialStatus||'libre').toLowerCase();
+      var isVendido=(commercialStatus==='vendido');
+      var isReservado=(commercialStatus==='reservado'||commercialStatus==='en_negociacion');
+      // Stato pago: derivato da fatture
+      var totalInv=invoices.reduce(function(a,f){return a+(f.total||0);},0);
+      var totalPaid=invoices.reduce(function(a,f){return a+(f.paid||0);},0);
+      var pagoStatus='pending';
+      if(totalInv>0&&totalPaid>=totalInv-0.01)pagoStatus='paid';
+      else if(totalPaid>0)pagoStatus='partial';
+      // Margine
+      var margin=null;
+      var sale=parseFloat(String(s.salePrice||'').replace(/[^\d.,-]/g,'').replace(',','.'))||null;
+      var buy=parseFloat(String(s.buyPrice||'').replace(/[^\d.,-]/g,'').replace(',','.'))||null;
+      if(sale&&buy)margin=sale-buy;
+      // Se ha veicoli singoli (lot expanded), creo record per ognuno
+      if(hasVehicles){
+        s.vehicles.forEach(function(v,idx){
+          records.push({
+            stockId:s.id,
+            internalId:s.internalId||'',
+            vin:v.vin||'',
+            vehLabel:(s.brand||'')+' '+(s.model||'')+(v.color?' '+v.color:''),
+            color:v.color||'',
+            brand:s.brand||'',
+            model:s.model||'',
+            supplier:s.supplier||'',
+            providerEmail:s.providerEmail||'',
+            commercialStatus:commercialStatus,
+            isVendido:isVendido,
+            isReservado:isReservado,
+            isLibre:!isVendido&&!isReservado,
+            clientName:s.clientName||'',
+            clientId:s.clientId||'',
+            soldBy:s.soldBy||s.assignedTo||'',
+            companyId:(proformas[0]&&proformas[0].companyId)||(invoices[0]&&invoices[0].companyId)||'',
+            margin:margin?(margin/(s.vehicles.length||1)):null,
+            salePrice:sale,
+            buyPrice:buy,
+            proformas:proformas,
+            invoices:invoices,
+            creditNotes:creditNotes,
+            expediente:exp,
+            pagoStatus:pagoStatus,
+            isLot:true,
+            lotIdx:idx,
+            soldAt:s.soldAt||'',
+            createdAt:s.dateAdded||s.date||''
+          });
+        });
+      }else{
+        records.push({
+          stockId:s.id,
+          internalId:s.internalId||'',
+          vin:s.vin||'',
+          vehLabel:(s.brand||'')+' '+(s.model||'')+(s.colors?' '+s.colors:''),
+          color:s.colors||'',
+          brand:s.brand||'',
+          model:s.model||'',
+          supplier:s.supplier||'',
+          providerEmail:s.providerEmail||'',
+          commercialStatus:commercialStatus,
+          isVendido:isVendido,
+          isReservado:isReservado,
+          isLibre:!isVendido&&!isReservado,
+          clientName:s.clientName||'',
+          clientId:s.clientId||'',
+          soldBy:s.soldBy||s.assignedTo||'',
+          companyId:(proformas[0]&&proformas[0].companyId)||(invoices[0]&&invoices[0].companyId)||'',
+          margin:margin,
+          salePrice:sale,
+          buyPrice:buy,
+          proformas:proformas,
+          invoices:invoices,
+          creditNotes:creditNotes,
+          expediente:exp,
+          pagoStatus:pagoStatus,
+          isLot:false,
+          soldAt:s.soldAt||'',
+          createdAt:s.dateAdded||s.date||''
+        });
+      }
+    });
+    return records;
+  };
+
+  window.numbersRenderVista=function(){
+    var listEl=document.getElementById('nbv-list');
+    if(!listEl)return;
+    var subTab=window._nbvActiveSubTab||'vendidos';
+    // Popola company filter
+    var fCompany=document.getElementById('nbv-f-company');
+    if(fCompany&&fCompany.options.length<=1){
+      fCompany.innerHTML='<option value="">Todas</option>'+(nxCompanies||[]).map(function(c){
+        return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>';
+      }).join('');
+    }
+    var records=nxBuildVistaRecords();
+    if(subTab==='vendidos')records=records.filter(function(r){return r.isVendido;});
+    else if(subTab==='propiedad')records=records.filter(function(r){return !r.isVendido;});
+    else if(subTab==='expedientes')records=records.filter(function(r){return !!r.expediente;});
+    else if(subTab==='pendientes')records=records.filter(function(r){return r.isVendido&&!r.expediente;});
+    // Filtri
+    var q=String((document.getElementById('nbv-f-q')||{}).value||'').toLowerCase().trim();
+    var fSel=String((document.getElementById('nbv-f-seller')||{}).value||'').toLowerCase().trim();
+    var fComp=String((document.getElementById('nbv-f-company')||{}).value||'').trim();
+    var fPago=String((document.getElementById('nbv-f-pago')||{}).value||'').trim();
+    var fFrom=String((document.getElementById('nbv-f-from')||{}).value||'').trim();
+    var fTo=String((document.getElementById('nbv-f-to')||{}).value||'').trim();
+    if(q)records=records.filter(function(r){return [r.vin,r.vehLabel,r.clientName,r.supplier,r.internalId].some(function(x){return String(x||'').toLowerCase().indexOf(q)>=0;});});
+    if(fSel)records=records.filter(function(r){return String(r.soldBy||'').toLowerCase().indexOf(fSel)>=0;});
+    if(fComp)records=records.filter(function(r){return r.companyId===fComp;});
+    if(fPago)records=records.filter(function(r){return r.pagoStatus===fPago;});
+    if(fFrom)records=records.filter(function(r){return (r.soldAt||r.createdAt||'').slice(0,10)>=fFrom;});
+    if(fTo)records=records.filter(function(r){return (r.soldAt||r.createdAt||'').slice(0,10)<=fTo;});
+    // KPI: 4 cifre chiave
+    var kpiCnt=records.length;
+    var kpiProfitAuto=0,kpiProfitTrasp=0,kpiRealFees=0;
+    records.forEach(function(r){
+      var ext=nxAccGetExtended(r);
+      if(ext.profitAuto)kpiProfitAuto+=ext.profitAuto;
+      if(ext.profitTrasporto)kpiProfitTrasp+=ext.profitTrasporto;
+      if(ext.realFees)kpiRealFees+=ext.realFees;
+    });
+    var fEl=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
+    fEl('nbv-kpi-cnt',kpiCnt);
+    fEl('nbv-kpi-billed',(kpiProfitAuto>0?'+':'')+Math.round(kpiProfitAuto).toLocaleString('es-ES')+' \u20ac');
+    fEl('nbv-kpi-pending',(kpiProfitTrasp>0?'+':'')+Math.round(kpiProfitTrasp).toLocaleString('es-ES')+' \u20ac');
+    fEl('nbv-kpi-margin',(kpiRealFees>0?'+':'')+Math.round(kpiRealFees).toLocaleString('es-ES')+' \u20ac');
+    // Update KPI labels
+    var kbE=document.querySelector('#nbv-kpi-billed');var kbP=kbE&&kbE.parentElement&&kbE.parentElement.querySelector('div:first-child');if(kbP)kbP.textContent='Profit Auto';
+    var kpE=document.querySelector('#nbv-kpi-pending');var kpP=kpE&&kpE.parentElement&&kpE.parentElement.querySelector('div:first-child');if(kpP)kpP.textContent='Profit Trasporto';
+    var kmE=document.querySelector('#nbv-kpi-margin');var kmP=kmE&&kmE.parentElement&&kmE.parentElement.querySelector('div:first-child');if(kmP)kmP.textContent='REAL FEES';
+    if(records.length===0){
+      listEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:10px">&#128203;</div><div style="font-weight:600;color:var(--t2)">Sin resultados</div></div>';
+      return;
+    }
+    // Stili colonne per blocchi colorati
+    var COL={
+      gen:{bg:'rgba(148,163,184,0.10)',head:'#64748b',label:'GENERAL'},
+      forn:{bg:'rgba(245,158,11,0.10)',head:'#92400e',label:'FORNITORE (acq.)'},
+      cli:{bg:'rgba(34,197,94,0.10)',head:'#15803d',label:'CLIENTE (vend.)'},
+      trasp:{bg:'rgba(14,165,233,0.10)',head:'#0369a1',label:'TRASPORTO'},
+      auto:{bg:'rgba(99,102,241,0.10)',head:'#4338ca',label:'AUTO'},
+      mar:{bg:'rgba(168,85,247,0.10)',head:'#7e22ce',label:'MARGINI'},
+      bro:{bg:'rgba(236,72,153,0.10)',head:'#9d174d',label:'BROKER'}
+    };
+    var html='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px;font-family:monospace;min-width:2400px">';
+    // Header riga 1: blocchi colorati
+    html+='<thead><tr>'
+      +'<th colspan="4" style="padding:6px 10px;background:'+COL.gen.bg+';color:'+COL.gen.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.gen.label+'</th>'
+      +'<th colspan="6" style="padding:6px 10px;background:'+COL.forn.bg+';color:'+COL.forn.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.forn.label+'</th>'
+      +'<th colspan="7" style="padding:6px 10px;background:'+COL.cli.bg+';color:'+COL.cli.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.cli.label+'</th>'
+      +'<th colspan="7" style="padding:6px 10px;background:'+COL.trasp.bg+';color:'+COL.trasp.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.trasp.label+' (acq + vend)</th>'
+      +'<th colspan="7" style="padding:6px 10px;background:'+COL.auto.bg+';color:'+COL.auto.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.auto.label+'</th>'
+      +'<th colspan="2" style="padding:6px 10px;background:'+COL.mar.bg+';color:'+COL.mar.head+';text-align:center;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.mar.label+'</th>'
+      +'<th colspan="6" style="padding:6px 10px;background:'+COL.bro.bg+';color:'+COL.bro.head+';text-align:left;font-weight:700;font-size:11px">'+COL.bro.label+'</th>'
+    +'</tr>';
+    // Header riga 2: nomi colonne
+    var th='padding:6px 7px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--t3);font-weight:600;background:var(--bg3);border-bottom:2px solid var(--border)';
+    var thR=th+';text-align:right';
+    var thC=th+';text-align:center';
+    html+='<tr>'
+      // GENERAL (4)
+      +'<th style="'+th+'">Data</th>'
+      +'<th style="'+th+'">N\u00b0 Exp</th>'
+      +'<th style="'+th+'">Impresa</th>'
+      +'<th style="'+th+';border-right:2px solid var(--border)">VIN</th>'
+      // FORNITORE (6)
+      +'<th style="'+th+'">Fornitore</th>'
+      +'<th style="'+th+'">N\u00b0 PF/FT</th>'
+      +'<th style="'+th+'">Data pag</th>'
+      +'<th style="'+thR+'">Imp acq</th>'
+      +'<th style="'+th+'">Acconto data</th>'
+      +'<th style="'+thR+';border-right:2px solid var(--border)">Acconto imp</th>'
+      // CLIENTE (7)
+      +'<th style="'+th+'">Cliente</th>'
+      +'<th style="'+th+'">Seller</th>'
+      +'<th style="'+th+'">FT/Pro vend</th>'
+      +'<th style="'+th+'">Data saldo</th>'
+      +'<th style="'+thR+'">Imp vend</th>'
+      +'<th style="'+th+'">Acconto data</th>'
+      +'<th style="'+thR+';border-right:2px solid var(--border)">Acconto imp</th>'
+      // TRASPORTO (7)
+      +'<th style="'+th+'">Forn. tr.</th>'
+      +'<th style="'+th+'">FT acq tr.</th>'
+      +'<th style="'+th+'">Data pag tr.</th>'
+      +'<th style="'+thR+'">Imp acq tr.</th>'
+      +'<th style="'+th+'">FT vend tr.</th>'
+      +'<th style="'+th+'">Data inc tr.</th>'
+      +'<th style="'+thR+';border-right:2px solid var(--border)">Imp vend tr.</th>'
+      // AUTO (7)
+      +'<th style="'+th+'">Brand</th>'
+      +'<th style="'+th+'">Model</th>'
+      +'<th style="'+th+'">Version</th>'
+      +'<th style="'+th+'">1\u00aa Reg</th>'
+      +'<th style="'+thR+'">Km</th>'
+      +'<th style="'+th+'">Color</th>'
+      +'<th style="'+thR+';border-right:2px solid var(--border)">Damage</th>'
+      // MARGINI (2)
+      +'<th style="'+thR+'">Profit Auto</th>'
+      +'<th style="'+thR+';border-right:2px solid var(--border)">Profit Trasp.</th>'
+      // BROKER (6)
+      +'<th style="'+th+'">Seller prov</th>'
+      +'<th style="'+th+'">Destinatario</th>'
+      +'<th style="'+th+'">FT prov</th>'
+      +'<th style="'+th+'">Data inc</th>'
+      +'<th style="'+thR+'">Imp prov</th>'
+      +'<th style="'+thR+'">REAL FEES</th>'
+    +'</tr></thead><tbody>';
+    // Helper render cella
+    var fmtMon=function(v,positiveColor){
+      if(v===null||v===undefined||v==='')return '<span style="color:var(--t4)">\u2014</span>';
+      var n=Number(v);if(isNaN(n))return esc(String(v));
+      var col=positiveColor?(n>0?'#16a34a':n<0?'#dc2626':'var(--t3)'):'var(--t1)';
+      var sign=positiveColor&&n>0?'+':'';
+      return '<span style="color:'+col+';font-weight:'+(positiveColor?'700':'500')+'">'+sign+n.toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+'</span>';
+    };
+    var fmtDate=function(d){if(!d)return '<span style="color:var(--t4)">\u2014</span>';try{return new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'});}catch(e){return esc(String(d));}};
+    var fmtTxt=function(t){return t?esc(String(t)):'<span style="color:var(--t4)">\u2014</span>';};
+    var bgGen=COL.gen.bg,bgForn=COL.forn.bg,bgCli=COL.cli.bg,bgTr=COL.trasp.bg,bgAuto=COL.auto.bg,bgMar=COL.mar.bg,bgBro=COL.bro.bg;
+    records.forEach(function(r){
+      var ext=nxAccGetExtended(r);
+      var vinShow=r.vin?(r.vin.length>14?r.vin.substring(0,8)+'\u2026'+r.vin.substring(r.vin.length-4):r.vin):'';
+      var isVin=vinShow&&!/^pending/i.test(r.vin);
+      var vinHtml=isVin?'<span title="'+esc(r.vin)+'">'+esc(vinShow)+'</span>':'<span style="color:var(--orange)">'+esc(r.vin||'\u2014')+'</span>';
+      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'\u2014';
+      // CELLA STD
+      var td=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px'+(extra||'')+'">'+content+'</td>';};
+      var tdR=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:right'+(extra||'')+'">'+content+'</td>';};
+      html+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="numbersOpenVistaDetail(\''+esc(r.stockId)+'\','+r.lotIdx+')" onmouseover="this.style.opacity=0.85" onmouseout="this.style.opacity=1">'
+        // GENERAL
+        +td(fmtDate(r.createdAt||r.soldAt),bgGen)
+        +td(fmtTxt(expLabel),bgGen,';font-weight:600')
+        +td(fmtTxt(ext.impresa),bgGen)
+        +td(vinHtml,bgGen,';border-right:2px solid var(--border)')
+        // FORNITORE
+        +td(fmtTxt(r.supplier),bgForn)
+        +td(fmtTxt(ext.fornFt),bgForn)
+        +td(fmtDate(ext.fornDataPag),bgForn)
+        +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgForn)
+        +td(fmtDate(ext.fornAccDate),bgForn)
+        +tdR(ext.fornAccAmount?fmtMon(ext.fornAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgForn,';border-right:2px solid var(--border)')
+        // CLIENTE
+        +td(fmtTxt(r.clientName),bgCli)
+        +td(fmtTxt(r.soldBy),bgCli)
+        +td(fmtTxt(ext.cliFt),bgCli)
+        +td(fmtDate(ext.cliDataSaldo),bgCli)
+        +tdR(r.salePrice?fmtMon(r.salePrice):'<span style="color:var(--t4)">\u2014</span>',bgCli)
+        +td(fmtDate(ext.cliAccDate),bgCli)
+        +tdR(ext.cliAccAmount?fmtMon(ext.cliAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgCli,';border-right:2px solid var(--border)')
+        // TRASPORTO
+        +td(fmtTxt(ext.traspFornitore),bgTr)
+        +td(fmtTxt(ext.traspFtAcq),bgTr)
+        +td(fmtDate(ext.traspDataPag),bgTr)
+        +tdR(ext.traspAcqAmount?fmtMon(ext.traspAcqAmount):'<span style="color:var(--t4)">\u2014</span>',bgTr)
+        +td(fmtTxt(ext.traspFtVend),bgTr)
+        +td(fmtDate(ext.traspDataInc),bgTr)
+        +tdR(ext.traspVendAmount?fmtMon(ext.traspVendAmount):'<span style="color:var(--t4)">\u2014</span>',bgTr,';border-right:2px solid var(--border)')
+        // AUTO
+        +td(fmtTxt(r.brand),bgAuto)
+        +td(fmtTxt(r.model),bgAuto)
+        +td(fmtTxt(ext.version),bgAuto)
+        +td(fmtDate(ext.firstReg),bgAuto)
+        +tdR(ext.km?Math.round(ext.km).toLocaleString('es-ES'):'\u2014',bgAuto)
+        +td(fmtTxt(r.color),bgAuto)
+        +tdR(ext.damage?fmtMon(ext.damage):'0',bgAuto,';border-right:2px solid var(--border)')
+        // MARGINI
+        +tdR(ext.profitAuto!==null?fmtMon(ext.profitAuto,true):'<span style="color:var(--t4)">\u2014</span>',bgMar)
+        +tdR(ext.profitTrasporto!==null?fmtMon(ext.profitTrasporto,true):'<span style="color:var(--t4)">\u2014</span>',bgMar,';border-right:2px solid var(--border)')
+        // BROKER
+        +td(fmtTxt(ext.brokerSeller),bgBro)
+        +td(fmtTxt(ext.brokerDest),bgBro)
+        +td(fmtTxt(ext.brokerFt),bgBro)
+        +td(fmtDate(ext.brokerDataInc),bgBro)
+        +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro)
+        +tdR(ext.realFees!==null?fmtMon(ext.realFees,true):'<span style="color:var(--t4)">\u2014</span>',bgBro,';font-weight:700')
+      +'</tr>';
+    });
+    html+='</tbody></table></div>';
+    listEl.innerHTML=html;
+  };
+
+  // v9.93: Helper - calcola dati estesi (provenienti da accDocs e formule)
+  // accDocs[] è un array di documenti contabili associati a un VIN/stockId
+  // Struttura: {type, docNumber, docDate, paymentDate, amount, supplier, vin, expedienteId, fileUrl}
+  window.nxAccGetExtended=function(r){
+    var s=stock.find(function(x){return String(x.id)===String(r.stockId);});
+    var accDocs=(s&&s.accDocs)||[];
+    // Filtra docs per VIN se è un lotto
+    if(r.vin&&!/^pending/i.test(r.vin)){
+      accDocs=accDocs.filter(function(d){return !d.vin||String(d.vin).toUpperCase()===String(r.vin).toUpperCase();});
+    }
+    // Trova doc per tipo
+    var find=function(type){return accDocs.find(function(d){return d.type===type;});};
+    var fornDoc=find('factura_proveedor')||find('proforma_proveedor');
+    var traspAcqDoc=find('factura_transporte_acq')||find('factura_transporte');
+    var traspVendDoc=find('factura_transporte_vend');
+    var brokerDoc=find('broker_factura');
+    // Match impresa code dal companyId
+    var impresa='';
+    if(r.companyId){
+      var c=(nxCompanies||[]).find(function(co){return co.id===r.companyId;});
+      if(c){
+        var nm=String(c.name||'').toUpperCase();
+        if(nm.indexOf('INNO')>=0)impresa='INNO';
+        else if(nm.indexOf('IMPEX')>=0)impresa='IMPEX';
+        else impresa='DMCAR';
+      }
+    }
+    // Stock 1ª reg + km dal Stock
+    var firstReg=s&&(s.reg||s.firstReg)||'';
+    var km=s&&(s.kms||s.km)||0;
+    if(typeof km==='string')km=parseFloat(String(km).replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+    var damage=s&&(s.damage||0);
+    if(typeof damage==='string')damage=parseFloat(String(damage).replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+    // Profit Auto
+    var profitAuto=null;
+    if(r.salePrice!==null&&r.buyPrice!==null)profitAuto=r.salePrice-r.buyPrice;
+    // Profit Trasporto
+    var profitTrasporto=null;
+    var traspAcq=traspAcqDoc?(traspAcqDoc.amount||0):null;
+    var traspVend=traspVendDoc?(traspVendDoc.amount||0):null;
+    if(traspAcq!==null||traspVend!==null){
+      profitTrasporto=(traspVend||0)-(traspAcq||0);
+    }
+    // REAL FEES = Profit Auto + Profit Trasporto - Broker amount
+    var brokerAmount=brokerDoc?(brokerDoc.amount||0):null;
+    var realFees=null;
+    if(profitAuto!==null||profitTrasporto!==null){
+      realFees=(profitAuto||0)+(profitTrasporto||0)-(brokerAmount||0);
+    }
+    // Cliente FT/Pro: prendi prima fattura, sennò proforma
+    var cliFt='';var cliDataSaldo='';
+    if(r.invoices&&r.invoices.length){cliFt=r.invoices[0].number||'';cliDataSaldo=r.invoices[0].issueDate||r.invoices[0].createdAt||'';}
+    else if(r.proformas&&r.proformas.length){cliFt='Pro '+(r.proformas[0].number||'');cliDataSaldo=r.proformas[0].date||r.proformas[0].createdAt||'';}
+    return {
+      impresa:impresa,
+      // Fornitore
+      fornFt:fornDoc?fornDoc.docNumber:'',
+      fornDataPag:fornDoc?fornDoc.paymentDate:'',
+      fornAccDate:fornDoc?fornDoc.accDate:'',
+      fornAccAmount:fornDoc?fornDoc.accAmount:null,
+      // Cliente
+      cliFt:cliFt,
+      cliDataSaldo:cliDataSaldo,
+      cliAccDate:'',
+      cliAccAmount:null,
+      // Trasporto
+      traspFornitore:traspAcqDoc?traspAcqDoc.supplier:'',
+      traspFtAcq:traspAcqDoc?traspAcqDoc.docNumber:'',
+      traspDataPag:traspAcqDoc?traspAcqDoc.paymentDate:'',
+      traspAcqAmount:traspAcq,
+      traspFtVend:traspVendDoc?traspVendDoc.docNumber:'',
+      traspDataInc:traspVendDoc?traspVendDoc.paymentDate:'',
+      traspVendAmount:traspVend,
+      // Auto
+      version:s?s.version:'',
+      firstReg:firstReg,
+      km:km,
+      damage:damage,
+      // Margini
+      profitAuto:profitAuto,
+      profitTrasporto:profitTrasporto,
+      // Broker
+      brokerSeller:brokerDoc?brokerDoc.seller:'',
+      brokerDest:brokerDoc?brokerDoc.destinatario:'',
+      brokerFt:brokerDoc?brokerDoc.docNumber:'',
+      brokerDataInc:brokerDoc?brokerDoc.paymentDate:'',
+      brokerAmount:brokerAmount,
+      realFees:realFees
+    };
+  };
+
+  // ========================================================================
+  // v9.93: EXPORT XLSX/CSV della Vista Contable (51 colonne)
+  // ========================================================================
+  window.numbersExportVistaXLSX=function(){
+    var records=nxBuildVistaRecords();
+    var subTab=window._nbvActiveSubTab||'vendidos';
+    if(subTab==='vendidos')records=records.filter(function(r){return r.isVendido;});
+    else if(subTab==='propiedad')records=records.filter(function(r){return !r.isVendido;});
+    else if(subTab==='expedientes')records=records.filter(function(r){return !!r.expediente;});
+    else if(subTab==='pendientes')records=records.filter(function(r){return r.isVendido&&!r.expediente;});
+    if(!records.length){alert('Sin datos para exportar');return;}
+    function doExport(){
+      var headers=[
+        'DATA','NUM. EXP.','IMPRESA','VIN',
+        'FORNITORE (AUTO)','N PF FORNITORE','DATA PAGAMENTO','IMPORTO ACQ',
+        'Data Acconto','Importo Acconto',
+        'CLIENTE','SELLER','FT/PROF VEN','DATA SALDO','IMPORTO VENDITA','Data Acconto V','Importo Acconto V',
+        'FORNITORE TRASPORTO','FT ACQ TRASPORTO','DATA PAG TRASPORTO','IMPORTO ACQ TRASPORTO',
+        'FT VEN TRASPORTO','DATA INC TRASPORTO','IMPORTO VEN TRASPORTO',
+        'BRAND','MODEL','VERSION','1\u00ba Reg','KM','COLOR','DAMAGE',
+        'PROFIT AUTO','PROFIT TRASPORTO',
+        'SELLER PROVVIGIONI','DESTINATARIO','FT PROVVIGIONI','DATA INCASSO PROV','IMPORTO PROVVIGIONI','REAL FEES'
+      ];
+      var rows=records.map(function(r){
+        var ext=nxAccGetExtended(r);
+        return [
+          r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
+          r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'',
+          ext.impresa,
+          r.vin||'',
+          r.supplier||'',
+          ext.fornFt,
+          ext.fornDataPag,
+          r.buyPrice||0,
+          ext.fornAccDate,
+          ext.fornAccAmount||0,
+          r.clientName||'',
+          r.soldBy||'',
+          ext.cliFt,
+          ext.cliDataSaldo,
+          r.salePrice||0,
+          ext.cliAccDate,
+          ext.cliAccAmount||0,
+          ext.traspFornitore,
+          ext.traspFtAcq,
+          ext.traspDataPag,
+          ext.traspAcqAmount||0,
+          ext.traspFtVend,
+          ext.traspDataInc,
+          ext.traspVendAmount||0,
+          r.brand||'',
+          r.model||'',
+          ext.version,
+          ext.firstReg,
+          ext.km||0,
+          r.color||'',
+          ext.damage||0,
+          ext.profitAuto||0,
+          ext.profitTrasporto||0,
+          ext.brokerSeller,
+          ext.brokerDest,
+          ext.brokerFt,
+          ext.brokerDataInc,
+          ext.brokerAmount||0,
+          ext.realFees||0
+        ];
+      });
+      var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
+      // Stile header (color blocks via merge)
+      ws['!cols']=headers.map(function(h){return {wch:Math.max(10,Math.min(28,h.length+3))};});
+      // Freeze first row
+      ws['!freeze']={xSplit:0,ySplit:1};
+      var wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,'Vista Contable');
+      var fname='NEXO_Vista_Contable_'+new Date().toISOString().slice(0,10)+'.xlsx';
+      XLSX.writeFile(wb,fname);
+      if(typeof showToast==='function')showToast('\u2713 '+fname+' descargado',5000);
+    }
+    if(typeof XLSX!=='undefined'){doExport();return;}
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=doExport;
+    s.onerror=function(){alert('Error cargando XLSX library');};
+    document.head.appendChild(s);
+  };
+
+  window.numbersExportVistaCSV=function(){
+    var records=nxBuildVistaRecords();
+    var subTab=window._nbvActiveSubTab||'vendidos';
+    if(subTab==='vendidos')records=records.filter(function(r){return r.isVendido;});
+    else if(subTab==='propiedad')records=records.filter(function(r){return !r.isVendido;});
+    else if(subTab==='expedientes')records=records.filter(function(r){return !!r.expediente;});
+    else if(subTab==='pendientes')records=records.filter(function(r){return r.isVendido&&!r.expediente;});
+    if(!records.length){alert('Sin datos para exportar');return;}
+    var headers=['DATA','NUM EXP','IMPRESA','VIN','FORNITORE','N PF','DATA PAG','IMP ACQ','ACC DATA','ACC IMP','CLIENTE','SELLER','FT VEND','DATA SALDO','IMP VEND','ACC V DATA','ACC V IMP','FORN TRASP','FT ACQ TR','DATA PAG TR','IMP ACQ TR','FT VEND TR','DATA INC TR','IMP VEND TR','BRAND','MODEL','VERSION','1A REG','KM','COLOR','DAMAGE','PROFIT AUTO','PROFIT TRASP','SELLER PROV','DESTINATARIO','FT PROV','DATA INC PROV','IMP PROV','REAL FEES'];
+    var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
+    var lines=[headers.join(';')];
+    records.forEach(function(r){
+      var ext=nxAccGetExtended(r);
+      lines.push([
+        r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
+        r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'',
+        ext.impresa,r.vin||'',r.supplier||'',ext.fornFt,ext.fornDataPag,r.buyPrice||0,ext.fornAccDate,ext.fornAccAmount||0,
+        r.clientName||'',r.soldBy||'',ext.cliFt,ext.cliDataSaldo,r.salePrice||0,ext.cliAccDate,ext.cliAccAmount||0,
+        ext.traspFornitore,ext.traspFtAcq,ext.traspDataPag,ext.traspAcqAmount||0,ext.traspFtVend,ext.traspDataInc,ext.traspVendAmount||0,
+        r.brand||'',r.model||'',ext.version,ext.firstReg,ext.km||0,r.color||'',ext.damage||0,
+        ext.profitAuto||0,ext.profitTrasporto||0,
+        ext.brokerSeller,ext.brokerDest,ext.brokerFt,ext.brokerDataInc,ext.brokerAmount||0,ext.realFees||0
+      ].map(esc).join(';'));
+    });
+    var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download='NEXO_Vista_Contable_'+new Date().toISOString().slice(0,10)+'.csv';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    if(typeof showToast==='function')showToast('\u2713 CSV descargado');
+  };
+
+  // Apre dettaglio (placeholder - può essere espanso in modal con tutti i docs)
+  window.numbersOpenVistaDetail=function(stockId,lotIdx){
+    var s=stock.find(function(x){return String(x.id)===String(stockId);});
+    if(!s){alert('Veh\u00edculo no encontrado');return;}
+    var msg='Veh\u00edculo: '+(s.brand||'')+' '+(s.model||'')+'\n';
+    msg+='ID interno: '+(s.internalId||'?')+'\n';
+    if(typeof lotIdx==='number'&&s.vehicles&&s.vehicles[lotIdx]){
+      msg+='VIN: '+(s.vehicles[lotIdx].vin||'?')+'\n';
+      msg+='Color: '+(s.vehicles[lotIdx].color||'?')+'\n';
+    }
+    msg+='\nEstado comercial: '+(s.commercialStatus||'libre');
+    if(s.clientName)msg+='\nCliente: '+s.clientName;
+    if(s.soldBy)msg+='\nVendedor: '+s.soldBy;
+    var exp=(window.nxExpedientes||[]).find(function(e){return e.vehicleIds&&e.vehicleIds.indexOf(s.id)>=0;});
+    if(exp){
+      msg+='\n\nExpediente: '+exp.fullName;
+      msg+='\nDocumentos cargados: '+((exp.documents||[]).length);
+      if(confirm(msg+'\n\n\u00bfAbrir expediente en SharePoint?'))nxExpOpenInSharePoint(exp.id);
+    }else{
+      alert(msg+'\n\nSin expediente asociado.');
+    }
+  };
+
+  // ========================================================================
+  // v9.92: Upload doc proveedor con classificazione multi-VIN
+  // ========================================================================
+  window.numbersUploadProveedorDoc=function(){
+    if(!window.nxSpConfig||!window.nxSpConfig.siteId){
+      alert('SharePoint no configurado. Ve a Configuraci\u00f3n > SharePoint primero.');return;
+    }
+    var input=document.createElement('input');
+    input.type='file';
+    input.accept='.pdf,.doc,.docx,.xlsx,.xls,.csv,.txt,.jpg,.jpeg,.png';
+    input.style.display='none';
+    document.body.appendChild(input);
+    input.onchange=function(){
+      var f=input.files&&input.files[0];
+      if(!f){document.body.removeChild(input);return;}
+      // Per PDF: prova ad estrarre testo lato client per cercare VIN multipli
+      // Per altri formati: usa solo nome file
+      nxAnalyzeProveedorDoc(f);
+      document.body.removeChild(input);
+    };
+    input.click();
+  };
+
+  // Analizza file proveedor: estrae VIN da nome + (per PDF) cerca dentro
+  window.nxAnalyzeProveedorDoc=function(file){
+    var foundVins=[];
+    // VIN da nome file
+    var fnameUpper=String(file.name).toUpperCase();
+    var matches=fnameUpper.match(/[A-HJ-NPR-Z0-9]{17}/g);
+    if(matches)foundVins=foundVins.concat(matches);
+    // Se è PDF prova a leggere il testo (richiede pdf.js, lazy-load)
+    if(/\.pdf$/i.test(file.name)){
+      if(typeof showToast==='function')showToast('Analizando PDF...',2000);
+      nxExtractVinsFromPdf(file,function(vinsFromPdf){
+        foundVins=foundVins.concat(vinsFromPdf||[]);
+        // Dedupe
+        foundVins=foundVins.filter(function(v,i){return foundVins.indexOf(v)===i;});
+        nxShowProveedorDocConfirm(file,foundVins);
+      });
+    }else{
+      foundVins=foundVins.filter(function(v,i){return foundVins.indexOf(v)===i;});
+      nxShowProveedorDocConfirm(file,foundVins);
+    }
+  };
+
+  // Estrae VIN da PDF usando pdf.js (lazy-load)
+  window.nxExtractVinsFromPdf=function(file,cb){
+    function doExtract(){
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var data=new Uint8Array(e.target.result);
+        pdfjsLib.getDocument({data:data}).promise.then(function(pdf){
+          var textPromises=[];
+          for(var i=1;i<=pdf.numPages;i++){
+            textPromises.push(pdf.getPage(i).then(function(p){return p.getTextContent();}));
+          }
+          Promise.all(textPromises).then(function(pages){
+            var allText=pages.map(function(p){return p.items.map(function(it){return it.str;}).join(' ');}).join(' ');
+            var found=String(allText).toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g)||[];
+            cb(found);
+          }).catch(function(){cb([]);});
+        }).catch(function(){cb([]);});
+      };
+      reader.onerror=function(){cb([]);};
+      reader.readAsArrayBuffer(file);
+    }
+    if(typeof pdfjsLib!=='undefined'){doExtract();return;}
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      doExtract();
+    };
+    s.onerror=function(){cb([]);};
+    document.head.appendChild(s);
+  };
+
+  // Mostra dialog riepilogativo con VIN trovati e expedientes match
+  window.nxShowProveedorDocConfirm=function(file,vins){
+    var matchedExps={}; // expId → array di {vin, stockId, internalId}
+    var unmatchedVins=[];
+    var inPropriedad=[]; // VIN trovati in stock ma senza expediente
+    vins.forEach(function(vin){
+      // Cerca VIN in tutti gli stock
+      var found=null;
+      for(var i=0;i<stock.length;i++){
+        var s=stock[i];
+        if(String(s.vin||'').toUpperCase()===vin){found={s:s,vin:vin};break;}
+        if(s.vehicles&&s.vehicles.length){
+          for(var j=0;j<s.vehicles.length;j++){
+            if(String(s.vehicles[j].vin||'').toUpperCase()===vin){found={s:s,vin:vin,vidx:j};break;}
+          }
+          if(found)break;
+        }
+      }
+      if(!found){unmatchedVins.push(vin);return;}
+      var exp=(window.nxExpedientes||[]).find(function(e){return e.vehicleIds&&e.vehicleIds.indexOf(found.s.id)>=0;});
+      if(exp){
+        if(!matchedExps[exp.id])matchedExps[exp.id]={exp:exp,vins:[]};
+        matchedExps[exp.id].vins.push({vin:vin,stockId:found.s.id,internalId:found.s.internalId});
+      }else{
+        inPropriedad.push({vin:vin,stockId:found.s.id,internalId:found.s.internalId,supplier:found.s.supplier,brand:found.s.brand,model:found.s.model});
+      }
+    });
+    var expCount=Object.keys(matchedExps).length;
+    // Build modal HTML
+    var html='<div id="m-prov-doc" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-prov-doc\')">'
+      +'<div class="modal" style="max-width:680px;padding:0">'
+        +'<div class="mh"><span>&#128194; Documento proveedor &mdash; an\u00e1lisis VIN</span><button class="mx" onclick="closeM(\'m-prov-doc\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(37,99,235,.06);padding:12px;border-radius:7px;margin-bottom:14px;font-size:12px">'
+            +'<strong>&#128206; Archivo:</strong> '+esc(file.name)+'<br>'
+            +'<strong>Tama\u00f1o:</strong> '+(file.size/1024).toFixed(1)+' KB<br>'
+            +'<strong>VIN detectados:</strong> <span style="color:var(--acc);font-weight:700">'+vins.length+'</span>'
+          +'</div>';
+    if(vins.length===0){
+      html+='<div style="background:rgba(220,38,38,.08);border-left:4px solid #dc2626;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#dc2626">&#9888;&#65039; No se detectaron VIN</strong><br>'
+        +'<span style="font-size:11px">Selecciona manualmente d\u00f3nde guardar.</span>'
+      +'</div>';
+    }
+    // Expedientes riconosciuti
+    if(expCount>0){
+      html+='<div style="background:rgba(22,163,74,.08);border-left:4px solid #16a34a;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#16a34a">&#10003; '+expCount+' expediente(s) reconocido(s)</strong>'
+        +'<table style="width:100%;font-size:11px;margin-top:8px"><thead><tr style="border-bottom:1px solid rgba(0,0,0,.1)">'
+          +'<th style="text-align:left;padding:4px">Expediente</th><th style="text-align:left;padding:4px">VIN/Veh</th>'
+        +'</tr></thead><tbody>';
+      Object.keys(matchedExps).forEach(function(eid){
+        var m=matchedExps[eid];
+        html+='<tr><td style="padding:4px"><strong>'+esc(m.exp.fullName)+'</strong> <span style="color:var(--t3)">('+esc(m.exp.companyCode)+')</span></td>'
+          +'<td style="padding:4px;font-family:monospace;font-size:10px">'+m.vins.map(function(v){return '<div>'+esc(v.vin)+(v.internalId?' <span style="color:var(--t4)">'+esc(v.internalId)+'</span>':'')+'</div>';}).join('')+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+    }
+    // VIN in propriet (no expediente)
+    if(inPropriedad.length>0){
+      html+='<div style="background:rgba(245,158,11,.08);border-left:4px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#f59e0b">&#127968; '+inPropriedad.length+' veh\u00edculo(s) en propiedad (sin expediente)</strong>'
+        +'<div style="font-size:11px;color:var(--t3);margin-top:4px">Estos veh\u00edculos est\u00e1n en stock pero a\u00fan no vendidos.</div>'
+        +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px">Ver lista</summary><div style="font-size:10px;font-family:monospace;margin-top:6px;max-height:120px;overflow-y:auto">'
+        +inPropriedad.map(function(p){return '<div>'+esc(p.vin)+(p.internalId?' &middot; '+esc(p.internalId):'')+(p.brand?' &middot; '+esc(p.brand)+' '+esc(p.model||''):'')+'</div>';}).join('')
+        +'</div></details>'
+      +'</div>';
+    }
+    // VIN non riconosciuti
+    if(unmatchedVins.length>0){
+      html+='<div style="background:rgba(148,163,184,.1);border-left:4px solid #94a3b8;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:var(--t2)">&#10067; '+unmatchedVins.length+' VIN no reconocido(s)</strong>'
+        +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px">Ver lista</summary><div style="font-size:10px;font-family:monospace;margin-top:6px;max-height:120px;overflow-y:auto">'
+        +unmatchedVins.map(function(v){return '<div>'+esc(v)+'</div>';}).join('')
+        +'</div></details>'
+      +'</div>';
+    }
+    html+='<div style="font-size:11px;color:var(--t3);margin-bottom:12px;line-height:1.6">'
+      +'<strong>\u00bfQu\u00e9 hacer?</strong><br>'
+      +'<strong>Auto-archivar</strong>: el documento se subir\u00e1 en la carpeta <code>PROVEEDOR</code> de '+expCount+' expediente(s) reconocidos.'
+      +(inPropriedad.length>0?'<br>Para los veh\u00edculos en propiedad, se almacenar\u00e1 referencia en el sistema (a\u00fan no en SharePoint).':'')
+    +'</div>';
+    html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
+      +'<button class="btn bg" onclick="closeM(\'m-prov-doc\')">Cancelar</button>'
+      +'<button class="btn bs" onclick="nxProvDocManual()">Modificar manualmente</button>'
+      +(expCount>0?'<button class="btn bp" onclick="nxProvDocAutoArchive()">&#128190; Auto-archivar en '+expCount+' expediente(s)</button>':'')
+    +'</div>';
+    html+='</div></div></div>';
+    var old=n('m-prov-doc');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    // Salva contesto per callback
+    window._nxProvDocCtx={file:file,vins:vins,matchedExps:matchedExps,inPropriedad:inPropriedad,unmatchedVins:unmatchedVins};
+  };
+
+  // Auto-archive: copia il file in PROVEEDOR/ di ogni expediente riconosciuto
+  window.nxProvDocAutoArchive=function(){
+    var ctx=window._nxProvDocCtx;
+    if(!ctx)return;
+    var expIds=Object.keys(ctx.matchedExps);
+    if(expIds.length===0){alert('No hay expedientes para archivar');return;}
+    if(!confirm('\u00bfSubir "'+ctx.file.name+'" a PROVEEDOR/ de '+expIds.length+' expediente(s)?'))return;
+    if(typeof showToast==='function')showToast('Subiendo a '+expIds.length+' expediente(s)...',3000);
+    var pending=expIds.length;
+    var ok=0,errs=[];
+    expIds.forEach(function(eid){
+      nxExpUploadDoc(eid,'PROVEEDOR',ctx.file.name,ctx.file,function(success,data){
+        pending--;
+        if(success)ok++;
+        else errs.push(eid+': '+data);
+        if(pending===0){
+          closeM('m-prov-doc');
+          if(typeof numbersRenderVista==='function')numbersRenderVista();
+          if(errs.length===0){
+            if(typeof showToast==='function')showToast('\u2713 Documento subido a '+ok+' expediente(s)',5000);
+          }else{
+            alert('Resultado:\nOK: '+ok+'\nErrores: '+errs.length+'\n\n'+errs.join('\n'));
+          }
+        }
+      });
+    });
+  };
+
+  // Manuale: usa il classificatore standard
+  window.nxProvDocManual=function(){
+    var ctx=window._nxProvDocCtx;
+    if(!ctx)return;
+    closeM('m-prov-doc');
+    nxDocSmartUpload(ctx.file,ctx.file.name,{docType:'factura_proveedor'});
+  };
 
   // F5 placeholder: accept/reject notifiche
   window.numbersAcceptNotif=function(notifId){
