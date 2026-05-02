@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.56 — DMCAR GROUP CRM | 2026-05-02 | Fix colonna Listas B2B vuota: 1) DEBUG attivabile via localStorage.nx_debug_b2b_lists=1 con log dettagliati su match email; 2) MIGRATION one-shot v9.56 al boot: sincronizza in mkContacts TUTTI i contacts B2B esistenti con email valida (prima erano solo quelli passati dal routing post-9.49); 3) bottone "🔄 Sync B2B → Marketing" in Marketing toolbar per ri-sync manuale on-demand. -->
+<!-- NEXO v9.57 — DMCAR GROUP CRM | 2026-05-02 | Sync Marketing→B2B: 1) helper mkSyncToB2B(mkContact) crea record contacts B2B SOLO se email non esiste già (no duplicate update), 2) MIGRATION one-shot al boot per backlog mkContacts esistenti, 3) hook real-time in tutti i punti di add mkContacts (manuale, import CSV/XLSX, paste, lead_promote skipped — già in B2B). Tag default 'reg', role 'Comprador', myCompany 'DMCAR GROUP'. Bottone manuale "🔃 Sync Marketing→B2B" in toolbar Marketing per ri-sync on-demand. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -720,6 +720,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="mkBulkEnrich()" style="font-size:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border:none" title="Auto-rellenar pa&iacute;s y empresa de los contactos vac&iacute;os usando el dominio del email">&#10024; Enriquecer datos</button>
           <button class="btn bs" id="mk-infer-ip-btn" onclick="mkBulkInferCountryByIP()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Inferir pa&iacute;s por IP geolocation (DNS + ipwho.is). Util para dominios .com">&#127760; Inferir pa&iacute;s (IP)</button>
           <button class="btn bs" onclick="mkBulkSyncB2BToMarketing()" style="font-size:12px" title="Re-sincroniza todos los contactos B2B en Marketing (Direct Mail) por si la columna Listas en B2B est&aacute; vac&iacute;a">&#128257; Sync B2B</button>
+          <button class="btn bs" onclick="mkBulkSyncMarketingToB2B()" style="font-size:12px" title="Crea contactos B2B desde los contactos Marketing que a&uacute;n no existen en B2B (no duplica los existentes)">&#128257; Sync \u2192 B2B</button>
           <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
           <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
           <button class="btn bs" onclick="mkUndoLastImport()" id="mk-undo-btn" style="font-size:12px;display:none" title="Borrar todos los contactos del &uacute;ltimo import (irrevocable)">&#8617; Anular &uacute;ltimo import</button>
@@ -3817,6 +3818,95 @@ function mkBulkSyncB2BToMarketing(silent){
   }
 }
 window.mkBulkSyncB2BToMarketing=mkBulkSyncB2BToMarketing;
+
+// v9.57: SYNC SINGOLO Marketing → B2B
+// Crea record contacts B2B SOLO se email non esiste già (no duplicate update).
+// Mappatura intelligente: customerType→clientType, role default 'Comprador', myCompany 'DMCAR GROUP', tag 'reg'.
+// Skip silenziosi: no email, email già in contacts B2B, email da lead_promote (già in B2B per definizione).
+// Ritorna l'ID B2B creato, o null se skip.
+function mkSyncToB2B(mkContact,silentSkip){
+  try{
+    if(!mkContact)return null;
+    if(typeof contacts==='undefined'||!Array.isArray(contacts))return null;
+    var email=mkContact.email;
+    if(!email)return null;
+    // Normalizza per match
+    var emailNorm=(typeof mkNormEmail==='function')?mkNormEmail(email):String(email).trim().toLowerCase();
+    if(!emailNorm)return null;
+    // Skip se è arrivato da lead_promote (è già in B2B)
+    if(mkContact.origin==='lead_promote')return null;
+    // Skip se email già esiste in contacts B2B
+    var existing=contacts.find(function(c){
+      if(!c||!c.email)return false;
+      return String(c.email).trim().toLowerCase()===emailNorm;
+    });
+    if(existing){
+      if(!silentSkip)console.log('[mkSyncToB2B] skip: email already in B2B:',emailNorm);
+      return null;
+    }
+    // Crea nuovo contact B2B con campi mappati
+    var newContact={
+      id:Date.now()+'_'+Math.floor(Math.random()*9999),
+      name:mkContact.firstName||'',
+      company:mkContact.companyName||'',
+      country:mkContact.country||'',
+      role:'Comprador',
+      myCompany:'DMCAR GROUP',
+      clientType:mkContact.customerType||'',
+      phone:mkContact.phone||'',
+      email:email,
+      notes:'(Importado de Marketing)\n'+(mkContact.notes||''),
+      tag:'reg',
+      labels:[],
+      lastContact:new Date().toISOString().split('T')[0],
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+      // Riferimento al record Marketing originale
+      mkOriginId:mkContact.id||''
+    };
+    contacts.push(newContact);
+    SS('contacts',contacts);
+    return newContact.id;
+  }catch(err){
+    console.error('[mkSyncToB2B] error:',err,mkContact);
+    return null;
+  }
+}
+
+// v9.57: BULK SYNC Marketing → B2B (per migration + bottone manuale)
+function mkBulkSyncMarketingToB2B(silent){
+  try{
+    if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts)){
+      if(!silent)alert('mkContacts no disponible.');
+      return {synced:0,skipped:0};
+    }
+    var synced=0,skipped=0;
+    mkContacts.forEach(function(mk){
+      var newId=mkSyncToB2B(mk,true);
+      if(newId)synced++;
+      else skipped++;
+    });
+    console.log('[mkBulkSyncMarketingToB2B] synced='+synced+' skipped='+skipped);
+    if(synced>0){
+      if(typeof renderCont==='function')renderCont();
+      if(typeof renderDash==='function')renderDash();
+    }
+    if(!silent&&typeof showToast==='function'){
+      if(synced>0){
+        showToast('\u2713 Sync Marketing\u2192B2B: '+synced+' nuevos contactos B2B creados ('+skipped+' ya exist\u00edan)');
+      }else{
+        showToast('Marketing\u2192B2B: nada nuevo que sincronizar');
+      }
+    }
+    return {synced:synced,skipped:skipped};
+  }catch(err){
+    console.error('[mkBulkSyncMarketingToB2B] FATAL:',err);
+    if(!silent)alert('Error en sync Marketing\u2192B2B:\n'+(err&&err.message||err));
+    return {synced:0,skipped:0};
+  }
+}
+window.mkSyncToB2B=mkSyncToB2B;
+window.mkBulkSyncMarketingToB2B=mkBulkSyncMarketingToB2B;
 
 // Dialog bulk (con elenco completo + Sí/Sí a todos/No)
 function mkRoutingShowBulkDialog(){
@@ -11344,6 +11434,10 @@ function mkSaveContact(){
     mkContacts.push(record);
     mkCntCounter++;SS('mkCntCounter',mkCntCounter);
     savedId=record.id;
+    // v9.57: real-time sync Marketing → B2B (solo se nuovo, non duplicato)
+    if(typeof mkSyncToB2B==='function'){
+      try{mkSyncToB2B(record,true);}catch(e){console.warn('[mkSaveContact] sync B2B error:',e);}
+    }
   }
   SS('mkContacts',mkContacts);
   // v9.46: applica i cambi liste (multi-select editabile)
@@ -12134,6 +12228,10 @@ function mkImportConfirm(){
       batchAddedIds.push(newData.id);
       mkCntCounter++;
       added++;
+      // v9.57: real-time sync Marketing → B2B (per ogni import nuovo)
+      if(typeof mkSyncToB2B==='function'){
+        try{mkSyncToB2B(newData,true);}catch(e){console.warn('[mkImport] sync B2B error:',e);}
+      }
     }
   });
 
@@ -12277,6 +12375,10 @@ function mkExtractFromPaste(){
       if(typeof mkAutoEnrich==='function')mkAutoEnrich(rec);
       mkContacts.push(rec);
       mkCntCounter++;added++;
+      // v9.57: real-time sync Marketing → B2B
+      if(typeof mkSyncToB2B==='function'){
+        try{mkSyncToB2B(rec,true);}catch(e){console.warn('[mkPaste single] sync B2B error:',e);}
+      }
     }
   }else{
     // Multi-email: aggiunge solo email senza altri dettagli
@@ -12293,6 +12395,10 @@ function mkExtractFromPaste(){
       if(typeof mkAutoEnrich==='function')mkAutoEnrich(rec);
       mkContacts.push(rec);
       mkCntCounter++;added++;
+      // v9.57: real-time sync Marketing → B2B (multi-email batch)
+      if(typeof mkSyncToB2B==='function'){
+        try{mkSyncToB2B(rec,true);}catch(e){console.warn('[mkPaste multi] sync B2B error:',e);}
+      }
     });
   }
   SS('mkContacts',mkContacts);SS('mkCntCounter',mkCntCounter);
@@ -17312,6 +17418,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       SS('nx5_b2b_sync_v956',true);
     }
   },3100);
+  // v9.57: one-shot sync mkContacts esistenti (importati prima di v9.57) in contacts B2B.
+  // Solo i mkContacts con email NON ancora in B2B vengono creati. Solo prima volta.
+  setTimeout(function(){
+    if(LS('nx5_mk2b2b_sync_v957',false))return;
+    if(typeof mkBulkSyncMarketingToB2B==='function'){
+      var stats=mkBulkSyncMarketingToB2B(true);
+      console.log('[v9.57] Marketing\u2192B2B one-shot sync: '+stats.synced+' nuevos contactos B2B creados, '+stats.skipped+' ya exist\u00edan o saltados.');
+      SS('nx5_mk2b2b_sync_v957',true);
+    }
+  },3300);
 })();
 
 </script>
