@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.84 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix Dacia DEFINITIVO con log debug. Stesso fix v9.83 ma rinominato per forzare cache-bust. Stampa debug per ogni Dacia analizzata. -->
+<!-- NEXO v9.86 — DMCAR GROUP CRM | 2026-05-02 | STOCK UI cleanup colonna Asignado: rendering condizionale per stato. Libre → "—" grigio (no edit). Vendido → SINGOLO nome verde + coppa 🏆 (no input duplicato). Reservado/En negociación → input editabile normale. Eliminato bug v9.75 che mostrava sia input che badge soldBy contemporaneamente (Francesco scritto 2 volte). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5940,20 +5940,26 @@ function renderStkTbl(){
     html+='</select></td>';
     // v9.58: Asignado (free-text) - v9.75: mostra soldBy se vendido
     // v9.79: NASCONDE completamente "Asignado a" quando stato=libre (no seller orfano)
+    // v9.85: SINGOLO nome - cambia stile per vendido (nome verde + coppa, no input)
     var cs2=String(item.commercialStatus||'libre').toLowerCase();
     var isLibre=(cs2==='libre'||cs2===''||!cs2);
-    var assignedDisp=isLibre?'':(item.assignedTo||'');
-    var soldByBadge='';
-    if(item.commercialStatus==='vendido'&&item.soldBy){
-      soldByBadge='<div style="font-size:9px;color:#16a34a;font-weight:600;margin-top:2px" title="Vendedor"><span>&#127942; '+esc(item.soldBy)+'</span></div>';
-    }
+    var isVendido=(cs2==='vendido');
     var isStale=stkIsStale(item);
     var staleIcon=isStale?'<span title="Sin actualizar &gt;24h" style="color:#f59e0b;font-weight:700">&#9888;&#65039; </span>':'';
     if(isLibre){
       // Stato libre: cella vuota con dash grigio (no input)
       html+='<td style="font-size:10px;white-space:nowrap;color:var(--t4);text-align:center">&mdash;</td>';
+    }else if(isVendido){
+      // Stato vendido: SOLO nome venditore con stile verde + coppa, no input duplicato
+      var sellerName=item.soldBy||item.assignedTo||'';
+      var sellerHtml=sellerName
+        ?'<span style="color:#16a34a;font-weight:700;font-size:11px" title="Vendedor">&#127942; '+esc(sellerName)+'</span>'
+        :'<span style="color:var(--t4);font-size:10px">&mdash;</span>';
+      html+='<td style="font-size:10px;white-space:nowrap">'+staleIcon+sellerHtml+'</td>';
     }else{
-      html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)">'+soldByBadge+'</td>';
+      // Stato reservado / en_negociacion: input editabile normale
+      var assignedDisp=item.assignedTo||item.soldBy||'';
+      html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)"></td>';
     }
     // Notas
     html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
