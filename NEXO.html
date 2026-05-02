@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.00 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable Refactor + Soft-Delete Expedientes: 1) Fix definitivo trasparenza header: sub-tab navigation con sticky top:-18px e padding:24px per coprire #content padding-top, sticky block sotto a top:32px - nessun gap; 2) Font fix: forzato Inter su input/select/textarea/button/table/.btn con !important; 3) Rimossa sezione "En propiedad" sub-tab dalla Vista Contable (resta in Stock Vivo intatta); 4) Aggiunti sub-tab "Todos" + "Anuladas"; 5) Nuova prima colonna "OWN" badge giallo per veicoli en propriedad (ownership=propio/own/propiedad); 6) Logica N.Exp: "OWN→N/D" italico, "Libre→N/A", "Anulada→barra rosso + NULL Cliente"; 7) Soft-delete expediente: nxExpedienteSoftDelete rinomina cartella SP + record in "EXP.001 NULL Cliente", flag exp.anulada=true, ripristina commercialStatus='libre' su tutti i veicoli, pulisce clientName/salePrice; 8) Hook automatico in numbersDeleteProforma + nbpfDelete: trova expedientes collegati via proformaIds o vehicleIds, applica soft-delete con messaggio "X expediente(s) NULL · Y veh liberados"; 9) Filtri tab aggiornati (vendidos/todos/expedientes/pendientes/anuladas) escludono isAnulada di default tranne in tab dedicato. -->
+<!-- NEXO v10.01 — DMCAR GROUP CRM | 2026-05-02 | Sync Stock OWN ↔ Vista Contable + Workflow notifica + Rinomina PROPIEDAD→OWN: 1) FIX BUG sync: i veicoli en propiedad ora compaiono SEMPRE in Vista Contable col badge OWN + N.Exp=N/D (default tab cambiato da "Vendidos" a "Todos" che mostra anche OWN); 2) Workflow notifica contabile (nxOwnEntryWorkflow) con dialog decisional 2-3 step: Step1 "Sono entrate N {modello} da {fornitore}. Hai la proforma?" [Sì/No] → Step2a (Sì) "Hai la proforma da caricare?" [Sì→naviga Vista+upload / No→registrato con N/D] → Step2b (No) "Vuoi caricarle ugualmente?" [Sì→Vista N/D / No→solo Stock]; 3) Trigger automatico: stato Libre/Reservada/Negociacion → Vendido = ownership auto-set 'propio' + soldAt (regola business "vendita = già di proprietà"); 4) Hook in stkBulkSetOwnership: lancia workflow su nuovi entrati a 'propio'; 5) Flag stock._ownNotified evita re-prompt, _ownPendingProforma traccia stato attesa proforma; 6) RINOMINA PROPIEDAD→OWN solo modulo Stock Vivo: tab "En propiedad"→"OWN", tooltip "Cambiar entre Trading y OWN", prompt cambio tipo, toast; valori interni 'propio'/'propios' INVARIATI (chiavi tecniche); 7) Modulo Contabile NON modificato (resta in spagnolo); 8) Dict NX_I18N introdotto + helper window.t(key) come base per futura lingua configurabile. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -379,7 +379,7 @@ En que te puedo ayudar hoy?</div></div>
       <!-- v9.58: TABS Ownership -->
       <div class="fc g4 mb12" style="border-bottom:1px solid var(--border)">
         <button id="stk-tab-trading" class="btn bg" onclick="stkSwitchTab('trading')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff">&#127760; Trading <span id="stk-tab-cnt-tr" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
-        <button id="stk-tab-propios" class="btn bg" onclick="stkSwitchTab('propios')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none">&#128230; En propiedad <span id="stk-tab-cnt-pr" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+        <button id="stk-tab-propios" class="btn bg" onclick="stkSwitchTab('propios')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none">&#128230; OWN <span id="stk-tab-cnt-pr" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
       </div>
       <!-- FILTROS -->
       <div class="fbar mb12">
@@ -412,7 +412,7 @@ En que te puedo ayudar hoy?</div></div>
           <div class="fc g8">
             <button class="btn bg" onclick="clrSel()" style="font-size:11px">Deseleccionar</button>
             <button class="btn bd" onclick="delSel()" style="font-size:11px">&#128465; Eliminar</button>
-            <button class="btn bs" onclick="stkBulkSetOwnership()" style="font-size:11px" title="Cambiar entre Trading y En propiedad">&#128230; Cambiar tipo</button>
+            <button class="btn bs" onclick="stkBulkSetOwnership()" style="font-size:11px" title="Cambiar entre Trading y OWN">&#128230; Cambiar tipo</button>
             <button class="btn bp" onclick="openGenStk()">&#9889; Generar Word</button>
             <button class="btn bs" onclick="campNewFromStockSel()" style="background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none;padding:6px 14px">&#128231; Crear campa&ntilde;a NEXO</button>
           </div>
@@ -1018,8 +1018,8 @@ En que te puedo ayudar hoy?</div></div>
         <div id="nbv-sticky-block" style="position:sticky;top:32px;z-index:50;background:#ffffff;padding:10px 18px 14px 18px;margin:-6px -18px 0 -18px;border-bottom:2px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.04)">
           <!-- Sub-tabs interni (En propiedad rimossa, ora identificata via colonna OWN) -->
           <div class="fc g6 mb12" style="flex-wrap:wrap">
-            <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
-            <button id="nbv-tab-todos" class="btn bg" onclick="numbersVistaTab('todos')" style="padding:6px 12px;font-size:11px">&#128202; Todos</button>
+            <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px">&#128666; Vendidos</button>
+            <button id="nbv-tab-todos" class="btn bg" onclick="numbersVistaTab('todos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128202; Todos</button>
             <button id="nbv-tab-expedientes" class="btn bg" onclick="numbersVistaTab('expedientes')" style="padding:6px 12px;font-size:11px">&#128193; Por expediente</button>
             <button id="nbv-tab-pendientes" class="btn bg" onclick="numbersVistaTab('pendientes')" style="padding:6px 12px;font-size:11px">&#9888;&#65039; Pendientes archivar</button>
             <button id="nbv-tab-anuladas" class="btn bg" onclick="numbersVistaTab('anuladas')" style="padding:6px 12px;font-size:11px;color:#dc2626">&#128711; Anuladas</button>
@@ -6491,6 +6491,19 @@ function fmtPickup(loc){
 // -- NAV ------------------------------------------------------
 var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',campaigns:'Campa\u00f1as',tareas:'Tareas',numbers:'Nexo Numbers',config:'Configuracion'};
 
+// v10.01: i18n dictionary - base per futura lingua configurabile per utente
+// Lingua di default: spagnolo. Eccezioni terminologiche per modulo Stock Vivo.
+window.NX_I18N={
+  'es':{
+    'stock.tab.trading':'Trading',
+    'stock.tab.own':'OWN',
+    'stock.label.ownership':'OWN',
+    'stock.tooltip.changeOwnership':'Cambiar entre Trading y OWN',
+    'numbers.col.own':'OWN'
+  }
+};
+window.t=function(key,lang){var l=lang||'es';var d=window.NX_I18N&&window.NX_I18N[l];return (d&&d[key])||key;};
+
 function go(v){
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
   document.querySelectorAll('.ni').forEach(function(el){el.classList.remove('on');});
@@ -7830,7 +7843,7 @@ function stkBulkSetOwnership(){
   var summary='';
   if(lotCount>0)summary+='\u2022 '+lotCount+' lote'+(lotCount!==1?'s':'')+' completo'+(lotCount!==1?'s':'')+'\n';
   if(vehCount>0)summary+='\u2022 '+vehCount+' VIN individual'+(vehCount!==1?'es':'')+' (se separar\u00e1n del lote)\n';
-  var choice=prompt('Cambiar tipo de stock:\n\n'+summary+'\n  1. Trading (no en propiedad)\n  2. En propiedad\n\nEscribe 1 o 2:');
+  var choice=prompt('Cambiar tipo de stock:\n\n'+summary+'\n  1. Trading (no OWN)\n  2. OWN\n\nEscribe 1 o 2:');
   if(!choice)return;
   var newOw=choice==='2'?'propio':'live_trading';
 
@@ -7991,9 +8004,18 @@ function stkBulkSetOwnership(){
   var msg='\u2713 ';
   if(lotChanged>0)msg+=lotChanged+' lote'+(lotChanged!==1?'s':'')+', ';
   if(vehSplit>0)msg+=vehSplit+' VIN '+(vehSplit!==1?'separados':'separado')+', ';
-  msg+='\u2192 '+(newOw==='propio'?'En propiedad':'Trading');
+  msg+='\u2192 '+(newOw==='propio'?'OWN':'Trading');
   if(errors>0)msg+=' ('+errors+' errores - revisar consola)';
   if(typeof showToast==='function')showToast(msg);
+  // v10.01: Hook workflow notifica contabile quando passano a OWN
+  if(newOw==='propio'&&(lotChanged>0||vehSplit>0)&&typeof window.nxOwnEntryWorkflow==='function'){
+    // Passa ai stock id che hanno appena cambiato ownership
+    var changedStockIds=[];
+    stock.forEach(function(s){if(s.ownership==='propio'&&!s._ownNotified)changedStockIds.push(s.id);});
+    if(changedStockIds.length>0){
+      setTimeout(function(){window.nxOwnEntryWorkflow(changedStockIds);},400);
+    }
+  }
   fStk();
 }
 window.stkBulkSetOwnership=stkBulkSetOwnership;
@@ -8267,6 +8289,7 @@ window.sscConfirm=function(){
   var client=c.find(function(x){return String(x.id)===String(st.clientId);});
   if(!client){alert('Error: cliente no encontrado.');return;}
   // Aggiorna stock
+  var oldCs2=stock[idx].commercialStatus||'libre';
   stock[idx].commercialStatus=st.newCs;
   stock[idx].commercialUpdatedAt=new Date().toISOString();
   stock[idx].clientId=client.id;
@@ -8274,6 +8297,14 @@ window.sscConfirm=function(){
   stock[idx].soldBy=sellerName;
   stock[idx].assignedTo=stock[idx].assignedTo||sellerName;
   if(st.newCs==='vendido')stock[idx].soldAt=new Date().toISOString();
+  // v10.01: Auto-move a OWN quando passa da Libre/Reservada/Negociacion a Vendido
+  // Regola: solo se NON era già OWN o trading consolidato
+  var wasInTransition=(oldCs2==='libre'||oldCs2==='reservado'||oldCs2==='en_negociacion');
+  if(st.newCs==='vendido'&&wasInTransition&&stock[idx].ownership!=='propio'){
+    stock[idx].ownership='propio';
+    stock[idx]._autoMovedToOwnAt=new Date().toISOString();
+    console.log('[v10.01 auto-move] Veh '+(stock[idx].internalId||stock[idx].id)+' \u2192 OWN (sale trigger)');
+  }
   SS('stock',stock);
   // Sync con Kanban: cerca card esistente o crea nuova
   nxSyncStockToKanban(st.stockId,st.newCs,client,sellerName);
@@ -23249,7 +23280,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // ========================================================================
   // v9.92: VISTA CONTABLE - panel operativo per il contabile
   // ========================================================================
-  window._nbvActiveSubTab='vendidos';
+  window._nbvActiveSubTab='todos';
 
   window.numbersVistaTab=function(t){
     window._nbvActiveSubTab=t;
@@ -23415,7 +23446,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
       else if(proformas.length&&proformas[0].sellerName)resolvedSoldBy=proformas[0].sellerName;
       else if(invoices.length&&invoices[0].sellerName)resolvedSoldBy=invoices[0].sellerName;
       else if(hasActiveDoc)resolvedSoldBy=s.soldBy||s.assignedTo||'';
-      // v10.00: isOwn = veicolo en propiedad (ownership='propio' o 'own') E non venduto E non reservado
+      // v10.00: isOwn = veicolo en propiedad (ownership='propio') E non venduto E non reservado
+      // v10.01: tutti i veicoli OWN (ownership=propio) appaiono nella Vista Contable.
+      // Il flag _ownPendingProforma rimane per tracciare se è in attesa di proforma (N/D).
       var ownership=String(s.ownership||s.stockType||'').toLowerCase();
       var isOwn=(ownership==='propio'||ownership==='own'||ownership==='propiedad')&&!isVendido&&!isReservado&&!exp;
       // v10.00: isAnulada = expediente soft-deleted con flag null
@@ -24567,6 +24600,188 @@ document.querySelectorAll('.ovl').forEach(function(el){
       closeM('m-na-temp');closeM('m-ai-doc');
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en __TEMP/'+cc+'/'+subfolder+' \u2014 se migrar\u00e1 cuando se cree el expediente',7000);
     });
+  };
+
+  // ========================================================================
+  // v10.01: WORKFLOW NOTIFICA CONTABILE quando veicoli entrano in OWN
+  // Dialog decisionale 2-3 step:
+  //   Step 1: "Sono entrate N {modello} da {fornitore}. Hai la proforma?" [Sì/No]
+  //   Step 2a (Sì): "Hai la proforma da caricare?" [Sì→upload / No→accetta senza]
+  //   Step 2b (No): "Vuoi caricarle ugualmente?" [Sì→Vista N/D / No→solo Stock]
+  // ========================================================================
+  window.nxOwnEntryWorkflow=function(stockIds){
+    if(!stockIds||!stockIds.length)return;
+    // Filtra solo gli stock che sono effettivamente OWN E non già notificati
+    var stocksToProcess=(window.stock||[]).filter(function(s){
+      return stockIds.indexOf(s.id)>=0&&s.ownership==='propio'&&!s._ownNotified;
+    });
+    if(!stocksToProcess.length)return;
+    // Raggruppa per (supplier + brand + model) per fare 1 dialog per gruppo
+    var groups={};
+    stocksToProcess.forEach(function(s){
+      var supplierKey=nxNormalizeSupplierName(s.supplier||'')||'(senza fornitore)';
+      var modelKey=(s.brand||'?')+' '+(s.model||'?');
+      var k=supplierKey+'||'+modelKey;
+      if(!groups[k])groups[k]={supplier:nxCanonicalSupplier(s.supplier||'')||'(senza fornitore)',brand:s.brand||'',model:s.model||'',stocks:[]};
+      groups[k].stocks.push(s);
+    });
+    // Mostra una dialog per gruppo (sequenziali)
+    var groupKeys=Object.keys(groups);
+    var idx=0;
+    function processNext(){
+      if(idx>=groupKeys.length)return;
+      var g=groups[groupKeys[idx]];
+      idx++;
+      window.nxOwnEntryShowStep1(g,processNext);
+    }
+    processNext();
+  };
+
+  // STEP 1: notifica iniziale + chiede se ha proforma
+  window.nxOwnEntryShowStep1=function(group,onDone){
+    var totalUnits=group.stocks.reduce(function(a,s){return a+(s.vehicles?s.vehicles.length:1);},0);
+    var html='<div id="m-own-entry" class="modal-bg" style="display:flex" onclick="event.target===this&&closeM(\'m-own-entry\')">'
+      +'<div class="modal" style="max-width:520px">'
+        +'<div class="mh"><span>\u{1F4E5} Nuevos veh\u00edculos en OWN</span><button class="mx" onclick="nxOwnEntryDecline()">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(251,191,36,.1);border-left:4px solid #fbbf24;padding:14px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:6px">Han entrado <strong style="color:#92400e">'+totalUnits+'</strong> '+esc(group.brand+' '+group.model)+'</div>'
+            +'<div style="font-size:12px;color:var(--t2)">Proveedor: <strong>'+esc(group.supplier)+'</strong></div>'
+          +'</div>'
+          +'<div style="font-size:13px;color:var(--t1);margin-bottom:14px;font-weight:500">\u00bfTienes la proforma del proveedor?</div>'
+          +'<div class="fc g8" style="justify-content:flex-end">'
+            +'<button class="btn bg" onclick="nxOwnEntryAnswer(\'no\')">No, no tengo</button>'
+            +'<button class="btn bp" onclick="nxOwnEntryAnswer(\'si\')" style="background:var(--green);color:#fff;border:none">\u2713 S\u00ed, tengo</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-own-entry');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    window._nxOwnCtx={group:group,onDone:onDone};
+  };
+
+  window.nxOwnEntryAnswer=function(ans){
+    var ctx=window._nxOwnCtx;if(!ctx)return;
+    if(ans==='si'){
+      // STEP 2a: Hai la proforma da caricare?
+      nxOwnEntryShowStep2a();
+    }else{
+      // STEP 2b: Vuoi caricarle ugualmente?
+      nxOwnEntryShowStep2b();
+    }
+  };
+
+  window.nxOwnEntryShowStep2a=function(){
+    var ctx=window._nxOwnCtx;if(!ctx)return;
+    var html='<div id="m-own-entry-2" class="modal-bg" style="display:flex">'
+      +'<div class="modal" style="max-width:480px">'
+        +'<div class="mh"><span>\u{1F4C4} \u00bfCargar la proforma ahora?</span><button class="mx" onclick="nxOwnEntryDecline2()">&times;</button></div>'
+        +'<div class="mb">'
+          +'<p style="font-size:13px;color:var(--t2);margin-bottom:14px">Tienes la proforma. \u00bfQuieres cargarla ahora? La operaci\u00f3n abrir\u00e1 el dialog de import documento.</p>'
+          +'<div class="fc g8" style="justify-content:flex-end">'
+            +'<button class="btn bg" onclick="nxOwnEntryStep2aChoice(\'later\')">M\u00e1s tarde</button>'
+            +'<button class="btn bp" onclick="nxOwnEntryStep2aChoice(\'now\')" style="background:var(--acc);color:#fff;border:none">\u2728 Cargar ahora</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-own-entry-2');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    closeM('m-own-entry');
+  };
+
+  window.nxOwnEntryStep2aChoice=function(choice){
+    var ctx=window._nxOwnCtx;if(!ctx)return;
+    if(choice==='now'){
+      // Marca come "in attesa proforma"
+      ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;});
+      SS('stock',stock);
+      closeM('m-own-entry-2');
+      // Apri direttamente l'upload doc proveedor (Vista Contable AI parser)
+      if(typeof showToast==='function')showToast('\u2728 Carga la proforma desde Vista Contable',5000);
+      // Naviga a Vista Contable
+      go('numbers');
+      setTimeout(function(){
+        if(typeof numbersGo==='function')numbersGo('vista');
+        setTimeout(function(){
+          if(typeof window.numbersUploadProveedorDoc==='function')window.numbersUploadProveedorDoc();
+        },500);
+      },300);
+      // Chiudi tutto e continua con prossimo gruppo
+      if(ctx.onDone)ctx.onDone();
+    }else{
+      // "Più tardi": registra come OWN visibile in Vista con N/D in attesa di proforma
+      ctx.group.stocks.forEach(function(s){
+        s._ownNotified=true;
+        s._ownPendingProforma=true;  // mostra OWN+N/D
+      });
+      SS('stock',stock);
+      closeM('m-own-entry-2');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos registrados en Vista Contable con N/D - carga proforma cuando tengas',5500);
+      if(ctx.onDone)ctx.onDone();
+    }
+  };
+
+  window.nxOwnEntryShowStep2b=function(){
+    var ctx=window._nxOwnCtx;if(!ctx)return;
+    var html='<div id="m-own-entry-3" class="modal-bg" style="display:flex">'
+      +'<div class="modal" style="max-width:480px">'
+        +'<div class="mh"><span>\u{1F914} \u00bfRegistrar igualmente?</span><button class="mx" onclick="nxOwnEntryDecline2()">&times;</button></div>'
+        +'<div class="mb">'
+          +'<p style="font-size:13px;color:var(--t2);margin-bottom:14px">No tienes la proforma. \u00bfQuieres registrar los veh\u00edculos en <strong>Vista Contable</strong> de todos modos? Aparecer\u00e1n con expediente <code>N/D</code> hasta que recibas la proforma.</p>'
+          +'<div style="background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:var(--t2)">'
+            +'\u26a0\ufe0f Si seleccionas "No", los veh\u00edculos quedar\u00e1n solo en Stock Vivo (OWN) sin propagaci\u00f3n a Vista Contable hasta que cargues la proforma.'
+          +'</div>'
+          +'<div class="fc g8" style="justify-content:flex-end">'
+            +'<button class="btn bg" onclick="nxOwnEntryStep2bChoice(\'no\')">No, solo Stock</button>'
+            +'<button class="btn bp" onclick="nxOwnEntryStep2bChoice(\'si\')" style="background:var(--acc);color:#fff;border:none">\u2713 S\u00ed, registrar con N/D</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-own-entry-3');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    closeM('m-own-entry');
+  };
+
+  window.nxOwnEntryStep2bChoice=function(choice){
+    var ctx=window._nxOwnCtx;if(!ctx)return;
+    if(choice==='si'){
+      ctx.group.stocks.forEach(function(s){
+        s._ownNotified=true;
+        s._ownPendingProforma=true;  // visibile in Vista Contable con N/D
+      });
+      SS('stock',stock);
+      closeM('m-own-entry-3');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos en Vista Contable con N/D');
+    }else{
+      // Solo Stock: marca come notificato per non chiedere di nuovo MA NON propaga
+      ctx.group.stocks.forEach(function(s){
+        s._ownNotified=true;
+        s._ownPendingProforma=false;  // NON in Vista Contable
+      });
+      SS('stock',stock);
+      closeM('m-own-entry-3');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos solo en Stock Vivo (OWN)');
+    }
+    if(ctx.onDone)ctx.onDone();
+  };
+
+  // Decline (chiudi senza fare niente, marca come notificato per non riapparire)
+  window.nxOwnEntryDecline=function(){
+    var ctx=window._nxOwnCtx;if(!ctx){closeM('m-own-entry');return;}
+    ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=false;});
+    SS('stock',stock);
+    closeM('m-own-entry');
+    if(ctx.onDone)ctx.onDone();
+  };
+  window.nxOwnEntryDecline2=function(){
+    var ctx=window._nxOwnCtx;if(!ctx){closeM('m-own-entry-2');closeM('m-own-entry-3');return;}
+    ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=false;});
+    SS('stock',stock);
+    closeM('m-own-entry-2');closeM('m-own-entry-3');
+    if(ctx.onDone)ctx.onDone();
   };
 
   // Auto-archive con dati AI
