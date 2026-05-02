@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.89 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT FIX UI: 1) hook auto-refresh card SharePoint quando updateMicrosoftConfigUI() viene chiamato (rileva login MS); 2) renderConfig() ora chiama anche spUpdateConfigUI() (refresh ad ogni apertura tab Configuracion); 3) Avviso warning chiaro nel card SharePoint quando MS è loggato MA mancano gli scope (login fatto pre-v9.88) → invita a logout/login per nuovo consent. -->
+<!-- NEXO v9.90 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT setup wizard step "Cartella padre": dopo aver scelto sito + drive, l'utente sceglie la cartella padre (root del drive o una cartella esistente come "NEXO"). Il sistema crea automaticamente "NEXO STORAGE" dentro quel padre, e dentro "NEXO STORAGE" crea le 3 cartelle EXP.GEN. findOrCreateFolder usato ovunque (idempotente: se esiste già la riusa). nxSpConfig include parentFolderId/Name + storageFolderId/Url. Setup paso a paso aggiornato a 6 steps. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1243,7 +1243,9 @@ En que te puedo ayudar hoy?</div></div>
                 <strong>1.</strong> Aseg&uacute;rate de haber iniciado sesi&oacute;n con Microsoft 365 (arriba).<br>
                 <strong>2.</strong> Click "Descubrir sitios" para listar tus sitios SharePoint.<br>
                 <strong>3.</strong> Selecciona el sitio de DMCAR.<br>
-                <strong>4.</strong> Click "Crear carpetas root" y el sistema crear&aacute; <code>EXP.GEN DMCAR GROUP</code>, <code>EXP.GEN INNO</code>, <code>EXP.GEN IMPEX</code>.
+                <strong>4.</strong> Selecciona la biblioteca de documentos.<br>
+                <strong>5.</strong> Selecciona la carpeta padre (donde NEXO crear&aacute; "NEXO STORAGE"). Si tienes una carpeta "NEXO" existente, sel&eacute;ccionala.<br>
+                <strong>6.</strong> Click "Crear NEXO STORAGE". Crear&aacute; <code>NEXO STORAGE/EXP.GEN DMCAR GROUP</code>, <code>EXP.GEN INNO</code>, <code>EXP.GEN IMPEX</code>.
               </div>
               <div id="sp-sites-list" style="margin-bottom:10px"></div>
               <div id="sp-drives-list" style="margin-bottom:10px"></div>
@@ -4170,8 +4172,12 @@ window.spUpdateConfigUI=function(){
       var sd=n('sp-cfg-summary-detail');
       if(sd){
         var rf=window.nxSpConfig.rootFolders;
+        var pathStr=window.nxSpConfig.parentFolderName||'(Ra\u00edz)';
+        if(pathStr!=='(Ra\u00edz)'&&pathStr!=='(Ra\u00edz del drive)')pathStr=pathStr+' / NEXO STORAGE';
+        else pathStr='NEXO STORAGE';
         sd.innerHTML='<strong>Sitio:</strong> '+esc(window.nxSpConfig.siteName||'?')+'<br>'
           +'<strong>Drive:</strong> '+esc(window.nxSpConfig.driveName||'?')+'<br>'
+          +'<strong>Ruta:</strong> <code style="font-size:10px">'+esc(pathStr)+'</code><br>'
           +'<strong>Carpetas root:</strong><br>'
           +'\u00a0\u00a0&bull; '+esc((rf.DMCAR&&rf.DMCAR.name)||'?')+' (DMCAR GROUP)<br>'
           +'\u00a0\u00a0&bull; '+esc((rf.INNO&&rf.INNO.name)||'?')+' (INNO)<br>'
@@ -4256,55 +4262,87 @@ window.spSelectSite=function(siteId,siteName){
 window.spSelectDrive=function(driveId,driveName){
   window._spSelectedDriveId=driveId;
   window._spSelectedDriveName=driveName;
+  // v9.90: dopo aver selezionato il drive, mostra le cartelle root del drive
+  // così l'utente può scegliere se creare le EXP.GEN nella root o dentro una sub-cartella esistente (es. "NEXO")
+  var listEl=n('sp-drives-list');
+  if(listEl)listEl.innerHTML+='<div style="font-size:11px;color:var(--t3);padding:8px;margin-top:8px">Cargando carpetas de "'+esc(driveName)+'"...</div>';
+  NX_SP.listRootChildren(window._spSelectedSiteId,driveId,function(ok,items){
+    if(!ok){
+      if(listEl)listEl.innerHTML+='<div style="color:#dc2626;font-size:11px;padding:8px">Error: '+esc(String(items))+'</div>';
+      return;
+    }
+    var folders=items.filter(function(it){return it.isFolder;});
+    var html='<div style="margin-top:14px;padding:10px;background:var(--bg2);border-radius:6px"><div style="font-weight:600;font-size:12px;margin-bottom:8px">&#128193; \u00bfD\u00f3nde quieres guardar las carpetas EXP?</div>';
+    html+='<div style="font-size:10px;color:var(--t3);margin-bottom:8px;line-height:1.5">El sistema crear\u00e1 una carpeta <strong>NEXO STORAGE</strong> que contendr\u00e1 las 3 carpetas root EXP.GEN. Selecciona donde colocar NEXO STORAGE:</div>';
+    html+='<div style="display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto">';
+    // Opzione 1: nella root del drive
+    html+='<div style="padding:8px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:11px" onclick="spSelectParentFolder(\'root\',\'(Ra\\u00edz del drive)\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+      +'<strong>&#128193; (Ra\u00edz del drive)</strong> <span style="font-size:10px;color:var(--t4)">\u2014 NEXO STORAGE en el primer nivel</span>'
+    +'</div>';
+    // Opzioni: cartelle esistenti
+    folders.forEach(function(f){
+      var safeName=String(f.name).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      html+='<div style="padding:8px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:11px" onclick="spSelectParentFolder(\''+esc(f.id)+'\',\''+esc(safeName)+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+        +'<strong>&#128193; '+esc(f.name)+'</strong>'
+      +'</div>';
+    });
+    html+='</div></div>';
+    if(listEl)listEl.innerHTML+=html;
+  });
+};
+
+window.spSelectParentFolder=function(parentId,parentName){
+  window._spSelectedParentId=parentId;
+  window._spSelectedParentName=parentName;
   var btn=n('sp-create-roots-btn');
-  if(btn)btn.style.display='inline-block';
-  if(typeof showToast==='function')showToast('\u2713 Drive selezionato: '+driveName+' \u2192 click "Crear carpetas root"');
+  if(btn){
+    btn.style.display='inline-block';
+    btn.textContent='\ud83d\udcc1 Crear NEXO STORAGE en "'+parentName+'"';
+  }
+  if(typeof showToast==='function')showToast('\u2713 Padre seleccionado: '+parentName);
 };
 
 window.spCreateRootFolders=function(){
   if(!window._spSelectedSiteId||!window._spSelectedDriveId){
     alert('Primero selecciona sitio y drive.');return;
   }
+  if(!window._spSelectedParentId){
+    alert('Primero selecciona la carpeta padre donde crear NEXO STORAGE.');return;
+  }
   var siteId=window._spSelectedSiteId;
   var driveId=window._spSelectedDriveId;
+  var parentId=window._spSelectedParentId;
   var btn=n('sp-create-roots-btn');
-  if(btn){btn.disabled=true;btn.textContent='Creando...';}
-  // Lista root children per cercare se cartelle esistono già
-  NX_SP.listRootChildren(siteId,driveId,function(ok,items){
-    if(!ok){
-      alert('Error: '+items);
-      if(btn){btn.disabled=false;btn.textContent='\ud83d\udcc1 Crear carpetas root';}
+  if(btn){btn.disabled=true;btn.textContent='Creando NEXO STORAGE...';}
+  // STEP 1: trova/crea NEXO STORAGE dentro il parent selezionato
+  NX_SP.findOrCreateFolder(siteId,driveId,parentId,'NEXO STORAGE',true,function(okSt,storage){
+    if(!okSt){
+      alert('Error creando NEXO STORAGE: '+storage);
+      if(btn){btn.disabled=false;btn.textContent='\ud83d\udcc1 Crear NEXO STORAGE';}
       return;
     }
+    if(btn)btn.textContent='Creando carpetas EXP...';
+    // STEP 2: dentro NEXO STORAGE crea le 3 cartelle EXP.GEN
     var roots={DMCAR:'EXP.GEN DMCAR GROUP',INNO:'EXP.GEN INNO',IMPEX:'EXP.GEN IMPEX'};
     var rootIds={};
     var keys=Object.keys(roots);
     var pending=keys.length;
     keys.forEach(function(code){
       var folderName=roots[code];
-      // Cerca se esiste
-      var existing=items.find(function(it){return it.isFolder&&String(it.name).toLowerCase()===folderName.toLowerCase();});
-      if(existing){
-        rootIds[code]={id:existing.id,name:existing.name,webUrl:existing.webUrl};
+      NX_SP.findOrCreateFolder(siteId,driveId,storage.id,folderName,true,function(okC,folder){
         pending--;
-        if(pending===0)spFinalizeRootSetup(siteId,driveId,rootIds);
-      }else{
-        // Crea
-        NX_SP.createFolder(siteId,driveId,'root',folderName,function(okC,folder){
-          pending--;
-          if(okC){
-            rootIds[code]={id:folder.id,name:folder.name,webUrl:folder.webUrl};
-          }else{
-            console.error('[spCreateRootFolders] Error '+code+':',folder);
-          }
-          if(pending===0)spFinalizeRootSetup(siteId,driveId,rootIds);
-        });
-      }
+        if(okC){
+          rootIds[code]={id:folder.id,name:folder.name,webUrl:folder.webUrl};
+        }else{
+          console.error('[spCreateRootFolders] Error '+code+':',folder);
+        }
+        if(pending===0)spFinalizeRootSetup(siteId,driveId,rootIds,storage);
+      });
     });
   });
 };
 
-window.spFinalizeRootSetup=function(siteId,driveId,rootIds){
+window.spFinalizeRootSetup=function(siteId,driveId,rootIds,storageFolder){
   var btn=n('sp-create-roots-btn');
   if(btn){btn.disabled=false;btn.textContent='\ud83d\udcc1 Crear carpetas root';}
   if(!rootIds.DMCAR||!rootIds.INNO||!rootIds.IMPEX){
@@ -4317,11 +4355,15 @@ window.spFinalizeRootSetup=function(siteId,driveId,rootIds){
     siteName:window._spSelectedSiteName,
     driveId:driveId,
     driveName:window._spSelectedDriveName,
+    parentFolderId:window._spSelectedParentId,
+    parentFolderName:window._spSelectedParentName,
+    storageFolderId:storageFolder?storageFolder.id:null,
+    storageFolderUrl:storageFolder?storageFolder.webUrl:null,
     rootFolders:rootIds,
     configuredAt:new Date().toISOString()
   };
   SS('nxSpConfig',window.nxSpConfig);
-  if(typeof showToast==='function')showToast('\u2713 SharePoint configurado: 3 carpetas root listas');
+  if(typeof showToast==='function')showToast('\u2713 SharePoint configurado: NEXO STORAGE + 3 carpetas EXP listas');
   spUpdateConfigUI();
 };
 
