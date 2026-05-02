@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.94 — DMCAR GROUP CRM | 2026-05-02 | AI DOCUMENT PARSER (Fase 2 Vista Contable): nxAIAnalyzeDoc estrae testo PDF via pdf.js, manda a Claude Haiku 4.5 con prompt strutturato, riceve JSON {docType, docNumber, docDate, supplierName, totalAmount, lines:[{vin, amount, description}]}. Match VIN multi-livello (stock vehicles + stock root). Modal nxShowAIDocConfirm con: dati AI estratti (chip viola), expedientes match con line items + subtotali, VIN in propiedad (no expediente), VIN unmatched. Auto-archive: upload PDF in cartella corretta (PROVEEDOR/TRANSPORTE/BROKER/CLIENTE) di OGNI expediente match + scrive accDocs[] strutturati su ogni stock per VIN. nxWriteAccDoc deduplica per (docNumber+date+vin). Vista Contable si auto-popola dopo. -->
+<!-- NEXO v9.95 — DMCAR GROUP CRM | 2026-05-02 | TEMP folder + Auto-migration Vista Contable: 1) Rimossa colonna Impresa dalla Vista (info implicita nel naming expediente DMCAR/INNO/IMPEX); 2) EXP column mostra "N/A" italico per veicoli en propiedad (libre) ancora senza expediente; 3) Modulo nxTempEnsureFolder + nxTempUploadDoc: crea cartella SharePoint __TEMP/PROVEEDOR (o /TRANSPORTE /BROKER) dentro EXP.GEN [Impresa]; 4) AI auto-archive: per VIN in propriedad raggruppa per impresa stimata + carica copia doc in __TEMP/[Impresa]/[subfolder]; 5) nxTempDocs[] storage: traccia ogni doc TEMP con vins[] + companyCode; 6) nxMigrateTempDocs: trigger automatico al nxExpCreate, scarica doc da TEMP via Graph API content endpoint, ri-upload in expediente reale, marca migrated, elimina file TEMP cleanup; 7) Modal AI mostra raggruppamento per impresa nei VIN in propiedad. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -4167,6 +4167,10 @@ window.nxExpCreate=function(opts,cb){
           window.nxExpedientes.push(exp);
           SS('nxExpedientes',window.nxExpedientes);
           console.log('[nxExpCreate] OK:',exp.fullName,'subfolders:',Object.keys(created));
+          // v9.95: Trigger auto-migration da TEMP per i VIN del nuovo expediente
+          if(typeof window.nxMigrateTempDocs==='function'){
+            setTimeout(function(){window.nxMigrateTempDocs(exp);},500);
+          }
           cb(true,exp);
         }
       });
@@ -4210,6 +4214,138 @@ window.nxExpUploadDoc=function(expId,subfolder,fileName,blob,cb){
     exp.updatedAt=new Date().toISOString();
     SS('nxExpedientes',window.nxExpedientes);
     cb(true,{name:data.name,webUrl:data.webUrl,id:data.id});
+  });
+};
+
+// ===========================================================================
+// v9.95: TEMP folder helper - cartella per docs proveedor su VIN ancora libre
+// Struttura SharePoint:
+//   NEXO STORAGE / EXP.GEN DMCAR GROUP / __TEMP / PROVEEDOR /
+//   NEXO STORAGE / EXP.GEN INNO / __TEMP / PROVEEDOR /
+//   NEXO STORAGE / EXP.GEN IMPEX / __TEMP / PROVEEDOR /
+// ===========================================================================
+window.nxTempEnsureFolder=function(companyCode,subfolder,cb){
+  // companyCode: DMCAR, INNO, IMPEX
+  // subfolder: PROVEEDOR, TRANSPORTE, BROKER
+  if(!window.nxSpConfig||!window.nxSpConfig.rootFolders)return cb(false,'SharePoint no configurado');
+  var rf=window.nxSpConfig.rootFolders[companyCode];
+  if(!rf)return cb(false,'Root folder '+companyCode+' no encontrado');
+  var siteId=window.nxSpConfig.siteId;var driveId=window.nxSpConfig.driveId;
+  // Cache folder ids
+  if(!window.nxTempFolders)window.nxTempFolders=LS('nxTempFolders',{});
+  var key=companyCode+'/'+subfolder;
+  if(window.nxTempFolders[key]){
+    return cb(true,window.nxTempFolders[key]);
+  }
+  // Step 1: trova/crea __TEMP dentro EXP.GEN [Impresa]
+  NX_SP.findOrCreateFolder(siteId,driveId,rf.id,'__TEMP',true,function(ok1,tempFolder){
+    if(!ok1)return cb(false,'Error creando __TEMP: '+tempFolder);
+    // Step 2: dentro __TEMP, crea sottocartella (PROVEEDOR/TRANSPORTE/BROKER)
+    NX_SP.findOrCreateFolder(siteId,driveId,tempFolder.id,subfolder,true,function(ok2,subFolder){
+      if(!ok2)return cb(false,'Error creando '+subfolder+': '+subFolder);
+      var info={
+        siteId:siteId,
+        driveId:driveId,
+        tempFolderId:tempFolder.id,
+        subFolderId:subFolder.id,
+        subFolderUrl:subFolder.webUrl,
+        companyCode:companyCode,
+        subfolder:subfolder
+      };
+      window.nxTempFolders[key]=info;
+      SS('nxTempFolders',window.nxTempFolders);
+      cb(true,info);
+    });
+  });
+};
+
+// Upload file in cartella TEMP di una impresa
+// opts: {companyCode, subfolder, fileName, blob, vins:[], parsed (per metadata)}
+window.nxTempUploadDoc=function(opts,cb){
+  nxTempEnsureFolder(opts.companyCode,opts.subfolder||'PROVEEDOR',function(ok,info){
+    if(!ok)return cb(false,info);
+    NX_SP.uploadFile(info.siteId,info.driveId,info.subFolderId,opts.fileName,opts.blob,function(okU,data){
+      if(!okU)return cb(false,data);
+      // Salva record in nxTempDocs[] per migrazione futura
+      if(!window.nxTempDocs)window.nxTempDocs=LS('nxTempDocs',[]);
+      window.nxTempDocs.push({
+        id:'tmp_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+        name:data.name,
+        webUrl:data.webUrl,
+        driveItemId:data.id,
+        companyCode:opts.companyCode,
+        subfolder:opts.subfolder||'PROVEEDOR',
+        vins:(opts.vins||[]).map(function(v){return String(v||'').toUpperCase();}),
+        parsed:opts.parsed||null,
+        uploadedAt:new Date().toISOString(),
+        migrated:false
+      });
+      SS('nxTempDocs',window.nxTempDocs);
+      cb(true,data);
+    });
+  });
+};
+
+// Migrazione automatica: chiamata quando viene creato un nuovo expediente
+// Cerca nxTempDocs con VIN in vehicleIds del nuovo expediente, li copia in
+// expediente reale e marca come migrated
+window.nxMigrateTempDocs=function(newExp){
+  if(!newExp||!newExp.vehicleIds||!newExp.vehicleIds.length)return;
+  if(!window.nxTempDocs||!window.nxTempDocs.length)return;
+  // Estrai tutti i VIN del nuovo expediente
+  var expVins=[];
+  newExp.vehicleIds.forEach(function(sid){
+    var s=stock.find(function(x){return String(x.id)===String(sid);});
+    if(!s)return;
+    if(s.vin)expVins.push(String(s.vin).toUpperCase());
+    if(s.vehicles&&s.vehicles.length){
+      s.vehicles.forEach(function(v){if(v.vin)expVins.push(String(v.vin).toUpperCase());});
+    }
+  });
+  expVins=expVins.filter(function(v){return v&&!/^pending/i.test(v);});
+  if(!expVins.length)return;
+  // Trova docs TEMP che hanno VIN in comune
+  var matches=window.nxTempDocs.filter(function(d){
+    if(d.migrated)return false;
+    if(d.companyCode!==newExp.companyCode)return false;
+    return (d.vins||[]).some(function(v){return expVins.indexOf(v)>=0;});
+  });
+  if(!matches.length){console.log('[nxMigrateTempDocs] No TEMP docs to migrate for',newExp.fullName);return;}
+  console.log('[nxMigrateTempDocs] Migrating',matches.length,'docs to',newExp.fullName);
+  if(typeof showToast==='function')showToast('\u26a1 Migrando '+matches.length+' doc(s) desde TEMP a '+newExp.fullName,4000);
+  // Per ogni doc match: scarica blob da TEMP → upload in expediente reale
+  // (Microsoft Graph supporta /content per download)
+  matches.forEach(function(doc){
+    nxFetchSpFileBlob(doc.driveItemId,function(ok,blob){
+      if(!ok){console.warn('[nxMigrateTempDocs] download failed:',doc.name);return;}
+      var subfolder=doc.subfolder||'PROVEEDOR';
+      nxExpUploadDoc(newExp.id,subfolder,doc.name,blob,function(okU,uploaded){
+        if(!okU){console.warn('[nxMigrateTempDocs] upload failed:',uploaded);return;}
+        // Marca come migrato
+        doc.migrated=true;
+        doc.migratedToExpId=newExp.id;
+        doc.migratedAt=new Date().toISOString();
+        SS('nxTempDocs',window.nxTempDocs);
+        // Elimina file da TEMP (cleanup)
+        NX_SP.deleteItem(window.nxSpConfig.siteId,window.nxSpConfig.driveId,doc.driveItemId,function(){});
+        console.log('[nxMigrateTempDocs] OK migrated:',doc.name,'\u2192',newExp.fullName);
+        if(typeof showToast==='function')showToast('\u2713 '+doc.name+' migrado a '+newExp.fullName,5000);
+      });
+    });
+  });
+};
+
+// Helper: scarica file da SharePoint come blob
+window.nxFetchSpFileBlob=function(driveItemId,cb){
+  if(!window.nxSpConfig||!window.nxSpConfig.siteId)return cb(false,'No config');
+  if(!NX_MS||!NX_MS.account)return cb(false,'No session');
+  NX_MS.getToken(function(token,terr){
+    if(terr||!token)return cb(false,terr||'no token');
+    var url='https://graph.microsoft.com/v1.0/sites/'+window.nxSpConfig.siteId+'/drives/'+window.nxSpConfig.driveId+'/items/'+driveItemId+'/content';
+    fetch(url,{headers:{'Authorization':'Bearer '+token}}).then(function(r){
+      if(!r.ok)return cb(false,'HTTP '+r.status);
+      return r.blob();
+    }).then(function(blob){if(blob)cb(true,blob);}).catch(function(e){cb(false,e.message);});
   });
 };
 
@@ -23117,10 +23253,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       mar:{bg:'rgba(168,85,247,0.10)',head:'#7e22ce',label:'MARGINI'},
       bro:{bg:'rgba(236,72,153,0.10)',head:'#9d174d',label:'BROKER'}
     };
-    var html='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px;font-family:monospace;min-width:2400px">';
+    var html='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px;font-family:monospace;min-width:2300px">';
     // Header riga 1: blocchi colorati
     html+='<thead><tr>'
-      +'<th colspan="4" style="padding:6px 10px;background:'+COL.gen.bg+';color:'+COL.gen.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.gen.label+'</th>'
+      +'<th colspan="3" style="padding:6px 10px;background:'+COL.gen.bg+';color:'+COL.gen.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.gen.label+'</th>'
       +'<th colspan="6" style="padding:6px 10px;background:'+COL.forn.bg+';color:'+COL.forn.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.forn.label+'</th>'
       +'<th colspan="7" style="padding:6px 10px;background:'+COL.cli.bg+';color:'+COL.cli.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.cli.label+'</th>'
       +'<th colspan="7" style="padding:6px 10px;background:'+COL.trasp.bg+';color:'+COL.trasp.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.trasp.label+' (acq + vend)</th>'
@@ -23133,10 +23269,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var thR=th+';text-align:right';
     var thC=th+';text-align:center';
     html+='<tr>'
-      // GENERAL (4)
+      // GENERAL (3) - rimossa Impresa
       +'<th style="'+th+'">Data</th>'
       +'<th style="'+th+'">N\u00b0 Exp</th>'
-      +'<th style="'+th+'">Impresa</th>'
       +'<th style="'+th+';border-right:2px solid var(--border)">VIN</th>'
       // FORNITORE (6)
       +'<th style="'+th+'">Fornitore</th>'
@@ -23196,15 +23331,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var vinShow=r.vin?(r.vin.length>14?r.vin.substring(0,8)+'\u2026'+r.vin.substring(r.vin.length-4):r.vin):'';
       var isVin=vinShow&&!/^pending/i.test(r.vin);
       var vinHtml=isVin?'<span title="'+esc(r.vin)+'">'+esc(vinShow)+'</span>':'<span style="color:var(--orange)">'+esc(r.vin||'\u2014')+'</span>';
-      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'\u2014';
+      // v9.95: N/A per stock in propiedad senza expediente
+      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isLibre?'<span style="color:var(--t4);font-style:italic">N/A</span>':'\u2014');
       // CELLA STD
       var td=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px'+(extra||'')+'">'+content+'</td>';};
       var tdR=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:right'+(extra||'')+'">'+content+'</td>';};
       html+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="numbersOpenVistaDetail(\''+esc(r.stockId)+'\','+r.lotIdx+')" onmouseover="this.style.opacity=0.85" onmouseout="this.style.opacity=1">'
-        // GENERAL
+        // GENERAL (3 cells - Impresa rimossa, è già implicita nel naming expediente)
         +td(fmtDate(r.createdAt||r.soldAt),bgGen)
-        +td(fmtTxt(expLabel),bgGen,';font-weight:600')
-        +td(fmtTxt(ext.impresa),bgGen)
+        +td(expLabel,bgGen,';font-weight:600')
         +td(vinHtml,bgGen,';border-right:2px solid var(--border)')
         // FORNITORE
         +td(fmtTxt(r.supplier),bgForn)
@@ -23357,7 +23492,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!records.length){alert('Sin datos para exportar');return;}
     function doExport(){
       var headers=[
-        'DATA','NUM. EXP.','IMPRESA','VIN',
+        'DATA','NUM. EXP.','VIN',
         'FORNITORE (AUTO)','N PF FORNITORE','DATA PAGAMENTO','IMPORTO ACQ',
         'Data Acconto','Importo Acconto',
         'CLIENTE','SELLER','FT/PROF VEN','DATA SALDO','IMPORTO VENDITA','Data Acconto V','Importo Acconto V',
@@ -23369,10 +23504,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       ];
       var rows=records.map(function(r){
         var ext=nxAccGetExtended(r);
+        var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isLibre?'N/A':'');
         return [
           r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
-          r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'',
-          ext.impresa,
+          expLabel,
           r.vin||'',
           r.supplier||'',
           ext.fornFt,
@@ -23438,15 +23573,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='expedientes')records=records.filter(function(r){return !!r.expediente;});
     else if(subTab==='pendientes')records=records.filter(function(r){return r.isVendido&&!r.expediente;});
     if(!records.length){alert('Sin datos para exportar');return;}
-    var headers=['DATA','NUM EXP','IMPRESA','VIN','FORNITORE','N PF','DATA PAG','IMP ACQ','ACC DATA','ACC IMP','CLIENTE','SELLER','FT VEND','DATA SALDO','IMP VEND','ACC V DATA','ACC V IMP','FORN TRASP','FT ACQ TR','DATA PAG TR','IMP ACQ TR','FT VEND TR','DATA INC TR','IMP VEND TR','BRAND','MODEL','VERSION','1A REG','KM','COLOR','DAMAGE','PROFIT AUTO','PROFIT TRASP','SELLER PROV','DESTINATARIO','FT PROV','DATA INC PROV','IMP PROV','REAL FEES'];
+    var headers=['DATA','NUM EXP','VIN','FORNITORE','N PF','DATA PAG','IMP ACQ','ACC DATA','ACC IMP','CLIENTE','SELLER','FT VEND','DATA SALDO','IMP VEND','ACC V DATA','ACC V IMP','FORN TRASP','FT ACQ TR','DATA PAG TR','IMP ACQ TR','FT VEND TR','DATA INC TR','IMP VEND TR','BRAND','MODEL','VERSION','1A REG','KM','COLOR','DAMAGE','PROFIT AUTO','PROFIT TRASP','SELLER PROV','DESTINATARIO','FT PROV','DATA INC PROV','IMP PROV','REAL FEES'];
     var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
     var lines=[headers.join(';')];
     records.forEach(function(r){
       var ext=nxAccGetExtended(r);
+      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isLibre?'N/A':'');
       lines.push([
         r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
-        r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):'',
-        ext.impresa,r.vin||'',r.supplier||'',ext.fornFt,ext.fornDataPag,r.buyPrice||0,ext.fornAccDate,ext.fornAccAmount||0,
+        expLabel,r.vin||'',r.supplier||'',ext.fornFt,ext.fornDataPag,r.buyPrice||0,ext.fornAccDate,ext.fornAccAmount||0,
         r.clientName||'',r.soldBy||'',ext.cliFt,ext.cliDataSaldo,r.salePrice||0,ext.cliAccDate,ext.cliAccAmount||0,
         ext.traspFornitore,ext.traspFtAcq,ext.traspDataPag,ext.traspAcqAmount||0,ext.traspFtVend,ext.traspDataInc,ext.traspVendAmount||0,
         r.brand||'',r.model||'',ext.version,ext.firstReg,ext.km||0,r.color||'',ext.damage||0,
@@ -23707,13 +23842,34 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     // VIN in propriedad (no expediente)
     if(inPropriedad.length>0){
+      // Raggruppa per impresa stimata
+      var byCompany={};
+      inPropriedad.forEach(function(p2){
+        var s=p2.stock;
+        var companyCode='DMCAR';
+        var pfm=(window.nxProformas||[]).find(function(prof){
+          return (prof.items||[]).some(function(it){return String(it.stockId)===String(s.id);});
+        });
+        if(pfm&&pfm.companyId){
+          var c=(nxCompanies||[]).find(function(co){return co.id===pfm.companyId;});
+          if(c){var nm=String(c.name||'').toUpperCase();if(nm.indexOf('INNO')>=0)companyCode='INNO';else if(nm.indexOf('IMPEX')>=0)companyCode='IMPEX';}
+        }
+        if(s.assignedCompanyCode)companyCode=s.assignedCompanyCode;
+        if(!byCompany[companyCode])byCompany[companyCode]=[];
+        byCompany[companyCode].push(p2);
+      });
       html+='<div style="background:rgba(245,158,11,.08);border-left:4px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
-        +'<strong style="color:#f59e0b">\u{1F3E0} '+inPropriedad.length+' veh\u00edculo(s) en propiedad (sin expediente)</strong>'
-        +'<div style="font-size:11px;color:var(--t3);margin-top:4px">Estos VIN existen en stock pero a\u00fan no vendidos. Los datos contables se asociar\u00e1n al stock pero no se subir\u00e1n a SharePoint.</div>'
-        +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px">Ver lista</summary><div style="font-size:10px;font-family:monospace;margin-top:6px;max-height:120px;overflow-y:auto">'
-        +inPropriedad.map(function(p){return '<div>'+esc(p.line.vin||'?')+' &middot; '+esc((p.stock.brand||'')+' '+(p.stock.model||''))+(p.line.amount?' &middot; '+p.line.amount.toLocaleString('es-ES',{maximumFractionDigits:2}):'')+'</div>';}).join('')
-        +'</div></details>'
-      +'</div>';
+        +'<strong style="color:#f59e0b">\u{1F3E0} '+inPropriedad.length+' veh\u00edculo(s) en propiedad &rarr; cartelle TEMP</strong>'
+        +'<div style="font-size:11px;color:var(--t3);margin-top:4px">Estos VIN existen en stock pero a\u00fan no vendidos. El doc se subir\u00e1 a una cartella temporal por impresa. Cuando se cree el expediente real, los docs se migrar\u00e1n autom\u00e1ticamente.</div>'
+        +'<div style="margin-top:8px;font-size:11px">';
+      Object.keys(byCompany).forEach(function(cc){
+        var arr=byCompany[cc];
+        html+='<div style="padding:5px 0"><strong>__TEMP/'+esc(cc)+'/PROVEEDOR/</strong> &mdash; '+arr.length+' VIN'
+          +'<details style="margin-top:4px"><summary style="cursor:pointer;font-size:10px;color:var(--t3)">Ver VIN</summary><div style="font-size:10px;font-family:monospace;margin-top:4px">'
+          +arr.map(function(p){return esc(p.line.vin||'?')+' &middot; '+esc((p.stock.brand||'')+' '+(p.stock.model||''));}).join('<br>')
+          +'</div></details></div>';
+      });
+      html+='</div></div>';
     }
     // VIN unmatched
     if(unmatchedLines.length>0){
@@ -23727,10 +23883,11 @@ document.querySelectorAll('.ovl').forEach(function(el){
     // Action plan summary
     html+='<div style="background:var(--bg3);padding:12px;border-radius:6px;margin-bottom:12px;font-size:11px;line-height:1.7">'
       +'<strong style="color:var(--t1);font-size:12px">\ud83d\udcdd Plan de archivado:</strong><br>'
-      +'\u2022 Subir <code>'+esc(file.name)+'</code> en carpeta <strong>PROVEEDOR/</strong> de '+expCount+' expediente(s)<br>'
-      +'\u2022 Asociar datos contables (n\u00famero, fecha, importo) a '+(expCount>0?Object.keys(matchedExps).reduce(function(a,k){return a+matchedExps[k].lines.length;},0):0)+' VIN en expedientes<br>'
-      +(inPropriedad.length>0?'\u2022 Asociar datos contables a '+inPropriedad.length+' VIN en stock (sin upload a SharePoint)<br>':'')
-      +'\u2022 La Vista Contable se actualizar\u00e1 autom\u00e1ticamente con: <code>'+esc(parsed.docNumber||'?')+'</code> &middot; '+esc(parsed.docDate||'?')
+      +(expCount>0?'\u2022 Subir <code>'+esc(file.name)+'</code> en carpeta <strong>PROVEEDOR/</strong> de '+expCount+' expediente(s)<br>':'')
+      +(inPropriedad.length>0?'\u2022 Subir copia tambi\u00e9n a <strong>__TEMP/[Impresa]/PROVEEDOR/</strong> para los VIN sin expediente<br>':'')
+      +(expCount>0?'\u2022 Asociar datos contables (n\u00famero, fecha, importo) a '+Object.keys(matchedExps).reduce(function(a,k){return a+matchedExps[k].lines.length;},0)+' VIN en expedientes<br>':'')
+      +(inPropriedad.length>0?'\u2022 Cuando se cree expediente para estos VIN, los docs se <strong>migrar\u00e1n autom\u00e1ticamente</strong><br>':'')
+      +'\u2022 La Vista Contable se actualizar\u00e1 con: <code>'+esc(parsed.docNumber||'?')+'</code> &middot; '+esc(parsed.docDate||'?')
     +'</div>';
     html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
       +'<button class="btn bg" onclick="closeM(\'m-ai-doc\')">Cancelar</button>'
@@ -23763,39 +23920,79 @@ document.querySelectorAll('.ovl').forEach(function(el){
     };
     var spFolder=folderMap[docTypeNorm]||'PROVEEDOR';
     var expIds=Object.keys(ctx.matchedExps);
-    var totalActions=expIds.length+ctx.inPropriedad.length;
-    if(typeof showToast==='function')showToast('\u26a1 Procesando '+totalActions+' acciones...',3000);
-    // Step 1: Upload SharePoint a tutti expedientes
-    var pendingUploads=expIds.length;
+    // v9.95: Raggruppa VIN in propriedad per impresa per upload TEMP
+    var tempByCompany={}; // companyCode → [{stock, line}]
+    ctx.inPropriedad.forEach(function(p2){
+      var s=p2.stock;
+      // Determina companyCode dello stock (va inferito perché lo stock potrebbe non avere companyId)
+      var companyCode='DMCAR'; // default
+      // Cerca da proformas/facturas associate
+      var pf=(window.nxProformas||[]).find(function(prof){
+        return (prof.items||[]).some(function(it){return String(it.stockId)===String(s.id);});
+      });
+      if(pf&&pf.companyId){
+        var c=(nxCompanies||[]).find(function(co){return co.id===pf.companyId;});
+        if(c){
+          var nm=String(c.name||'').toUpperCase();
+          if(nm.indexOf('INNO')>=0)companyCode='INNO';
+          else if(nm.indexOf('IMPEX')>=0)companyCode='IMPEX';
+        }
+      }
+      // Salva impresa risolta sullo stock per usi futuri
+      if(!s.assignedCompanyCode)s.assignedCompanyCode=companyCode;
+      if(!tempByCompany[companyCode])tempByCompany[companyCode]={vins:[],lines:[],stocks:[]};
+      tempByCompany[companyCode].vins.push(p2.line.vin);
+      tempByCompany[companyCode].lines.push(p2);
+      tempByCompany[companyCode].stocks.push(s);
+    });
+    var tempCompanies=Object.keys(tempByCompany);
+    var totalActions=expIds.length+tempCompanies.length;
+    if(totalActions===0){alert('Nada para archivar');return;}
+    if(typeof showToast==='function')showToast('\u26a1 Procesando '+expIds.length+' expedientes + '+tempCompanies.length+' TEMP...',3500);
+    // Step 1: Upload SharePoint a tutti expedientes match
+    var pendingUploads=expIds.length+tempCompanies.length;
     var uploadResults={ok:0,errs:[]};
-    if(expIds.length===0)afterUploads();
+    if(pendingUploads===0)afterAll();
     expIds.forEach(function(eid){
       var m=ctx.matchedExps[eid];
-      // Scrivi accDocs su ogni stock di questo expediente
       m.lines.forEach(function(ll){
         nxWriteAccDoc(ll.stock,ll.line.vin,p,ll.line.amount);
       });
-      // Upload file in cartella spFolder dell'expediente
       nxExpUploadDoc(eid,spFolder,ctx.file.name,ctx.file,function(success,data){
         pendingUploads--;
         if(success)uploadResults.ok++;
         else uploadResults.errs.push(eid+': '+data);
-        if(pendingUploads===0)afterUploads();
+        if(pendingUploads===0)afterAll();
       });
     });
-    function afterUploads(){
-      // Step 2: Scrivi accDocs su VIN in propriedad (solo dati, no SharePoint)
-      ctx.inPropriedad.forEach(function(p2){
-        nxWriteAccDoc(p2.stock,p2.line.vin,p,p2.line.amount);
+    // Step 2: per ogni impresa con VIN in propiedad, upload a TEMP
+    tempCompanies.forEach(function(cc){
+      var bucket=tempByCompany[cc];
+      // Scrivi accDocs sui stock
+      bucket.lines.forEach(function(ll){
+        nxWriteAccDoc(ll.stock,ll.line.vin,p,ll.line.amount);
       });
-      // Salva stock
+      nxTempUploadDoc({
+        companyCode:cc,
+        subfolder:spFolder,
+        fileName:ctx.file.name,
+        blob:ctx.file,
+        vins:bucket.vins,
+        parsed:p
+      },function(success,data){
+        pendingUploads--;
+        if(success)uploadResults.ok++;
+        else uploadResults.errs.push('TEMP/'+cc+': '+data);
+        if(pendingUploads===0)afterAll();
+      });
+    });
+    function afterAll(){
+      // Salva stock con accDocs
       SS('stock',stock);
       closeM('m-ai-doc');
-      // Refresh Vista
       if(typeof numbersRenderVista==='function')numbersRenderVista();
-      // Toast finale
-      var msg='\u2728 Doc archivado: '+uploadResults.ok+' SharePoint';
-      if(ctx.inPropriedad.length>0)msg+=', '+ctx.inPropriedad.length+' propiedad';
+      var msg='\u2728 Doc archivado: '+expIds.length+' expediente(s)';
+      if(tempCompanies.length>0)msg+=' + '+tempCompanies.length+' TEMP';
       if(uploadResults.errs.length>0)msg+=' \u00b7 '+uploadResults.errs.length+' errores';
       if(typeof showToast==='function')showToast(msg,6000);
       if(uploadResults.errs.length>0)console.warn('[AI archive] Errors:',uploadResults.errs);
