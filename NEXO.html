@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.59 — DMCAR GROUP CRM | 2026-05-02 | Stock Vivo: bulk "Cambiar tipo" ora funziona ANCHE per veicoli singoli (selezionati nel detail row con veh-sel-chk), non solo per lotti. Quando una singola unità viene marcata come "propio", viene "scorporata" dal lotto: nuovo stock entry creato come singolo lotto in propiedad, con units=1, ereditando dati dal lotto madre. -->
+<!-- NEXO v9.60 — DMCAR GROUP CRM | 2026-05-02 | FIX BUG CRITICO Stock Vivo: 1) ID collision in scorporo (Date.now() + suffix garantito unique); 2) doppia gestione lotto + VIN dello stesso parent (skip vehicle split se parent già in stkSel); 3) deep clone parent.vehicles[] prima di scorporare (evita reference mutate); 4) backup automatico in localStorage prima dello split (recovery via console); 5) Stock Vivo "En propiedad" tab ora ha detail row dropdown identico a Trading (riusa stessa render logic, niente codice duplicato). RECOVERY: console comando window.stkRecoverFromBackup() per ripristinare ultimo backup. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5604,7 +5604,7 @@ window.stkRefreshAssignedDatalist=stkRefreshAssignedDatalist;
 
 // Bulk: cambia ownership dei selezionati
 // v9.59: gestisce ANCHE stkVehSel (unità singole nei detail row)
-// Per le unità singole: scorpora dal lotto madre creando nuovo stock entry singolo
+// v9.60: BACKUP automatico + fix ID collision + fix double-handle parent
 function stkBulkSetOwnership(){
   var lotCount=stkSel.size;
   var vehCount=(typeof stkVehSel!=='undefined'&&stkVehSel)?stkVehSel.size:0;
@@ -5619,7 +5619,55 @@ function stkBulkSetOwnership(){
   var choice=prompt('Cambiar tipo de stock:\n\n'+summary+'\n  1. Trading (no en propiedad)\n  2. En propiedad\n\nEscribe 1 o 2:');
   if(!choice)return;
   var newOw=choice==='2'?'propio':'live_trading';
-  var lotChanged=0,vehSplit=0;
+
+  // === v9.60: BACKUP AUTOMATICO prima dello split ===
+  // Salva snapshot completo in localStorage (separato dalla chiave principale)
+  // Permette recovery via console: window.stkRecoverFromBackup()
+  try{
+    var backupKey='nx5_stock_backup_'+Date.now();
+    var backupData={
+      timestamp:new Date().toISOString(),
+      operation:'bulk_set_ownership',
+      newOwnership:newOw,
+      lotCount:lotCount,
+      vehCount:vehCount,
+      stockSnapshot:JSON.parse(JSON.stringify(stock))
+    };
+    localStorage.setItem(backupKey,JSON.stringify(backupData));
+    // Mantieni solo gli ultimi 5 backup
+    var allKeys=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k&&k.indexOf('nx5_stock_backup_')===0)allKeys.push(k);
+    }
+    allKeys.sort();
+    while(allKeys.length>5){
+      localStorage.removeItem(allKeys.shift());
+    }
+    console.log('[stkBulkSetOwnership] Backup creado:',backupKey);
+    window._lastStkBackupKey=backupKey;
+  }catch(eBkp){
+    console.warn('[stkBulkSetOwnership] backup error:',eBkp);
+  }
+
+  var lotChanged=0,vehSplit=0,errors=0;
+  // === v9.60: PROTEZIONE — se parent è in stkSel E ha VIN selezionati, ignora i VIN
+  // (cambia ownership al lotto intero, no scorporo confuso)
+  var parentsInLotSel={};
+  stkSel.forEach(function(id){parentsInLotSel[String(id)]=true;});
+  if(typeof stkVehSel!=='undefined'&&stkVehSel){
+    var keysToRemove=[];
+    stkVehSel.forEach(function(key){
+      var sid=key.split('::')[0];
+      if(parentsInLotSel[sid])keysToRemove.push(key);
+    });
+    keysToRemove.forEach(function(k){stkVehSel.delete(k);});
+    if(keysToRemove.length>0){
+      console.log('[stkBulkSetOwnership] '+keysToRemove.length+' VIN ignorados (lote padre ya seleccionado)');
+    }
+    vehCount=stkVehSel.size; // ricomputo
+  }
+
   // === 1. Cambia ownership dei lotti interi selezionati ===
   stock.forEach(function(s){
     if(stkSel.has(s.id)){
@@ -5635,66 +5683,91 @@ function stkBulkSetOwnership(){
       var parts=key.split('::');
       var sid=parts[0];
       var vi=parseInt(parts[1],10);
+      if(isNaN(vi))return;
       if(!groups[sid])groups[sid]=[];
       groups[sid].push(vi);
     });
+    // Counter per uniqueness ID (anti-collision Date.now())
+    var splitIdCounter=0;
     Object.keys(groups).forEach(function(sid){
-      var idx=stock.findIndex(function(s){return String(s.id)===String(sid);});
-      if(idx<0)return;
-      var parent=stock[idx];
-      if(!parent.vehicles||!parent.vehicles.length)return;
-      // Se TUTTE le unità del lotto sono selezionate, basta cambiare ownership al lotto
-      if(groups[sid].length===parent.vehicles.length){
-        parent.ownership=newOw;
-        vehSplit+=groups[sid].length;
-        return;
-      }
-      // Altrimenti scorpora le selezionate in nuovi entry singoli
-      // Sort indices DESC per rimuoverle dall'array senza shift
-      var indices=groups[sid].sort(function(a,b){return b-a;});
-      indices.forEach(function(vi){
-        if(!parent.vehicles[vi])return;
-        var v=parent.vehicles[vi];
-        // Crea nuovo stock entry singolo che eredita dal padre
-        var newEntry={
-          id:'s'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-          internalId:(parent.internalId||'DMCAR-NEW')+'-S'+(vi+1),
-          date:parent.date||new Date().toISOString().split('T')[0],
-          supplier:parent.supplier||'',
-          brand:parent.brand||'',
-          model:parent.model||'',
-          version:parent.version||'',
-          reg:v.reg||parent.reg||'',
-          units:'1',
-          kms:v.kms||parent.kms||'',
-          colors:v.color||parent.colors||'',
-          damage:v.damage||parent.damage||'',
-          equip:parent.equip||'',
-          buy:v.buy||parent.buy||'',
-          sell:v.sell||parent.sell||'',
-          marginAmount:v.marginAmount||parent.marginAmount||'',
-          pickup:parent.pickup||'',
-          status:parent.status||'Stock',
-          notes:'(Separado de '+(parent.internalId||sid)+')'+(parent.notes&&parent.notes!=='--'?' '+parent.notes:''),
-          ownership:newOw,
-          commercialStatus:'libre',
-          commercialUpdatedAt:new Date().toISOString(),
-          assignedTo:'',
-          // Riferimento al lotto madre (per tracciabilità)
-          splitFromLotId:parent.id,
-          splitFromVin:v.vin||'',
-          // Dati VIN come "vehicles" array di 1 (per consistency con il resto del CRM)
-          vehicles:[Object.assign({},v)]
-        };
-        stock.push(newEntry);
-        // Rimuovi dalla lista vehicles del padre
-        parent.vehicles.splice(vi,1);
-        vehSplit++;
-      });
-      // Aggiorna units del padre se ha campo numerico
-      if(parent.units&&!isNaN(parseInt(parent.units,10))){
-        var newUnits=parent.vehicles.length;
-        parent.units=String(newUnits>0?newUnits:1);
+      try{
+        var idx=stock.findIndex(function(s){return String(s.id)===String(sid);});
+        if(idx<0){
+          console.warn('[stkBulkSetOwnership] parent not found:',sid);
+          errors++;
+          return;
+        }
+        var parent=stock[idx];
+        if(!parent.vehicles||!parent.vehicles.length){
+          console.warn('[stkBulkSetOwnership] parent no vehicles[]:',sid,'(skip split, change parent ownership instead)');
+          parent.ownership=newOw;
+          vehSplit+=groups[sid].length;
+          return;
+        }
+        // Filtra indici validi (esistenti in vehicles[])
+        var validIndices=groups[sid].filter(function(vi){return vi>=0&&vi<parent.vehicles.length;});
+        if(validIndices.length===0){
+          console.warn('[stkBulkSetOwnership] no valid vehicle indices for',sid);
+          return;
+        }
+        // Se TUTTE le unità del lotto sono selezionate, basta cambiare ownership al lotto
+        if(validIndices.length===parent.vehicles.length){
+          parent.ownership=newOw;
+          vehSplit+=validIndices.length;
+          return;
+        }
+        // === v9.60: DEEP CLONE dei vehicles selezionati PRIMA di splice ===
+        // Evita reference mutate
+        var vehiclesToSplit=validIndices.map(function(vi){
+          return JSON.parse(JSON.stringify(parent.vehicles[vi]));
+        });
+        // === Crea NUOVI entry singoli con ID GARANTITO unique ===
+        vehiclesToSplit.forEach(function(v,splitIdx){
+          splitIdCounter++;
+          var newEntry={
+            // v9.60: ID univoco con counter + random + timestamp microsecond
+            id:'s'+Date.now()+'_'+splitIdCounter+'_'+Math.random().toString(36).slice(2,9),
+            internalId:(parent.internalId||'DMCAR-NEW')+'-S'+(splitIdCounter),
+            date:parent.date||new Date().toISOString().split('T')[0],
+            supplier:parent.supplier||'',
+            brand:parent.brand||'',
+            model:parent.model||'',
+            version:parent.version||'',
+            reg:v.reg||parent.reg||'',
+            units:'1',
+            kms:v.kms||parent.kms||'',
+            colors:v.color||parent.colors||'',
+            damage:v.damage||parent.damage||'',
+            equip:parent.equip||'',
+            buy:v.buy||parent.buy||'',
+            sell:v.sell||parent.sell||'',
+            marginAmount:v.marginAmount||parent.marginAmount||'',
+            pickup:parent.pickup||'',
+            status:parent.status||'Stock',
+            notes:'(Separado de '+(parent.internalId||sid)+')'+(parent.notes&&parent.notes!=='--'?' '+parent.notes:''),
+            ownership:newOw,
+            commercialStatus:'libre',
+            commercialUpdatedAt:new Date().toISOString(),
+            assignedTo:'',
+            splitFromLotId:parent.id,
+            splitFromVin:v.vin||'',
+            vehicles:[v]
+          };
+          stock.push(newEntry);
+          vehSplit++;
+        });
+        // === Ora rimuovi le unità dal padre — sort DESC per non shiftare ===
+        var sortedDesc=validIndices.slice().sort(function(a,b){return b-a;});
+        sortedDesc.forEach(function(vi){
+          parent.vehicles.splice(vi,1);
+        });
+        // Aggiorna units del padre
+        if(parent.units&&!isNaN(parseInt(parent.units,10))){
+          parent.units=String(parent.vehicles.length>0?parent.vehicles.length:1);
+        }
+      }catch(eParent){
+        console.error('[stkBulkSetOwnership] error processing parent',sid,':',eParent);
+        errors++;
       }
     });
   }
@@ -5705,10 +5778,58 @@ function stkBulkSetOwnership(){
   if(lotChanged>0)msg+=lotChanged+' lote'+(lotChanged!==1?'s':'')+', ';
   if(vehSplit>0)msg+=vehSplit+' VIN '+(vehSplit!==1?'separados':'separado')+', ';
   msg+='\u2192 '+(newOw==='propio'?'En propiedad':'Trading');
+  if(errors>0)msg+=' ('+errors+' errores - revisar consola)';
   if(typeof showToast==='function')showToast(msg);
   fStk();
 }
 window.stkBulkSetOwnership=stkBulkSetOwnership;
+
+// === v9.60: RECOVERY function — ripristina ultimo backup ===
+// Uso: window.stkRecoverFromBackup() in console
+// Lista backup: window.stkListBackups()
+function stkListBackups(){
+  var backups=[];
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);
+    if(k&&k.indexOf('nx5_stock_backup_')===0){
+      try{
+        var data=JSON.parse(localStorage.getItem(k));
+        backups.push({key:k,timestamp:data.timestamp,operation:data.operation,stockCount:(data.stockSnapshot||[]).length});
+      }catch(e){}
+    }
+  }
+  backups.sort(function(a,b){return b.key.localeCompare(a.key);});
+  console.table(backups);
+  return backups;
+}
+window.stkListBackups=stkListBackups;
+
+function stkRecoverFromBackup(backupKey){
+  try{
+    if(!backupKey){
+      // Auto-pick l'ultimo
+      var backups=stkListBackups();
+      if(!backups.length){alert('No hay backups disponibles.');return false;}
+      backupKey=backups[0].key;
+    }
+    var raw=localStorage.getItem(backupKey);
+    if(!raw){alert('Backup no encontrado: '+backupKey);return false;}
+    var data=JSON.parse(raw);
+    if(!data.stockSnapshot||!Array.isArray(data.stockSnapshot)){alert('Backup corrupto.');return false;}
+    if(!confirm('\u26a0\ufe0f RESTAURAR backup?\n\nTimestamp: '+data.timestamp+'\nOperaci\u00f3n: '+data.operation+'\nVeh\u00edculos en backup: '+data.stockSnapshot.length+'\n\nEsta acci\u00f3n SOBRESCRIBE el stock actual ('+stock.length+' veh\u00edculos).\n\nContinuar?'))return false;
+    stock=data.stockSnapshot;
+    SS('stock',stock);
+    if(typeof fStk==='function')fStk();
+    alert('\u2713 Backup restaurado: '+stock.length+' veh\u00edculos.');
+    console.log('[stkRecoverFromBackup] Restaurado:',data.timestamp);
+    return true;
+  }catch(err){
+    console.error('[stkRecoverFromBackup] error:',err);
+    alert('Error: '+err.message);
+    return false;
+  }
+}
+window.stkRecoverFromBackup=stkRecoverFromBackup;
 
 // === KANBAN INTEGRATION: Hot/Won → Stock Vivo update ===
 // Invocata quando un contact passa a hot/won con vehicleIds collegati.
