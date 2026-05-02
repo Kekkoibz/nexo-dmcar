@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.54 — DMCAR GROUP CRM | 2026-05-02 | Fix bottone "Ver" su card lista: ora passa al tab Contactos applicando il filtro lista (formato "static:id" o "dynamic:id") invece di mostrare un alert placeholder. Funziona per liste statiche, dinamiche legacy, e liste auto-create dal routing. -->
+<!-- NEXO v9.55 — DMCAR GROUP CRM | 2026-05-02 | Aggiunta colonna "Listas" nella tabella Contactos B2B (list view + card view): mostra come chip/badge le liste Marketing a cui il contatto appartiene (match per email tra contacts.email e mkContacts.email→mkLists.contactIds). Click su chip apre la lista filtrata in Marketing. Aggiornato in tempo reale a ogni renderCont. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -535,7 +535,7 @@ En que te puedo ayudar hoy?</div></div>
           <table>
             <thead><tr>
               <th>Nombre</th><th>Empresa</th><th>Pais</th><th>Tipo</th><th>Rol</th><th>Tel</th><th>Email</th>
-              <th>Etiquetas</th><th>Estado</th><th>Ult.contacto</th>
+              <th>Etiquetas</th><th>Listas</th><th>Estado</th><th>Ult.contacto</th>
               <th style="width:140px">Acciones</th>
             </tr></thead>
             <tbody id="cont-list-body"></tbody>
@@ -3712,6 +3712,66 @@ function mkExecuteAutoroutingForWithMatches(contactB2B,selectedMatches){
 window.mkRoutingSingleConfirm=mkRoutingSingleConfirm;
 window.mkRoutingSingleSkip=mkRoutingSingleSkip;
 window.mkExecuteAutoroutingForWithMatches=mkExecuteAutoroutingForWithMatches;
+
+// v9.55: Helper "trova le liste Marketing del contatto B2B"
+// Match per EMAIL: cerca il record mkContact con stessa email, poi le sue liste.
+// Ritorna array [{id, name, type}] o [] se contatto non sincronizzato in Marketing.
+function mkGetListsForB2BContact(b2bContact){
+  try{
+    if(!b2bContact||!b2bContact.email)return [];
+    if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts))return [];
+    if(typeof mkLists==='undefined'||!Array.isArray(mkLists))return [];
+    var email=(typeof mkNormEmail==='function')?mkNormEmail(b2bContact.email):String(b2bContact.email).trim().toLowerCase();
+    if(!email)return [];
+    var mk=mkContacts.find(function(c){
+      var ce=(typeof mkNormEmail==='function')?mkNormEmail(c.email||''):String(c.email||'').trim().toLowerCase();
+      return ce===email;
+    });
+    if(!mk)return [];
+    return (typeof mkGetContactLists==='function')?mkGetContactLists(mk):[];
+  }catch(err){
+    console.warn('[mkGetListsForB2BContact] error:',err);
+    return [];
+  }
+}
+
+// v9.55: Render HTML chip delle liste per la cella della tabella B2B
+// max 3 chip visibili + "+N" se ci sono di più. Click su chip apre lista in Marketing.
+function mkRenderListsCellForB2B(b2bContact){
+  var lists=mkGetListsForB2BContact(b2bContact);
+  if(lists.length===0)return '<span style="color:var(--t4);font-size:10px">--</span>';
+  var maxShow=3;
+  var visible=lists.slice(0,maxShow);
+  var hiddenCount=lists.length-maxShow;
+  var html='<div class="fc g4" style="flex-wrap:wrap">';
+  visible.forEach(function(l){
+    var isStatic=(l.type==='static');
+    var bg=isStatic?'rgba(37,99,235,.15)':'rgba(245,158,11,.15)';
+    var fg=isStatic?'var(--acc)':'#92400e';
+    var icon=isStatic?'\ud83d\udcc4':'\u26a1';
+    html+='<span title="Click para ver la lista en Marketing" onclick="mkOpenListFromB2B(\''+esc(l.id)+'\')" style="background:'+bg+';color:'+fg+';padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">'+icon+' '+esc(l.name)+'</span>';
+  });
+  if(hiddenCount>0){
+    var allNames=lists.map(function(l){return (l.type==='static'?'\ud83d\udcc4 ':'\u26a1 ')+l.name;}).join(', ');
+    html+='<span title="'+esc(allNames)+'" style="background:var(--bg3);color:var(--t3);padding:2px 6px;border-radius:5px;font-size:9px;font-weight:600;cursor:help">+'+hiddenCount+'</span>';
+  }
+  html+='</div>';
+  return html;
+}
+
+// v9.55: handler click chip lista da Contactos B2B → switcha a Marketing e apre la lista
+function mkOpenListFromB2B(listId){
+  if(typeof go==='function'){
+    go('marketing');
+    setTimeout(function(){
+      if(typeof mkOpenList==='function')mkOpenList(listId);
+    },150);
+  }
+}
+
+window.mkGetListsForB2BContact=mkGetListsForB2BContact;
+window.mkRenderListsCellForB2B=mkRenderListsCellForB2B;
+window.mkOpenListFromB2B=mkOpenListFromB2B;
 
 // Dialog bulk (con elenco completo + Sí/Sí a todos/No)
 function mkRoutingShowBulkDialog(){
@@ -6912,6 +6972,18 @@ function renderCont(){
           return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
         }).join('')+'</div>';
       }
+      // v9.55: chip liste Marketing
+      var listsHtml='';
+      var mkLs=(typeof mkGetListsForB2BContact==='function')?mkGetListsForB2BContact(c):[];
+      if(mkLs.length>0){
+        listsHtml='<div class="fc g4 mb10" style="flex-wrap:wrap">'+mkLs.slice(0,4).map(function(l){
+          var isStatic=(l.type==='static');
+          var bg=isStatic?'rgba(37,99,235,.15)':'rgba(245,158,11,.15)';
+          var fg=isStatic?'var(--acc)':'#92400e';
+          var icon=isStatic?'\ud83d\udcc4':'\u26a1';
+          return '<span title="Click para ver la lista" onclick="event.stopPropagation();mkOpenListFromB2B(\''+esc(l.id)+'\')" style="background:'+bg+';color:'+fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600;cursor:pointer">'+icon+' '+esc(l.name)+'</span>';
+        }).join('')+(mkLs.length>4?'<span style="font-size:9px;color:var(--t4)">+'+(mkLs.length-4)+'</span>':'')+'</div>';
+      }
       return'<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((c.name||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(c.name||'')+inboxBadgeHtml(c.email,c.id)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(c.company||'')+'</div></div></div><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></div>'+
       '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
         (c.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(c.country)+'</span>':'')+
@@ -6919,6 +6991,7 @@ function renderCont(){
         (c.clientType?ctBadge(c.clientType):'')+
       '</div>'+
       labelsHtml+
+      listsHtml+
       (c.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>':'')+
       '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone||'')+'</span><span>'+fmtD(c.lastContact||'')+'</span></div>'+
       (c.phone?'<div class="fc g6 mt8">'+quickActionsHtml(c.phone,'md')+'</div>':'')+
@@ -6947,6 +7020,7 @@ function renderCont(){
         '<td style="font-family:monospace;font-size:11px">'+esc(c.phone||'')+'</td>'+
         '<td style="font-size:11px">'+esc(c.email||'')+'</td>'+
         '<td style="max-width:160px;line-height:1.6">'+lblsh+'</td>'+
+        '<td style="max-width:200px;line-height:1.6">'+(typeof mkRenderListsCellForB2B==='function'?mkRenderListsCellForB2B(c):'<span style="color:var(--t4);font-size:10px">--</span>')+'</td>'+
         '<td><span class="tag '+contTagClass(c.tag||'new')+'">'+esc(CONT_TAG_LABEL[c.tag]||c.tag||'New')+'</span></td>'+
         '<td style="font-size:10px;color:var(--t3)">'+fmtD(c.lastContact||'')+'</td>'+
         '<td><div class="fc g4">'+
