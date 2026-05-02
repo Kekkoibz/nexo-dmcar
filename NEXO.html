@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.60 — DMCAR GROUP CRM | 2026-05-02 | FIX BUG CRITICO Stock Vivo: 1) ID collision in scorporo (Date.now() + suffix garantito unique); 2) doppia gestione lotto + VIN dello stesso parent (skip vehicle split se parent già in stkSel); 3) deep clone parent.vehicles[] prima di scorporare (evita reference mutate); 4) backup automatico in localStorage prima dello split (recovery via console); 5) Stock Vivo "En propiedad" tab ora ha detail row dropdown identico a Trading (riusa stessa render logic, niente codice duplicato). RECOVERY: console comando window.stkRecoverFromBackup() per ripristinare ultimo backup. -->
+<!-- NEXO v9.62 — DMCAR GROUP CRM | 2026-05-02 | NUOVA Validación import: check "precio de compra" mancante prima di completare l'import. Modal blocking m-buy-ask con 3 azioni: 1) "Aplicar a todos los faltantes" (input numerico unico applicato a tutti); 2) "Saltar (importar sin precio)" (mantiene buy vuoto); 3) "Cancelar import" (annulla completamente). Riusa pattern già consolidato di askPickupForVehicles. Esegue DOPO il check pickup (sequenza: pickup → buy → finishImport). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1342,6 +1342,24 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fc g8" style="flex-wrap:wrap">
       <button class="btn bp" id="pk-apply-all" style="flex:1">&#9889; Aplicar a todos</button>
       <button class="btn bg" id="pk-skip" style="flex:0 0 auto">Saltar (dejar vacio)</button>
+    </div>
+  </div>
+</div>
+
+<!-- v9.62: VALIDACIÓN PRECIO COMPRA AL IMPORTAR -->
+<div class="ovl" id="m-buy-ask">
+  <div class="modal">
+    <div class="fbet mb14"><div class="mt">&#9888;&#65039; Falta precio de compra</div><button class="btn bg" id="bk-cancel-x" style="padding:5px 10px">X</button></div>
+    <div id="bk-summary" style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:14px;line-height:1.5"></div>
+    <div class="mb10">
+      <label>Precio de compra (&euro;)</label>
+      <input type="text" id="bk-input" placeholder="Ej: 35000" autocomplete="off" inputmode="numeric">
+      <div style="font-size:10px;color:var(--t3);margin-top:3px;line-height:1.4">Solo n&uacute;meros. El mismo valor se aplicar&aacute; a todos los veh&iacute;culos sin precio.</div>
+    </div>
+    <div class="fc g8" style="flex-wrap:wrap">
+      <button class="btn bp" id="bk-apply-all" style="flex:1">&#9889; Aplicar a todos los faltantes</button>
+      <button class="btn bg" id="bk-skip" style="flex:0 0 auto" title="Importa con precio vac&iacute;o, lo a&ntilde;adir&aacute;s manualmente despu&eacute;s">Saltar</button>
+      <button class="btn bd" id="bk-cancel" style="flex:0 0 auto">Cancelar import</button>
     </div>
   </div>
 </div>
@@ -6566,11 +6584,27 @@ function iHandleResp(resp,manualSup){
       },1500);
     }
 
+    // v9.62: validation chain — pickup poi buy poi finishImport
+    function checkBuyAndFinish(){
+      // Verifica veicoli senza buy (precio compra)
+      function hasBuy(p){return p&&String(p).trim()!==''&&String(p).trim()!=='--'&&String(p).trim()!=='0';}
+      var missingBuy=vehicles.filter(function(v){return !hasBuy(v.buy);});
+      if(missingBuy.length===0){
+        finishImport();
+      }else{
+        askBuyForVehicles(missingBuy,vehicles,finishImport,function(){
+          // onCancel: annulla import completamente — nessun veicolo aggiunto
+          window._currentImportBatch=null;
+          if(typeof showToast==='function')showToast('\u2716 Importaci\u00f3n cancelada');
+        });
+      }
+    }
+
     if(missing.length===0){
-      finishImport();
+      checkBuyAndFinish();
     } else {
       // Open the pickup modal asking for the missing pickup(s)
-      askPickupForVehicles(missing,vehicles,finishImport);
+      askPickupForVehicles(missing,vehicles,checkBuyAndFinish);
     }
   }catch(ex){
     n('i-status').textContent='Error parseando. Intenta de nuevo.';
@@ -6631,6 +6665,78 @@ function askPickupForVehicles(missing,allVehicles,onDone){
 
   openM('m-pickup');
 }
+
+// v9.62: Verifica veicoli senza precio de compra (buy)
+// Pattern speculare a askPickupForVehicles
+// onDone: callback se utente prosegue (con o senza prezzo)
+// onCancel: callback se utente cancella import
+function askBuyForVehicles(missing,allVehicles,onDone,onCancel){
+  // Build summary
+  var lines=missing.map(function(v){
+    return (v.brand||'')+' '+(v.model||'')+' '+(v.version||'').substring(0,40)+(v.units?' x'+v.units:'');
+  });
+  var summary='<div style="font-weight:600;color:var(--orange);margin-bottom:6px">\u26a0\ufe0f '+missing.length+' veh\u00edculo'+(missing.length!==1?'s':'')+' sin <strong>precio de compra</strong>:</div>'+
+    lines.slice(0,5).map(function(l){return '<div style="font-size:11px;color:var(--t2)">&middot; '+esc(l)+'</div>';}).join('')+
+    (lines.length>5?'<div style="font-size:11px;color:var(--t3);font-style:italic;margin-top:4px">y '+(lines.length-5)+' m&aacute;s...</div>':'')+
+    '<div style="font-size:11px;color:var(--t3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">El precio de compra es necesario para calcular m&aacute;rgenes y reportes.</div>';
+  n('bk-summary').innerHTML=summary;
+
+  // Reset input
+  n('bk-input').value='';
+
+  // Apply to all
+  n('bk-apply-all').onclick=function(){
+    var val=String(n('bk-input').value||'').trim();
+    if(!val){
+      alert('Escribe el precio de compra antes de aplicar.');
+      n('bk-input').focus();
+      return;
+    }
+    // Pulisci formato (rimuovi tutto tranne cifre + . , -)
+    var cleaned=val.replace(/[^\d.,]/g,'').replace(/,/g,'.');
+    var num=parseFloat(cleaned);
+    if(isNaN(num)||num<=0){
+      alert('Precio inv\u00e1lido. Escribe solo n\u00fameros, ej: 35000');
+      n('bk-input').focus();
+      return;
+    }
+    // Formato di salvataggio: "35.000 €" o solo "35000" lasciato come è
+    var formatted=num.toLocaleString('es-ES')+' \u20ac';
+    missing.forEach(function(v){v.buy=formatted;});
+    closeM('m-buy-ask');
+    onDone();
+  };
+
+  // Skip (importa con buy vuoto)
+  n('bk-skip').onclick=function(){
+    if(!confirm('\u26a0\ufe0f \u00bfImportar sin precio de compra para '+missing.length+' veh\u00edculo'+(missing.length!==1?'s':'')+'?\n\nPodr\u00e1s a\u00f1adirlo manualmente despu\u00e9s editando cada uno.'))return;
+    missing.forEach(function(v){if(!v.buy)v.buy='';});
+    closeM('m-buy-ask');
+    onDone();
+  };
+
+  // Cancel import (annulla totalmente)
+  function cancelImport(){
+    closeM('m-buy-ask');
+    n('i-status').textContent='Importaci\u00f3n cancelada';
+    n('i-btn').disabled=false;
+    if(typeof onCancel==='function')onCancel();
+  }
+  n('bk-cancel').onclick=cancelImport;
+  n('bk-cancel-x').onclick=cancelImport;
+
+  // Auto-focus input + Enter to confirm
+  setTimeout(function(){n('bk-input').focus();},80);
+  n('bk-input').onkeydown=function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      n('bk-apply-all').click();
+    }
+  };
+
+  openM('m-buy-ask');
+}
+window.askBuyForVehicles=askBuyForVehicles;
 
 // -- GENERATE FROM STOCK --------------------------------------
 function openGenStk(){
