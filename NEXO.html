@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.97 — DMCAR GROUP CRM | 2026-05-02 | FIX import .docx (l'API Anthropic accetta solo PDF come document, non .docx). Soluzione: estrazione testo lato client via mammoth.js (lazy-load CDN). nxExtractDocxText helper riusabile. Applicato a: 1) Stock Vivo > Importar al Stock (file .docx); 2) Pre-Oferta > Equipamiento extract; 3) Generador Ofertas > oLoad. PDF continua via document API normale. Fix errore "Input should be 'application/pdf'" che bloccava import proforme Word fornitore. -->
+<!-- NEXO v9.98 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable UX & VIN handling: 1) Sticky block fondo bianco solido (no trasparente) con shadow leggera; 2) Rinominato "N° EXP" → "N.Exp"; 3) Datalist autocomplete sui filtri Cliente/Proveedor/Vendedor/N.Exp - popolati dinamicamente da nxBuildVistaRecords (setDl helper); 4) Word fallback alert: prima del parsing .doc/.docx mostra confirm con avviso "no ottimale" + raccomandazione PDF/Excel/CSV; 5) VIN regex robusto unificato \b[A-HJ-NPR-Z0-9]{17}\b (esclude I/O/Q) - nuova funzione window.NX_VIN_REGEX + nxExtractVins(text); 6) nxAIAnalyzeDoc esteso: gestisce Word via mammoth + Excel via XLSX + CSV/TXT diretto + immagini con solo filename + PDF; alert su file vuoto/scansionato; 7) Dialog "VIN no reconocido" con 3 opzioni: Asignar manualmente (selettore expediente + subcartella), Guardar como N/A temporal (selettore impresa → __TEMP), Cancelar. KPI label "REAL FEES" mantenuto coerente. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1011,8 +1011,8 @@ En que te puedo ayudar hoy?</div></div>
 
       <!-- VISTA CONTABLE SUB-VIEW (v9.92) -->
       <div id="nb-sub-vista" class="nb-sub" style="display:none">
-        <!-- v9.96: BLOCCO STICKY (sub-tabs + filtri + KPI) -->
-        <div id="nbv-sticky-block" style="position:sticky;top:0;z-index:50;background:var(--bg1);padding:8px 0 12px 0;margin:-6px 0 0 0;border-bottom:1px solid var(--border)">
+        <!-- v9.96/9.98: BLOCCO STICKY (sub-tabs + filtri + KPI) - fondo bianco solido + autocomplete -->
+        <div id="nbv-sticky-block" style="position:sticky;top:0;z-index:50;background:#ffffff;padding:10px 12px 14px 12px;margin:-6px -12px 0 -12px;border-bottom:2px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.04)">
           <!-- Sub-tabs interni -->
           <div class="fc g6 mb12" style="flex-wrap:wrap">
             <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
@@ -1025,17 +1025,22 @@ En que te puedo ayudar hoy?</div></div>
             <button class="btn bs" onclick="numbersResetColumnWidths()" style="font-size:11px" title="Reset anchos de columna">&#9100; Cols</button>
             <button class="btn bp" onclick="numbersUploadProveedorDoc()" style="font-size:11px">&#128228; Subir doc proveedor</button>
           </div>
+          <!-- v9.98: Datalists per autocomplete filtri -->
+          <datalist id="nbv-dl-cliente"></datalist>
+          <datalist id="nbv-dl-proveedor"></datalist>
+          <datalist id="nbv-dl-seller"></datalist>
+          <datalist id="nbv-dl-exp"></datalist>
           <!-- Filtri (riga 1: ricerca generale + filtri specifici) -->
           <div class="card" style="padding:10px;margin-bottom:8px">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 0.9fr auto;gap:8px;align-items:end;margin-bottom:8px">
               <div><label style="font-size:10px;color:var(--t3)">Buscar VIN (parcial)</label><input type="text" id="nbv-f-vin" placeholder="\u00faltimas 4-5 cifras..." oninput="numbersRenderVista()" style="font-size:11px;font-family:monospace"></div>
-              <div><label style="font-size:10px;color:var(--t3)">N\u00b0 EXP</label><input type="text" id="nbv-f-exp" placeholder="001, DM, INNO..." oninput="numbersRenderVista()" style="font-size:11px"></div>
-              <div><label style="font-size:10px;color:var(--t3)">Cliente</label><input type="text" id="nbv-f-cliente" placeholder="Buscar cliente..." oninput="numbersRenderVista()" style="font-size:11px"></div>
-              <div><label style="font-size:10px;color:var(--t3)">Proveedor</label><input type="text" id="nbv-f-proveedor" placeholder="Buscar proveedor..." oninput="numbersRenderVista()" style="font-size:11px"></div>
-              <div><label style="font-size:10px;color:var(--t3)">Vendedor</label><input type="text" id="nbv-f-seller" placeholder="Todos" oninput="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">N.Exp</label><input type="text" id="nbv-f-exp" list="nbv-dl-exp" placeholder="DM-001, INNO, N/A..." oninput="numbersRenderVista()" autocomplete="off" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Cliente</label><input type="text" id="nbv-f-cliente" list="nbv-dl-cliente" placeholder="Selecciona o escribe..." oninput="numbersRenderVista()" autocomplete="off" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Proveedor</label><input type="text" id="nbv-f-proveedor" list="nbv-dl-proveedor" placeholder="Selecciona o escribe..." oninput="numbersRenderVista()" autocomplete="off" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Vendedor</label><input type="text" id="nbv-f-seller" list="nbv-dl-seller" placeholder="Selecciona o escribe..." oninput="numbersRenderVista()" autocomplete="off" style="font-size:11px"></div>
               <div><button class="btn bg" onclick="numbersResetVistaFilters()" style="font-size:11px;padding:6px 10px" title="Reset filtros">&#10006;</button></div>
             </div>
-            <!-- Riga 2: filtri secondari (collapsabili) -->
+            <!-- Riga 2: filtri secondari -->
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.5fr;gap:8px;align-items:end">
               <div><label style="font-size:10px;color:var(--t3)">Empresa</label><select id="nbv-f-company" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todas</option></select></div>
               <div><label style="font-size:10px;color:var(--t3)">Estado pago</label><select id="nbv-f-pago" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todos</option><option value="pending">Pendiente</option><option value="partial">Parcial</option><option value="paid">Cobrado</option></select></div>
@@ -23284,6 +23289,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }).join('');
     }
     var records=nxBuildVistaRecords();
+    // v9.98: Popola datalists per autocomplete (sempre, perchè i dati cambiano)
+    var setDl=function(id,vals){
+      var dl=document.getElementById(id);if(!dl)return;
+      var unique=Array.from(new Set(vals.filter(Boolean))).sort();
+      dl.innerHTML=unique.map(function(v){return '<option value="'+esc(v)+'"></option>';}).join('');
+    };
+    setDl('nbv-dl-cliente',records.map(function(r){return r.clientName;}));
+    setDl('nbv-dl-proveedor',records.map(function(r){return r.supplier;}));
+    setDl('nbv-dl-seller',records.map(function(r){return r.soldBy;}));
+    setDl('nbv-dl-exp',records.filter(function(r){return r.expediente;}).map(function(r){return r.expediente.companyCode+'-'+r.expediente.number;}).concat(['N/A']));
     if(subTab==='vendidos')records=records.filter(function(r){return r.isVendido;});
     else if(subTab==='propiedad')records=records.filter(function(r){return !r.isVendido;});
     else if(subTab==='expedientes')records=records.filter(function(r){return !!r.expediente;});
@@ -23800,22 +23815,127 @@ document.querySelectorAll('.ovl').forEach(function(el){
     input.onchange=function(){
       var f=input.files&&input.files[0];
       if(!f){document.body.removeChild(input);return;}
-      // v9.94: nuovo flusso con AI parser
+      // v9.98: Pre-check formato file - Word non ottimale
+      var ext=String(f.name).split('.').pop().toLowerCase();
+      var isWord=(ext==='doc'||ext==='docx');
+      var isOptimal=(ext==='pdf'||ext==='xlsx'||ext==='xls'||ext==='csv');
+      if(isWord){
+        var msg='\u26a0\ufe0f Tipo de archivo no \u00f3ptimo para parsing autom\u00e1tico\n\n'
+          +'Has seleccionado un documento Word (.'+ext+').\n'
+          +'Word puede contener texto no estructurado y puede no garantizar:\n'
+          +'  \u2022 Extracci\u00f3n fiable de VIN\n'
+          +'  \u2022 Lectura correcta de importes\n'
+          +'  \u2022 Reconocimiento de l\u00edneas factura\n\n'
+          +'\u2705 Formatos recomendados: PDF, Excel (.xlsx), CSV\n\n'
+          +'\u00bfDeseas continuar de todos modos?';
+        if(!confirm(msg)){
+          document.body.removeChild(input);return;
+        }
+      }else if(!isOptimal&&ext!=='txt'){
+        // Imagen/altro
+        if(!confirm('\u26a0\ufe0f Formato .'+ext+' puede no ser \u00f3ptimo.\n\nFormatos recomendados: PDF, Excel, CSV.\n\n\u00bfContinuar?')){
+          document.body.removeChild(input);return;
+        }
+      }
       nxAIAnalyzeDoc(f);
       document.body.removeChild(input);
     };
     input.click();
   };
 
+  // v9.98: VIN regex pattern standard (17 char, no I/O/Q)
+  window.NX_VIN_REGEX=/\b[A-HJ-NPR-Z0-9]{17}\b/g;
+  window.nxExtractVins=function(text){
+    if(!text)return [];
+    // Normalizza: rimuovi spazi/trattini per catturare VIN spezzati
+    var clean=String(text).toUpperCase().replace(/[\s\-_]/g,' ');
+    var matches=clean.match(window.NX_VIN_REGEX)||[];
+    // Cerca anche su versione "raw" (può catturare VIN con spazi mantenuti)
+    var raw=String(text).toUpperCase().match(window.NX_VIN_REGEX)||[];
+    return Array.from(new Set(matches.concat(raw)));
+  };
+
   // ========================================================================
   // v9.94: AI DOCUMENT PARSER - estrae dati strutturati da PDF fattura
+  // v9.98: supporto Word (mammoth) + Excel (XLSX) + alert su file vuoto
   // ========================================================================
   window.nxAIAnalyzeDoc=function(file){
+    var fname=String(file.name);
+    var ext=fname.split('.').pop().toLowerCase();
     if(typeof showToast==='function')showToast('\u26a1 AI analizando documento...',3000);
-    // Step 1: estrai testo dal PDF
-    var isPdf=/\.pdf$/i.test(file.name);
-    if(!isPdf){
-      // Per non-PDF usa solo nome file
+    // Word: estrai testo via mammoth
+    if(ext==='docx'||ext==='doc'){
+      nxExtractDocxText(file,function(text,errW){
+        if(errW||!text||!text.trim()){
+          alert('\u26a0\ufe0f No se pudo extraer texto del documento Word.\n\n'
+            +'El archivo puede estar:\n'
+            +'  \u2022 Vac\u00edo o corrupto\n'
+            +'  \u2022 Compuesto solo por im\u00e1genes\n'
+            +'  \u2022 En formato no compatible\n\n'
+            +'Recomendaci\u00f3n: convierte el archivo a PDF y vuelve a intentarlo.');
+          return;
+        }
+        var vins=nxExtractVins(text);
+        if(vins.length===0){
+          // Avviso parsing fallito su VIN
+          if(!confirm('\u26a0\ufe0f No se han reconocido VIN en el documento Word.\n\n'
+            +'El parsing de Word no es fiable como con PDF.\n\n'
+            +'\u00bfQuieres continuar igualmente con el AI parser?\n'
+            +'(El AI intentar\u00e1 extraer datos pero la asignaci\u00f3n de expediente puede fallar)')){
+            return;
+          }
+        }
+        var textTrimmed=text.substring(0,30000);
+        nxAIParseWithClaude(file,textTrimmed,vins,function(parsed,err){
+          if(err){alert('Error AI: '+err);return;}
+          nxShowAIDocConfirm(file,parsed);
+        });
+      });
+      return;
+    }
+    // Excel: estrai testo via XLSX (lazy-load)
+    if(ext==='xlsx'||ext==='xls'){
+      var doExcel=function(){
+        var r=new FileReader();
+        r.onload=function(e){
+          try{
+            var wb=window.XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+            var txt='';
+            wb.SheetNames.forEach(function(sn){txt+='--- '+sn+' ---\n'+window.XLSX.utils.sheet_to_csv(wb.Sheets[sn])+'\n\n';});
+            var vins=nxExtractVins(txt);
+            nxAIParseWithClaude(file,txt.substring(0,30000),vins,function(parsed,err){
+              if(err){alert('Error AI: '+err);return;}
+              nxShowAIDocConfirm(file,parsed);
+            });
+          }catch(ex){alert('Error leyendo Excel: '+ex.message);}
+        };
+        r.readAsArrayBuffer(file);
+      };
+      if(typeof window.XLSX!=='undefined'){doExcel();return;}
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=doExcel;
+      s.onerror=function(){alert('Error cargando XLSX library');};
+      document.head.appendChild(s);
+      return;
+    }
+    // CSV/TXT: lettura testo diretta
+    if(ext==='csv'||ext==='txt'){
+      var rt=new FileReader();
+      rt.onload=function(e){
+        var text=String(e.target.result||'');
+        var vins=nxExtractVins(text);
+        nxAIParseWithClaude(file,text.substring(0,30000),vins,function(parsed,err){
+          if(err){alert('Error AI: '+err);return;}
+          nxShowAIDocConfirm(file,parsed);
+        });
+      };
+      rt.readAsText(file,'utf-8');
+      return;
+    }
+    // Immagine: solo nome file (no extraction)
+    var isImg=/\.(jpe?g|png|gif|webp)$/i.test(fname);
+    if(isImg){
       nxAIParseWithClaude(file,'',[],function(parsed,err){
         if(err){alert('Error AI: '+err);return;}
         nxShowAIDocConfirm(file,parsed);
@@ -23823,10 +23943,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       return;
     }
     // PDF: estrai testo
-    nxExtractTextFromPdf(file,function(text,vins){
-      // Limita a 30k chars per evitare token overflow
+    nxExtractTextFromPdf(file,function(text,vinsOld){
+      var vins=nxExtractVins(text||'');  // usa regex unificato
       var textTrimmed=String(text||'').substring(0,30000);
-      nxAIParseWithClaude(file,textTrimmed,vins||[],function(parsed,err){
+      if(!textTrimmed.trim()){
+        // PDF senza testo (probabilmente scansionato)
+        if(!confirm('\u26a0\ufe0f El PDF no contiene texto extra\u00edble (probablemente escaneado).\n\n\u00bfContinuar con el AI parser usando solo el nombre de archivo?')){
+          return;
+        }
+      }
+      nxAIParseWithClaude(file,textTrimmed,vins,function(parsed,err){
         if(err){alert('Error AI: '+err);return;}
         nxShowAIDocConfirm(file,parsed);
       });
@@ -24049,17 +24175,142 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +(inPropriedad.length>0?'\u2022 Cuando se cree expediente para estos VIN, los docs se <strong>migrar\u00e1n autom\u00e1ticamente</strong><br>':'')
       +'\u2022 La Vista Contable se actualizar\u00e1 con: <code>'+esc(parsed.docNumber||'?')+'</code> &middot; '+esc(parsed.docDate||'?')
     +'</div>';
+    // v9.98: Banner avviso quando no VIN match
+    if(expCount===0&&inPropriedad.length===0){
+      html+='<div style="background:rgba(220,38,38,.08);border-left:4px solid #dc2626;padding:14px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#dc2626">\u26a0\ufe0f VIN no reconocido</strong><br>'
+        +'<span style="font-size:11px">Ning\u00fan VIN del documento coincide con Stock Vivo, En Propiedad o Expedientes existentes.</span><br>'
+        +'<span style="font-size:11px;color:var(--t3)">Puedes asignar manualmente el documento a un expediente o guardarlo como N/A temporal hasta crear el expediente correspondiente.</span>'
+      +'</div>';
+    }
     html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
       +'<button class="btn bg" onclick="closeM(\'m-ai-doc\')">Cancelar</button>'
-      +'<button class="btn bs" onclick="nxAIDocManual()">Modificar manualmente</button>'
+      +(expCount===0&&inPropriedad.length===0?
+         '<button class="btn bs" onclick="nxAIDocManualAssign()" style="border-color:var(--acc);color:var(--acc)">\ud83d\udcc1 Asignar manualmente</button>'
+        +'<button class="btn bs" onclick="nxAIDocSaveAsNA()" style="border-color:#f59e0b;color:#f59e0b">\u23f3 Guardar como N/A temporal</button>'
+        :'<button class="btn bs" onclick="nxAIDocManual()">Modificar manualmente</button>')
       +(expCount>0||inPropriedad.length>0
         ?'<button class="btn bp" onclick="nxAIDocAutoArchive()" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none">&#129302;\u2728 Auto-archivar</button>'
-        :'<button class="btn bg" disabled>&#129302; Nada para archivar</button>')
+        :'')
     +'</div>';
     html+='</div></div></div>';
     var old=n('m-ai-doc');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
     window._nxAIDocCtx={file:file,parsed:parsed,matchedExps:matchedExps,inPropriedad:inPropriedad,unmatchedLines:unmatchedLines};
+  };
+
+  // v9.98: Assegnazione manuale - dialog selettore expediente
+  window.nxAIDocManualAssign=function(){
+    var ctx=window._nxAIDocCtx;
+    if(!ctx)return;
+    var exps=window.nxExpedientes||[];
+    if(!exps.length){
+      alert('No hay expedientes existentes. Crea primero un expediente desde una proforma.');
+      return;
+    }
+    var opts=exps.map(function(e){
+      return '<option value="'+esc(e.id)+'">'+esc(e.companyCode)+'-'+esc(e.number)+' \u2014 '+esc(e.clientName||'?')+'</option>';
+    }).join('');
+    var html='<div id="m-manual-exp" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-manual-exp\')">'
+      +'<div class="modal" style="max-width:480px">'
+        +'<div class="mh"><span>\ud83d\udcc1 Asignar a expediente manualmente</span><button class="mx" onclick="closeM(\'m-manual-exp\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<p style="font-size:12px;color:var(--t2);margin-bottom:14px">Selecciona el expediente d\u00f3nde guardar el documento:</p>'
+          +'<select id="nbv-manual-exp-sel" style="width:100%;font-size:12px;padding:8px">'+opts+'</select>'
+          +'<div style="margin-top:10px"><label style="font-size:11px;color:var(--t3)">Subcarpeta:</label>'
+            +'<select id="nbv-manual-exp-sub" style="width:100%;font-size:12px;padding:8px">'
+              +'<option value="PROVEEDOR" selected>PROVEEDOR</option>'
+              +'<option value="TRANSPORTE">TRANSPORTE</option>'
+              +'<option value="BROKER">BROKER</option>'
+              +'<option value="CLIENTE">CLIENTE</option>'
+            +'</select></div>'
+          +'<div class="fc g8" style="justify-content:flex-end;margin-top:18px">'
+            +'<button class="btn bg" onclick="closeM(\'m-manual-exp\')">Cancelar</button>'
+            +'<button class="btn bp" onclick="nxAIDocManualAssignDo()" style="background:var(--acc);color:#fff">\u2713 Guardar</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=n('m-manual-exp');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+  };
+  window.nxAIDocManualAssignDo=function(){
+    var ctx=window._nxAIDocCtx;if(!ctx)return;
+    var expId=n('nbv-manual-exp-sel').value;
+    var subfolder=n('nbv-manual-exp-sub').value||'PROVEEDOR';
+    if(!expId)return;
+    if(typeof showToast==='function')showToast('\u26a1 Subiendo a expediente...',3000);
+    nxExpUploadDoc(expId,subfolder,ctx.file.name,ctx.file,function(ok,data){
+      if(!ok){alert('Error subiendo: '+data);return;}
+      // Scrivi accDocs su tutti gli stock dell'expediente per i VIN del doc (best-effort)
+      var exp=(window.nxExpedientes||[]).find(function(e){return e.id===expId;});
+      if(exp&&ctx.parsed&&ctx.parsed.lines){
+        ctx.parsed.lines.forEach(function(line){
+          if(!line.vin)return;
+          var vinUp=String(line.vin).toUpperCase();
+          (exp.vehicleIds||[]).forEach(function(sid){
+            var s=stock.find(function(x){return String(x.id)===String(sid);});
+            if(!s)return;
+            var match=String(s.vin||'').toUpperCase()===vinUp;
+            if(!match&&s.vehicles)match=s.vehicles.some(function(v){return String(v.vin||'').toUpperCase()===vinUp;});
+            if(match)nxWriteAccDoc(s,line.vin,ctx.parsed,line.amount);
+          });
+        });
+        SS('stock',stock);
+      }
+      closeM('m-manual-exp');closeM('m-ai-doc');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      if(typeof showToast==='function')showToast('\u2713 Documento guardado en '+(exp?exp.fullName:expId),5000);
+    });
+  };
+
+  // v9.98: Salva come N/A temporale - sceglie quale impresa
+  window.nxAIDocSaveAsNA=function(){
+    var ctx=window._nxAIDocCtx;if(!ctx)return;
+    var html='<div id="m-na-temp" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-na-temp\')">'
+      +'<div class="modal" style="max-width:480px">'
+        +'<div class="mh"><span>\u23f3 Guardar como N/A temporal</span><button class="mx" onclick="closeM(\'m-na-temp\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<p style="font-size:12px;color:var(--t2);margin-bottom:14px">El documento se guardar\u00e1 en la carpeta <code>__TEMP/[Impresa]/PROVEEDOR/</code>. Cuando se cree el expediente correspondiente, ser\u00e1 migrado autom\u00e1ticamente.</p>'
+          +'<label style="font-size:11px;color:var(--t3)">Impresa:</label>'
+          +'<select id="nbv-na-comp" style="width:100%;font-size:12px;padding:8px">'
+            +'<option value="DMCAR">DMCAR GROUP</option>'
+            +'<option value="INNO">INNOQUEST SOLUTIONS</option>'
+            +'<option value="IMPEX">IMPEX CONSULTING</option>'
+          +'</select>'
+          +'<label style="font-size:11px;color:var(--t3);margin-top:10px;display:block">Tipo carpeta:</label>'
+          +'<select id="nbv-na-sub" style="width:100%;font-size:12px;padding:8px">'
+            +'<option value="PROVEEDOR" selected>PROVEEDOR</option>'
+            +'<option value="TRANSPORTE">TRANSPORTE</option>'
+            +'<option value="BROKER">BROKER</option>'
+          +'</select>'
+          +'<div class="fc g8" style="justify-content:flex-end;margin-top:18px">'
+            +'<button class="btn bg" onclick="closeM(\'m-na-temp\')">Cancelar</button>'
+            +'<button class="btn bp" onclick="nxAIDocSaveAsNADo()" style="background:#f59e0b;color:#fff">\u23f3 Guardar en TEMP</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=n('m-na-temp');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+  };
+  window.nxAIDocSaveAsNADo=function(){
+    var ctx=window._nxAIDocCtx;if(!ctx)return;
+    var cc=n('nbv-na-comp').value||'DMCAR';
+    var subfolder=n('nbv-na-sub').value||'PROVEEDOR';
+    if(typeof showToast==='function')showToast('\u26a1 Subiendo a __TEMP/'+cc+'/'+subfolder+'...',3000);
+    // Estrai i VIN parsati per traccia futura
+    var vins=(ctx.parsed&&ctx.parsed.lines||[]).map(function(l){return l.vin;}).filter(Boolean);
+    nxTempUploadDoc({
+      companyCode:cc,
+      subfolder:subfolder,
+      fileName:ctx.file.name,
+      blob:ctx.file,
+      vins:vins,
+      parsed:ctx.parsed
+    },function(ok,data){
+      if(!ok){alert('Error subiendo a TEMP: '+data);return;}
+      closeM('m-na-temp');closeM('m-ai-doc');
+      if(typeof showToast==='function')showToast('\u2713 Documento guardado en __TEMP/'+cc+'/'+subfolder+' \u2014 se migrar\u00e1 cuando se cree el expediente',7000);
+    });
   };
 
   // Auto-archive con dati AI
