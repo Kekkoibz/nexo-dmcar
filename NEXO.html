@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.87 — DMCAR GROUP CRM | 2026-05-02 | STOCK + NEXO + UX: 1) Confirm popup quando si cambia stato da "Vendido" a qualunque altro: "Veicolo risulta venduto. Confermi il cambio?" → Sí prosegue, No annulla; 2) Notifica auto a Nexo Numbers se conferma cancellazione vendita: nuovo tipo notifica 'sale_cancelled' con riferimento veh+cliente+vendedor + check su proforme/facturas associate; 3) Auto-cancellazione documenti collegati: proforme con fromStockId vanno a status='cancelled', facturas richiedono nota di credito (UI prompt al contabile); 4) Persistenza UI dopo refresh: salva activeModule + activeSubTab + filtri Stock + scroll position in nx_uiState (sessionStorage), restore al boot. URL hash sincronizzato. -->
+<!-- NEXO v9.88 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT EXPEDIENTES: 1) Aggiunto modulo NX_SP per Microsoft Graph SharePoint API (createFolder, listSites, listDrives, uploadFile, etc); 2) Aggiunti scope Files.ReadWrite.All + Sites.ReadWrite.All (richiede re-login Microsoft 365); 3) Setup wizard in Configuracion: Discover sites → seleziona sito DMCAR → seleziona drive → crea automaticamente 3 cartelle root EXP.GEN DMCAR GROUP / EXP.GEN INNO / EXP.GEN IMPEX; 4) DB schema: nxExpedientes (lista) + nxExpCounters (per impresa) + nxSpConfig (siteId/driveId/rootFolders); 5) Numerazione progressiva per impresa: DMCAR-EXP-001, INNO-EXP-001, IMPEX-EXP-001; 6) Auto-trigger su Save Proforma: crea expediente "EXP NNN - ClientName" + sub-folders CLIENTE/PROVEEDOR/TRANSPORTE/BROKER (BROKER solo se presente); 7) Helper nxExpCreate(opts, cb) + nxExpUploadDoc(expId, subfolder, file) + nxExpFindByProforma + nxExpOpenInSharePoint. PARTE 1/2 - prossima parte: bottoni UI Apri/Upload nei modal Proforma + B2B card. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1218,6 +1218,48 @@ En que te puedo ayudar hoy?</div></div>
                 <button class="btn bs" onclick="if(typeof NX_INBOX!=='undefined'){NX_INBOX.fetchInbox().then(function(){if(typeof showToast==='function')showToast('✓ Bandeja actualizada');});}" style="font-size:11px">&#128260; Refrescar ahora</button>
               </div>
             </div>
+          </div>
+        </div>
+        <!-- v9.88: SharePoint / Expedientes -->
+        <div class="card">
+          <div class="ct">&#128193; SharePoint &mdash; Expedientes documentales</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Crea autom&aacute;ticamente carpetas estructuradas para cada venta en SharePoint. Estructura por empresa (DMCAR / INNO / IMPEX) con sub-carpetas CLIENTE, PROVEEDOR, TRANSPORTE, BROKER.</div>
+          <div class="fb-cfg-card" style="margin-bottom:0">
+            <div class="fb-cfg-row" style="margin-bottom:10px">
+              <div class="fb-cfg-status">
+                <span class="fb-status-dot" id="sp-cfg-dot" style="background:#dc2626"></span>
+                <span id="sp-cfg-status-text" style="color:#dc2626">No configurado</span>
+              </div>
+              <div class="fc g8" style="flex-wrap:wrap">
+                <button class="btn bp" onclick="spDiscoverSites()" style="font-size:11px">&#128270; Descubrir sitios</button>
+                <button class="btn bs" onclick="spTestConnection()" style="font-size:11px">&#129514; Test</button>
+              </div>
+            </div>
+            <div id="sp-cfg-detail" style="font-size:10px;color:var(--t3);margin-top:8px;line-height:1.6"></div>
+            <!-- Setup wizard -->
+            <div id="sp-cfg-setup" style="display:none;margin-top:14px;padding:12px;background:var(--bg3);border-radius:7px">
+              <div style="font-weight:600;font-size:12px;margin-bottom:8px">&#127919; Setup paso a paso</div>
+              <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">
+                <strong>1.</strong> Aseg&uacute;rate de haber iniciado sesi&oacute;n con Microsoft 365 (arriba).<br>
+                <strong>2.</strong> Click "Descubrir sitios" para listar tus sitios SharePoint.<br>
+                <strong>3.</strong> Selecciona el sitio de DMCAR.<br>
+                <strong>4.</strong> Click "Crear carpetas root" y el sistema crear&aacute; <code>EXP.GEN DMCAR GROUP</code>, <code>EXP.GEN INNO</code>, <code>EXP.GEN IMPEX</code>.
+              </div>
+              <div id="sp-sites-list" style="margin-bottom:10px"></div>
+              <div id="sp-drives-list" style="margin-bottom:10px"></div>
+              <button class="btn bp" id="sp-create-roots-btn" onclick="spCreateRootFolders()" style="font-size:11px;display:none">&#128193; Crear carpetas root</button>
+            </div>
+            <!-- Stato configurato -->
+            <div id="sp-cfg-summary" style="display:none;margin-top:14px;padding:12px;background:var(--bg3);border-radius:7px;font-size:11px">
+              <div style="font-weight:600;color:var(--green);margin-bottom:6px">&#10003; SharePoint configurado</div>
+              <div id="sp-cfg-summary-detail"></div>
+              <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn bs" onclick="spOpenInBrowser()" style="font-size:10px">&#128279; Abrir SharePoint</button>
+                <button class="btn bd" onclick="spReset()" style="font-size:10px">&#10006; Reset configuraci&oacute;n</button>
+              </div>
+            </div>
+            <!-- Lista expedientes recenti -->
+            <div id="sp-cfg-recent" style="margin-top:14px"></div>
           </div>
         </div>
         <div class="card">
@@ -3681,7 +3723,8 @@ var MS_CONFIG={
   clientId:"41d7c377-3e26-4803-be85-10f9316ec6b6",
   tenantId:"89b298de-7441-4b94-9ae7-32859f10de92",
   redirectUri:"https://kekkoibz.github.io/nexo-dmcar/NEXO.html",
-  scopes:["Mail.Send","Mail.Read","User.Read"]
+  // v9.88: aggiunti Files.ReadWrite.All + Sites.ReadWrite.All per Expedientes SharePoint
+  scopes:["Mail.Send","Mail.Read","User.Read","Files.ReadWrite.All","Sites.ReadWrite.All"]
 };
 
 var NX_MS={
@@ -3842,6 +3885,470 @@ var NX_MS={
     });
   }
 };
+
+// ===========================================================================
+// v9.88: NX_SP — SharePoint helper per Expedientes documentali
+// Usa lo stesso NX_MS.getToken() con scopes SharePoint
+// ===========================================================================
+var NX_SP={
+  // Wrapper Graph API: GET / POST / PATCH / PUT / DELETE
+  call:function(method,url,body,cb){
+    if(!NX_MS||!NX_MS.account){return cb(false,'Sesi\u00f3n Microsoft 365 no activa');}
+    NX_MS.getToken(function(token,terr){
+      if(terr||!token){return cb(false,'Token error: '+(terr||'no token'));}
+      var headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'};
+      var fullUrl=url.indexOf('http')===0?url:'https://graph.microsoft.com/v1.0'+url;
+      var opts={method:method,headers:headers};
+      if(body&&method!=='GET')opts.body=typeof body==='string'?body:JSON.stringify(body);
+      fetch(fullUrl,opts).then(function(r){
+        if(r.status===204)return cb(true,null); // No content (DELETE OK)
+        return r.json().then(function(data){
+          if(r.ok)cb(true,data);
+          else cb(false,(data.error&&data.error.message)||('HTTP '+r.status));
+        }).catch(function(){cb(false,'HTTP '+r.status);});
+      }).catch(function(e){cb(false,e.message);});
+    });
+  },
+  // Upload file a Drive item con bytes (max 4 MB con questo endpoint, oltre serve sessione upload)
+  uploadFile:function(siteId,driveId,parentFolderId,fileName,blob,cb){
+    if(!NX_MS||!NX_MS.account)return cb(false,'Sesi\u00f3n no activa');
+    NX_MS.getToken(function(token,terr){
+      if(terr||!token)return cb(false,'Token error: '+(terr||'no token'));
+      var url='https://graph.microsoft.com/v1.0/sites/'+siteId+'/drives/'+driveId+'/items/'+parentFolderId+':/'+encodeURIComponent(fileName)+':/content';
+      fetch(url,{
+        method:'PUT',
+        headers:{'Authorization':'Bearer '+token,'Content-Type':blob.type||'application/octet-stream'},
+        body:blob
+      }).then(function(r){
+        return r.json().then(function(data){
+          if(r.ok)cb(true,data);
+          else cb(false,(data.error&&data.error.message)||('HTTP '+r.status));
+        }).catch(function(){cb(false,'HTTP '+r.status);});
+      }).catch(function(e){cb(false,e.message);});
+    });
+  },
+  // Discovery: lista siti SharePoint accessibili
+  listSites:function(cb){
+    NX_SP.call('GET','/sites?search=*',null,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,(data.value||[]).map(function(s){
+        return {id:s.id,name:s.displayName||s.name,webUrl:s.webUrl,description:s.description||''};
+      }));
+    });
+  },
+  // Lista drives (document libraries) di un site
+  listDrives:function(siteId,cb){
+    NX_SP.call('GET','/sites/'+siteId+'/drives',null,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,(data.value||[]).map(function(d){
+        return {id:d.id,name:d.name,webUrl:d.webUrl,driveType:d.driveType};
+      }));
+    });
+  },
+  // Lista contenuti folder root del drive
+  listRootChildren:function(siteId,driveId,cb){
+    NX_SP.call('GET','/sites/'+siteId+'/drives/'+driveId+'/root/children?$top=200',null,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,(data.value||[]).map(function(it){
+        return {id:it.id,name:it.name,webUrl:it.webUrl,isFolder:!!it.folder,size:it.size};
+      }));
+    });
+  },
+  // Lista contenuti di un folder specifico
+  listFolderChildren:function(siteId,driveId,folderId,cb){
+    NX_SP.call('GET','/sites/'+siteId+'/drives/'+driveId+'/items/'+folderId+'/children?$top=200',null,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,(data.value||[]).map(function(it){
+        return {id:it.id,name:it.name,webUrl:it.webUrl,isFolder:!!it.folder,size:it.size,createdDateTime:it.createdDateTime};
+      }));
+    });
+  },
+  // Crea folder dentro un parent (root o sub)
+  createFolder:function(siteId,driveId,parentId,folderName,cb){
+    var body={
+      name:folderName,
+      folder:{},
+      "@microsoft.graph.conflictBehavior":"rename"
+    };
+    var url='/sites/'+siteId+'/drives/'+driveId+'/items/'+parentId+'/children';
+    NX_SP.call('POST',url,body,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,{id:data.id,name:data.name,webUrl:data.webUrl});
+    });
+  },
+  // Trova folder per nome dentro parent (case-insensitive). Crea se non esiste (param create=true)
+  findOrCreateFolder:function(siteId,driveId,parentId,folderName,create,cb){
+    NX_SP.listFolderChildren(siteId,driveId,parentId,function(ok,items){
+      if(!ok)return cb(false,items);
+      var match=items.find(function(it){return it.isFolder&&String(it.name).toLowerCase()===String(folderName).toLowerCase();});
+      if(match)return cb(true,match);
+      if(!create)return cb(false,'Folder no encontrado: '+folderName);
+      NX_SP.createFolder(siteId,driveId,parentId,folderName,cb);
+    });
+  },
+  // Rinomina item
+  renameItem:function(siteId,driveId,itemId,newName,cb){
+    var url='/sites/'+siteId+'/drives/'+driveId+'/items/'+itemId;
+    NX_SP.call('PATCH',url,{name:newName},function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,{id:data.id,name:data.name,webUrl:data.webUrl});
+    });
+  },
+  // Elimina item (folder o file)
+  deleteItem:function(siteId,driveId,itemId,cb){
+    var url='/sites/'+siteId+'/drives/'+driveId+'/items/'+itemId;
+    NX_SP.call('DELETE',url,null,function(ok,data){
+      if(!ok)return cb(false,data);
+      cb(true,true);
+    });
+  }
+};
+window.NX_SP=NX_SP;
+
+// ===========================================================================
+// v9.88: nxExpediente — gestione expedientes documentali per impresa
+// ===========================================================================
+window.nxExpedientes=LS('nxExpedientes',[]);
+window.nxExpCounters=LS('nxExpCounters',{}); // { DMCAR: 5, INNO: 2, IMPEX: 0 }
+window.nxSpConfig=LS('nxSpConfig',null); // { siteId, siteName, driveId, rootFolders:{DMCAR:{id,name}, INNO:{id,name}, IMPEX:{id,name}} }
+
+// Mapping companyId → companyCode (DMCAR/INNO/IMPEX)
+window.nxGetCompanyCode=function(companyId){
+  var company=(nxCompanies||[]).find(function(c){return c.id===companyId;});
+  if(!company)return 'DMCAR';
+  var name=String(company.name||'').toUpperCase();
+  if(name.indexOf('INNO')>=0)return 'INNO';
+  if(name.indexOf('IMPEX')>=0)return 'IMPEX';
+  return 'DMCAR';
+};
+
+window.nxGetExpRootFolderName=function(companyCode){
+  var map={DMCAR:'EXP.GEN DMCAR GROUP',INNO:'EXP.GEN INNO',IMPEX:'EXP.GEN IMPEX'};
+  return map[companyCode]||'EXP.GEN '+companyCode;
+};
+
+// Genera prossimo numero expediente per impresa (DMCAR-EXP-001)
+window.nxGetNextExpNumber=function(companyCode){
+  if(!window.nxExpCounters)window.nxExpCounters={};
+  var cur=parseInt(window.nxExpCounters[companyCode]||0,10)||0;
+  var next=cur+1;
+  window.nxExpCounters[companyCode]=next;
+  SS('nxExpCounters',window.nxExpCounters);
+  return String(next).padStart(3,'0');
+};
+
+// Crea expediente completo: folder principale + sottocartelle
+// Callback (ok, expediente)
+window.nxExpCreate=function(opts,cb){
+  // opts: {companyId, clientName, clientId, vehicleIds, sellerName, brokerName, transportProvider, proformaId}
+  if(!window.nxSpConfig||!window.nxSpConfig.siteId||!window.nxSpConfig.driveId){
+    return cb(false,'SharePoint no configurado. Ve a Settings > SharePoint para configurar el sitio y carpetas root.');
+  }
+  var companyCode=nxGetCompanyCode(opts.companyId);
+  var rootFolderId=window.nxSpConfig.rootFolders&&window.nxSpConfig.rootFolders[companyCode]&&window.nxSpConfig.rootFolders[companyCode].id;
+  if(!rootFolderId){
+    return cb(false,'Carpeta root para '+companyCode+' no configurada.');
+  }
+  var expNum=nxGetNextExpNumber(companyCode);
+  var expFolderName='EXP '+expNum+' - '+(opts.clientName||'Cliente sin nombre');
+  var siteId=window.nxSpConfig.siteId;
+  var driveId=window.nxSpConfig.driveId;
+  console.log('[nxExpCreate] Creando expediente:',expFolderName,'en',companyCode);
+  // 1. Crea cartella principale expediente
+  NX_SP.createFolder(siteId,driveId,rootFolderId,expFolderName,function(ok,expFolder){
+    if(!ok){
+      // Rollback counter
+      window.nxExpCounters[companyCode]--;
+      SS('nxExpCounters',window.nxExpCounters);
+      return cb(false,'Error creando carpeta principal: '+expFolder);
+    }
+    // 2. Crea sottocartelle: CLIENTE, PROVEEDOR, TRANSPORTE, BROKER (solo se broker presente)
+    var subfolders=['CLIENTE','PROVEEDOR','TRANSPORTE'];
+    if(opts.brokerName&&String(opts.brokerName).trim())subfolders.push('BROKER');
+    var created={};
+    var pending=subfolders.length;
+    var anyError=null;
+    subfolders.forEach(function(sub){
+      NX_SP.createFolder(siteId,driveId,expFolder.id,sub,function(okSub,subFolder){
+        pending--;
+        if(!okSub){anyError=anyError||subFolder;}
+        else created[sub.toLowerCase()]={id:subFolder.id,name:subFolder.name,webUrl:subFolder.webUrl};
+        if(pending===0){
+          if(anyError)return cb(false,'Sotto-cartella errore: '+anyError);
+          // 3. Salva expediente in DB
+          var exp={
+            id:'exp_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+            number:expNum,
+            companyCode:companyCode,
+            companyId:opts.companyId,
+            fullName:expFolderName,
+            rootFolderName:nxGetExpRootFolderName(companyCode),
+            driveItemId:expFolder.id,
+            webUrl:expFolder.webUrl,
+            siteId:siteId,
+            driveId:driveId,
+            subfolders:created,
+            clientId:opts.clientId||'',
+            clientName:opts.clientName||'',
+            vehicleIds:opts.vehicleIds||[],
+            sellerName:opts.sellerName||'',
+            brokerName:opts.brokerName||'',
+            transportProvider:opts.transportProvider||'',
+            proformaIds:opts.proformaId?[opts.proformaId]:[],
+            invoiceIds:[],
+            creditNoteIds:[],
+            status:'open',
+            createdAt:new Date().toISOString(),
+            updatedAt:new Date().toISOString()
+          };
+          window.nxExpedientes.push(exp);
+          SS('nxExpedientes',window.nxExpedientes);
+          console.log('[nxExpCreate] OK:',exp.fullName,'subfolders:',Object.keys(created));
+          cb(true,exp);
+        }
+      });
+    });
+  });
+};
+
+// Trova expediente per proforma o per cliente+veicolo
+window.nxExpFindByProforma=function(proformaId){
+  return (window.nxExpedientes||[]).find(function(e){
+    return e.proformaIds&&e.proformaIds.indexOf(proformaId)>=0;
+  });
+};
+
+// Apre expediente in SharePoint (nuova tab)
+window.nxExpOpenInSharePoint=function(expId){
+  var exp=(window.nxExpedientes||[]).find(function(e){return e.id===expId;});
+  if(!exp){alert('Expediente no encontrado.');return;}
+  if(!exp.webUrl){alert('Expediente no tiene URL SharePoint.');return;}
+  window.open(exp.webUrl,'_blank','noopener');
+};
+
+// Upload file (PDF Proforma) in CLIENTE/ del expediente
+window.nxExpUploadDoc=function(expId,subfolder,fileName,blob,cb){
+  var exp=(window.nxExpedientes||[]).find(function(e){return e.id===expId;});
+  if(!exp)return cb(false,'Expediente no encontrado');
+  var sub=exp.subfolders&&exp.subfolders[String(subfolder).toLowerCase()];
+  if(!sub)return cb(false,'Sub-carpeta '+subfolder+' no existe en este expediente');
+  NX_SP.uploadFile(exp.siteId,exp.driveId,sub.id,fileName,blob,function(ok,data){
+    if(!ok)return cb(false,data);
+    cb(true,{name:data.name,webUrl:data.webUrl,id:data.id});
+  });
+};
+
+// =============================================================================
+// v9.88: SharePoint Setup Wizard - UI configurazione
+// =============================================================================
+
+window.spUpdateConfigUI=function(){
+  var dot=n('sp-cfg-dot');
+  var txt=n('sp-cfg-status-text');
+  var setup=n('sp-cfg-setup');
+  var summary=n('sp-cfg-summary');
+  var detail=n('sp-cfg-detail');
+  if(!dot||!txt)return;
+  if(!NX_MS||!NX_MS.account){
+    dot.style.background='#dc2626';
+    txt.textContent='Microsoft 365 no autenticado';
+    txt.style.color='#dc2626';
+    if(detail)detail.innerHTML='Inicia sesi\u00f3n con Microsoft 365 arriba antes de configurar SharePoint.';
+    if(setup)setup.style.display='none';
+    if(summary)summary.style.display='none';
+    return;
+  }
+  if(window.nxSpConfig&&window.nxSpConfig.siteId&&window.nxSpConfig.rootFolders&&window.nxSpConfig.rootFolders.DMCAR){
+    // Configurato
+    dot.style.background='#16a34a';
+    txt.textContent='Configurado';
+    txt.style.color='#16a34a';
+    if(detail)detail.innerHTML='';
+    if(setup)setup.style.display='none';
+    if(summary){
+      summary.style.display='block';
+      var sd=n('sp-cfg-summary-detail');
+      if(sd){
+        var rf=window.nxSpConfig.rootFolders;
+        sd.innerHTML='<strong>Sitio:</strong> '+esc(window.nxSpConfig.siteName||'?')+'<br>'
+          +'<strong>Drive:</strong> '+esc(window.nxSpConfig.driveName||'?')+'<br>'
+          +'<strong>Carpetas root:</strong><br>'
+          +'\u00a0\u00a0&bull; '+esc((rf.DMCAR&&rf.DMCAR.name)||'?')+' (DMCAR GROUP)<br>'
+          +'\u00a0\u00a0&bull; '+esc((rf.INNO&&rf.INNO.name)||'?')+' (INNO)<br>'
+          +'\u00a0\u00a0&bull; '+esc((rf.IMPEX&&rf.IMPEX.name)||'?')+' (IMPEX)<br>'
+          +'<strong>Expedientes creados:</strong> '+(window.nxExpedientes||[]).length+'<br>'
+          +'<strong>Counters:</strong> DMCAR='+(window.nxExpCounters.DMCAR||0)+', INNO='+(window.nxExpCounters.INNO||0)+', IMPEX='+(window.nxExpCounters.IMPEX||0);
+      }
+    }
+  }else{
+    // Non configurato
+    dot.style.background='#f59e0b';
+    txt.textContent='Sin configurar';
+    txt.style.color='#f59e0b';
+    if(detail)detail.innerHTML='Microsoft 365 OK. Falta configurar el sitio SharePoint.';
+    if(setup)setup.style.display='block';
+    if(summary)summary.style.display='none';
+  }
+};
+
+window._spSelectedSiteId=null;
+window._spSelectedSiteName='';
+window._spSelectedDriveId=null;
+window._spSelectedDriveName='';
+
+window.spDiscoverSites=function(){
+  var listEl=n('sp-sites-list');
+  if(listEl)listEl.innerHTML='<div style="font-size:11px;color:var(--t3);padding:8px">Buscando sitios SharePoint...</div>';
+  NX_SP.listSites(function(ok,sites){
+    if(!ok){
+      if(listEl)listEl.innerHTML='<div style="color:#dc2626;font-size:11px;padding:8px">Error: '+esc(String(sites))+'<br><br>Posibles causas:<br>&bull; Necesitas re-autenticarte (cierra sesi\u00f3n MS y vuelve a iniciar)<br>&bull; El admin no ha aprobado el scope Sites.ReadWrite.All</div>';
+      return;
+    }
+    if(!sites||sites.length===0){
+      if(listEl)listEl.innerHTML='<div style="font-size:11px;color:var(--t4);padding:8px">No se encontraron sitios SharePoint accesibles.</div>';
+      return;
+    }
+    var html='<div style="font-size:11px;font-weight:600;margin-bottom:6px">Selecciona el sitio:</div><div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:5px">';
+    sites.forEach(function(s){
+      html+='<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:11px" onclick="spSelectSite(\''+esc(s.id)+'\',\''+esc(String(s.name).replace(/\u0027/g,"\\u0027"))+'\')" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'\'">'
+        +'<strong>'+esc(s.name)+'</strong>'
+        +(s.description?'<br><span style="color:var(--t4);font-size:10px">'+esc(s.description)+'</span>':'')
+        +'<br><span style="font-size:9px;color:var(--t4);font-family:monospace">'+esc(s.webUrl)+'</span>'
+      +'</div>';
+    });
+    html+='</div>';
+    if(listEl)listEl.innerHTML=html;
+  });
+};
+
+window.spSelectSite=function(siteId,siteName){
+  window._spSelectedSiteId=siteId;
+  window._spSelectedSiteName=siteName;
+  var listEl=n('sp-drives-list');
+  if(listEl)listEl.innerHTML='<div style="font-size:11px;color:var(--t3);padding:8px">Cargando document libraries de "'+esc(siteName)+'"...</div>';
+  NX_SP.listDrives(siteId,function(ok,drives){
+    if(!ok){
+      if(listEl)listEl.innerHTML='<div style="color:#dc2626;font-size:11px;padding:8px">Error: '+esc(String(drives))+'</div>';
+      return;
+    }
+    if(!drives||drives.length===0){
+      if(listEl)listEl.innerHTML='<div style="font-size:11px;color:var(--t4);padding:8px">No hay document libraries.</div>';
+      return;
+    }
+    var html='<div style="font-size:11px;font-weight:600;margin:8px 0 6px">Selecciona la biblioteca de documentos:</div><div style="max-height:150px;overflow-y:auto;border:1px solid var(--border);border-radius:5px">';
+    drives.forEach(function(d){
+      html+='<div style="padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:11px" onclick="spSelectDrive(\''+esc(d.id)+'\',\''+esc(String(d.name).replace(/\u0027/g,"\\u0027"))+'\')" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'\'">'
+        +'<strong>'+esc(d.name)+'</strong> <span style="font-size:9px;color:var(--t4)">('+esc(d.driveType||'')+')</span>'
+      +'</div>';
+    });
+    html+='</div>';
+    if(listEl)listEl.innerHTML=html;
+  });
+};
+
+window.spSelectDrive=function(driveId,driveName){
+  window._spSelectedDriveId=driveId;
+  window._spSelectedDriveName=driveName;
+  var btn=n('sp-create-roots-btn');
+  if(btn)btn.style.display='inline-block';
+  if(typeof showToast==='function')showToast('\u2713 Drive selezionato: '+driveName+' \u2192 click "Crear carpetas root"');
+};
+
+window.spCreateRootFolders=function(){
+  if(!window._spSelectedSiteId||!window._spSelectedDriveId){
+    alert('Primero selecciona sitio y drive.');return;
+  }
+  var siteId=window._spSelectedSiteId;
+  var driveId=window._spSelectedDriveId;
+  var btn=n('sp-create-roots-btn');
+  if(btn){btn.disabled=true;btn.textContent='Creando...';}
+  // Lista root children per cercare se cartelle esistono già
+  NX_SP.listRootChildren(siteId,driveId,function(ok,items){
+    if(!ok){
+      alert('Error: '+items);
+      if(btn){btn.disabled=false;btn.textContent='\ud83d\udcc1 Crear carpetas root';}
+      return;
+    }
+    var roots={DMCAR:'EXP.GEN DMCAR GROUP',INNO:'EXP.GEN INNO',IMPEX:'EXP.GEN IMPEX'};
+    var rootIds={};
+    var keys=Object.keys(roots);
+    var pending=keys.length;
+    keys.forEach(function(code){
+      var folderName=roots[code];
+      // Cerca se esiste
+      var existing=items.find(function(it){return it.isFolder&&String(it.name).toLowerCase()===folderName.toLowerCase();});
+      if(existing){
+        rootIds[code]={id:existing.id,name:existing.name,webUrl:existing.webUrl};
+        pending--;
+        if(pending===0)spFinalizeRootSetup(siteId,driveId,rootIds);
+      }else{
+        // Crea
+        NX_SP.createFolder(siteId,driveId,'root',folderName,function(okC,folder){
+          pending--;
+          if(okC){
+            rootIds[code]={id:folder.id,name:folder.name,webUrl:folder.webUrl};
+          }else{
+            console.error('[spCreateRootFolders] Error '+code+':',folder);
+          }
+          if(pending===0)spFinalizeRootSetup(siteId,driveId,rootIds);
+        });
+      }
+    });
+  });
+};
+
+window.spFinalizeRootSetup=function(siteId,driveId,rootIds){
+  var btn=n('sp-create-roots-btn');
+  if(btn){btn.disabled=false;btn.textContent='\ud83d\udcc1 Crear carpetas root';}
+  if(!rootIds.DMCAR||!rootIds.INNO||!rootIds.IMPEX){
+    alert('No se pudieron crear todas las carpetas. Faltan: '+
+      (!rootIds.DMCAR?'DMCAR ':'')+(!rootIds.INNO?'INNO ':'')+(!rootIds.IMPEX?'IMPEX':''));
+    return;
+  }
+  window.nxSpConfig={
+    siteId:siteId,
+    siteName:window._spSelectedSiteName,
+    driveId:driveId,
+    driveName:window._spSelectedDriveName,
+    rootFolders:rootIds,
+    configuredAt:new Date().toISOString()
+  };
+  SS('nxSpConfig',window.nxSpConfig);
+  if(typeof showToast==='function')showToast('\u2713 SharePoint configurado: 3 carpetas root listas');
+  spUpdateConfigUI();
+};
+
+window.spTestConnection=function(){
+  if(!window.nxSpConfig||!window.nxSpConfig.siteId){
+    alert('SharePoint no configurado todav\u00eda. Usa "Descubrir sitios" para configurar.');
+    return;
+  }
+  NX_SP.listFolderChildren(window.nxSpConfig.siteId,window.nxSpConfig.driveId,window.nxSpConfig.rootFolders.DMCAR.id,function(ok,items){
+    if(!ok){
+      alert('Test fall\u00f3: '+items);
+      return;
+    }
+    alert('\u2713 Test OK\n\nCarpeta DMCAR contiene '+items.length+' items.\nSitio: '+window.nxSpConfig.siteName);
+  });
+};
+
+window.spOpenInBrowser=function(){
+  if(!window.nxSpConfig||!window.nxSpConfig.rootFolders||!window.nxSpConfig.rootFolders.DMCAR)return;
+  window.open(window.nxSpConfig.rootFolders.DMCAR.webUrl,'_blank','noopener');
+};
+
+window.spReset=function(){
+  if(!confirm('\u00bfSeguro que quieres resetear la configuraci\u00f3n SharePoint?\n\nLos expedientes ya creados (en SharePoint) NO se borran, solo se desconecta NEXO.\n\nDespu\u00e9s podr\u00e1s volver a configurar el mismo sitio o uno distinto.'))return;
+  window.nxSpConfig=null;
+  SS('nxSpConfig',null);
+  spUpdateConfigUI();
+  if(typeof showToast==='function')showToast('\u2713 Configuraci\u00f3n SharePoint reseteada');
+};
+
+// Init UI all'apertura tab Configuracion
+document.addEventListener('DOMContentLoaded',function(){
+  setTimeout(function(){if(typeof spUpdateConfigUI==='function')spUpdateConfigUI();},500);
+});
 
 function updateMicrosoftConfigUI(){
   var dot=n('ms-cfg-dot');
@@ -21661,6 +22168,33 @@ document.querySelectorAll('.ovl').forEach(function(el){
     window._nbpfEditingId=null;
     window._nbpfItems=[];
     window._nbpfPrePopulateFromNotif=false;
+    // v9.88: AUTO-CREA EXPEDIENTE in SharePoint se non esiste già
+    if(!window.nxExpFindByProforma(record.id)&&window.nxSpConfig&&window.nxSpConfig.siteId){
+      // Estrai vehicleIds dagli items
+      var vehicleIds=[];
+      (record.items||[]).forEach(function(it){if(it.stockId)vehicleIds.push(it.stockId);});
+      var brokerName=record.brokerName||'';
+      window.nxExpCreate({
+        companyId:record.companyId,
+        clientName:(record.client&&record.client.name)||'',
+        clientId:(record.client&&record.client.id)||'',
+        vehicleIds:vehicleIds,
+        sellerName:record.sellerName||'',
+        brokerName:brokerName,
+        transportProvider:record.transportProvider||'',
+        proformaId:record.id
+      },function(ok,exp){
+        if(ok){
+          // Salva expedienteId su record proforma
+          record.expedienteId=exp.id;
+          SS('nxProformas',nxProformas);
+          if(typeof showToast==='function')showToast('\u2713 Expediente '+exp.fullName+' creado en SharePoint',5000);
+        }else{
+          console.warn('[nxExpCreate] error:',exp);
+          if(typeof showToast==='function')showToast('\u26a0\ufe0f Expediente no creado: '+exp,4500);
+        }
+      });
+    }
     // v9.74: F5 - se viene da notifica (Won), chiede di inviare al cliente
     if(fromNotif&&typeof window.proformaAskSendToClient==='function'){
       setTimeout(function(){window.proformaAskSendToClient(savedId);},300);
