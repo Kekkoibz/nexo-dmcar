@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.82 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix 2: 1) stkFixDaciaQuantity esteso: ora cattura anche stock con units!='1' MA vehicles.length<units (caso reale: units='12' ma vehicles=[1 entry sola]). Match più permissivo su colors (qualsiasi che non sia colore esplicito singolo); 2) Email "Contatta Fornitore" multilingua: rileva lingua del fornitore da provider.country o stock.country (IT/ES/EN/FR/DE) e genera subject+body localizzato. Campi tradotti: "Solicitud info" → "Request info" (EN) / "Richiesta info" (IT) / "Demande info" (FR) / "Anfrage" (DE). -->
+<!-- NEXO v9.83 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix 3: stkFixDaciaQuantity ora gestisce il caso reale: units='Varias' (stringa, non numero) + vehicles=[] vuoto + colors="Metallic (12 units)". Detect quantità da pattern "(N units/unidades)" in colors. Estrae colore base rimuovendo il suffisso "(N units)". -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6568,8 +6568,8 @@ window.stkExpandLote=function(stockIdOrInternalId,quantity){
   return {ok:true,quantity:quantity,internalId:s.internalId};
 };
 
-// v9.81+v9.82: Helper specifico per fix retroattivo Dacia "Varias" → 12 unità Unknown
-// v9.82: ora cattura anche units='12' ma vehicles=[1 entry sola]
+// v9.81+v9.82+v9.83: Helper specifico per fix retroattivo Dacia
+// v9.83 FIX: cattura units='Varias' (stringa) e detect quantità da pattern "(N units)" in colors
 // Esegui in consola: stkFixDaciaQuantity()
 window.stkFixDaciaQuantity=function(){
   if(!Array.isArray(stock))return console.error('stock no disponible');
@@ -6577,37 +6577,48 @@ window.stkFixDaciaQuantity=function(){
   stock.forEach(function(s){
     var brand=String(s.brand||'').toUpperCase();
     if(brand!=='DACIA')return;
-    var declaredUnits=parseInt(String(s.units||'1'),10)||1;
+    var unitsStr=String(s.units||'').trim();
     var actualVehicles=(s.vehicles&&s.vehicles.length)||0;
-    // Caso 1: units dichiarate >= 2 ma vehicles[] sotto-dimensionato → espandi
-    // Caso 2: units=1 ma colors contiene "Varias" o multiple → probabile lotto
     var colors=String(s.colors||'');
-    var isLotto=declaredUnits>=2&&actualVehicles<declaredUnits;
-    var isVarias=/varias/i.test(colors)&&actualVehicles<=1;
-    if(isLotto||isVarias){
-      var targetQty=Math.max(declaredUnits,12); // Dacia tipico = 12
-      // Determina colore template
+    // v9.83: detect "Varias" string OR vehicles vuoti
+    var isVarias=/varias/i.test(unitsStr)||/varias/i.test(colors);
+    var declaredUnits=parseInt(unitsStr,10);
+    // Cerca pattern "(12 units)" / "(12 unidades)" nel colors per capire la qty reale
+    var qtyFromColors=0;
+    var qtyMatch=colors.match(/\((\d+)\s*(?:units?|unidades?|u\.?)\)/i);
+    if(qtyMatch)qtyFromColors=parseInt(qtyMatch[1],10);
+    // Caso 1: "Varias" + zero/1 vehicles
+    // Caso 2: units numerico declarato >= 2 ma vehicles[] sotto-dimensionato
+    var needsFix=false;
+    var targetQty=12;
+    if(isVarias&&actualVehicles<=1){
+      needsFix=true;
+      // Priorità: qty da colors > 12 default
+      targetQty=qtyFromColors>0?qtyFromColors:12;
+    }else if(declaredUnits>=2&&actualVehicles<declaredUnits){
+      needsFix=true;
+      targetQty=declaredUnits;
+    }
+    if(needsFix){
+      // Estrai colore base dal pattern "Metallic (12 units)" → "Metallic"
       var templateColor='Unknown';
+      var colorBase=colors.replace(/\s*\(\d+\s*(?:units?|unidades?|u\.?)\)\s*/i,'').trim();
+      if(colorBase&&!/varias/i.test(colorBase))templateColor=colorBase;
+      // Se ha già un vehicle valido, usa il suo colore
       if(s.vehicles&&s.vehicles[0]&&s.vehicles[0].color&&!/varias|^--$|^$/i.test(s.vehicles[0].color)){
         templateColor=s.vehicles[0].color;
-      }else if(colors&&!/varias/i.test(colors)){
-        templateColor=colors.split(',')[0].trim()||'Unknown';
       }
-      var template={
+      var template=(s.vehicles&&s.vehicles[0])?JSON.parse(JSON.stringify(s.vehicles[0])):{
         vin:'--',color:templateColor,kms:s.kms||'--',damage:s.damage||'0 \u20ac',
         reg:s.reg||'--',location:'--',buy:''
       };
-      // Se ha già qualche vehicle, mantienilo come template
-      if(s.vehicles&&s.vehicles[0]){
-        template=JSON.parse(JSON.stringify(s.vehicles[0]));
-        if(/varias|^--$|^$/i.test(template.color||''))template.color='Unknown';
-      }
+      template.color=templateColor;
       var newVehicles=[];
       for(var i=0;i<targetQty;i++)newVehicles.push(JSON.parse(JSON.stringify(template)));
       s.vehicles=newVehicles;
       s.units=String(targetQty);
-      s.colors=template.color;
-      fixed.push((s.internalId||s.id)+' ('+actualVehicles+' \u2192 '+targetQty+')');
+      s.colors=templateColor;
+      fixed.push((s.internalId||s.id)+' ('+actualVehicles+' \u2192 '+targetQty+' \u00b7 color: '+templateColor+')');
     }
   });
   if(fixed.length>0){
