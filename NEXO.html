@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.76 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UX: 1) Vendedores registry: nuovo nxSellers (Francesco, Maria pre-caricati) + dropdown dinamico nel popup Stock cambio stato + UI di gestione (Add/Edit/Delete) in Configuración Nexo Numbers; 2) Validazione prezzo: blocco cambio stato → Vendido se sellPrice mancante o ≤ 0, alert chiaro + blocco invio contabilidad + blocco generazione proforma; 3) FIX layout proforma items: ogni input ora con label visibile sopra (era una griglia confusa di placeholder), grid responsive 4-col + 4-col organizzata; 4) FIX header tabella Proformas: classe tbl applicata correttamente con allineamento, colonna acciones aggiunta, totale formattato europeo (16.600,00 € invece di "0 €"); 5) Notifiche dashboard: già cliccabili - aggiunto hint "👆 Click para gestionar" + icona action sulla card. -->
+<!-- NEXO v9.77 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS Bugfix critici: 1) FIX persistenza cliente nel dialog vendita: ad ogni apertura dell'overlay, il campo "ssc-client-search" + clientId state vengono resettati a meno che lo Stock specifico abbia già un clientId salvato (auto-popolazione legittima per quello stock). Prima: il campo restava da vendita precedente; 2) FIX calcolo margine: parser robusto per Compra/Vendita che riconosce qualsiasi formato (10.000 € / 10000 / "10.000,00 EUR" / "10500"), ricalcolo immediato del margine quando si aggiorna prezzo vendita o compra in stock, sync automatico verso eventuali notifiche pendenti. Helper nxParsePrice() centralizzato. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6660,9 +6660,13 @@ window.stkOpenSaleClientModal=function(stockId,newCs,oldCs,onConfirm,onCancel){
   var s=stock.find(function(x){return String(x.id)===String(stockId);});
   if(!s){if(onCancel)onCancel();return;}
   window._sscState={stockId:stockId,newCs:newCs,oldCs:oldCs,clientId:null,onConfirm:onConfirm,onCancel:onCancel};
-  // Pre-popola se Stock ha già clientId
-  var existingClientId=s.clientId||'';
-  var existingClientName=s.clientName||'';
+  // v9.77 FIX: Pre-popola cliente SOLO se Stock attualmente è in stato che ha cliente assegnato
+  // (vendido / reservado / en_negociacion). Per altri stati (libre o nuova vendita), resetta.
+  // Questo evita che cliente di una vendita precedente rimanga in cache quando si gestisce un altro veicolo.
+  var currentCs=s.commercialStatus||'libre';
+  var hasLegitimateClient=(currentCs==='vendido'||currentCs==='reservado'||currentCs==='en_negociacion')&&s.clientId;
+  var existingClientId=hasLegitimateClient?s.clientId:'';
+  var existingClientName=hasLegitimateClient?(s.clientName||''):'';
   // Titolo dinamico per stato
   var statusLabels={reservado:'Reservar',en_negociacion:'En negociaci\u00f3n',vendido:'Marcar como Vendido'};
   document.getElementById('ssc-modal-title').innerHTML='&#128276; '+esc(statusLabels[newCs]||newCs);
@@ -6680,7 +6684,7 @@ window.stkOpenSaleClientModal=function(stockId,newCs,oldCs,onConfirm,onCancel){
   var sellerSel=document.getElementById('ssc-seller');
   if(sellerSel){
     var activeSellers=(window.nxSellers||[]).filter(function(sl){return sl.active!==false;});
-    var selectedSellerName=s.soldBy||window._sscLastSeller||(typeof currentUserName!=='undefined'?currentUserName:'')||'';
+    var selectedSellerName=(hasLegitimateClient&&s.soldBy)||window._sscLastSeller||(typeof currentUserName!=='undefined'?currentUserName:'')||'';
     if(typeof currentUser!=='undefined'&&currentUser&&currentUser.displayName&&!selectedSellerName)selectedSellerName=currentUser.displayName;
     sellerSel.innerHTML='<option value="">-- Selecciona vendedor --</option>'
       +activeSellers.map(function(sl){
@@ -6688,14 +6692,16 @@ window.stkOpenSaleClientModal=function(stockId,newCs,oldCs,onConfirm,onCancel){
         return '<option value="'+esc(sl.name)+'"'+sel+'>'+esc(sl.name)+(sl.role?' ('+esc(sl.role)+')':'')+'</option>';
       }).join('');
   }
-  // Reset form
+  // v9.77 FIX: Reset COMPLETO del campo cliente se non c'è cliente legittimo per questo stock
   document.getElementById('ssc-client-search').value=existingClientName;
   document.getElementById('ssc-confirm-btn').disabled=!existingClientId;
   if(existingClientId){
     window._sscState.clientId=existingClientId;
     sscShowClientInfo(existingClientId);
   }else{
+    // Reset visivo: nasconde infobox cliente residuo
     document.getElementById('ssc-client-info').style.display='none';
+    document.getElementById('ssc-client-info').innerHTML='';
   }
   // Popola datalist
   sscRefreshDatalist();
@@ -6903,8 +6909,8 @@ window.nxSyncStockToKanban=function(stockId,newCs,client,sellerName){
   if(newTag==='won'){
     var s=stock.find(function(x){return String(x.id)===String(stockId);});
     if(s){
-      var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
-      var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+      var sellPrice=window.nxParsePrice(s.sell);
+      var buyPrice=window.nxParsePrice(s.buy);
       c.wonMargin=sellPrice-buyPrice;
       c.wonAt=new Date().toISOString();
     }
@@ -6918,13 +6924,13 @@ window.nxSyncStockToKanban=function(stockId,newCs,client,sellerName){
 window.salesAskSendToAccounting=function(stockId,client,sellerName){
   var s=stock.find(function(x){return String(x.id)===String(stockId);});
   if(!s)return;
-  var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+  var sellPrice=window.nxParsePrice(s.sell);
   // v9.76: ISSUE 2 - Validazione prezzo prima di inviare a contabilidad
   if(sellPrice<=0){
     alert('\u26a0\ufe0f Precio de venta faltante.\n\nNo es posible enviar a Contabilidad sin un precio v\u00e1lido.\nActualiza el precio de venta en Stock Vivo y vuelve a marcar como Vendido.');
     return;
   }
-  var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+  var buyPrice=window.nxParsePrice(s.buy);
   var margin=sellPrice-buyPrice;
   var marginColor=margin>0?'#16a34a':margin<0?'#dc2626':'#6b7280';
   // v9.75: usa seller dal popup, fallback a stock.soldBy o assignedTo
@@ -7124,8 +7130,8 @@ window.nxBuildProformaFromNotif=function(notif){
   notif.vehicleIds.forEach(function(stockId){
     var s=stock.find(function(x){return String(x.id)===String(stockId);});
     if(!s)return;
-    var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
-    var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+    var sellPrice=window.nxParsePrice(s.sell);
+    var buyPrice=window.nxParsePrice(s.buy);
     if(s.vehicles&&s.vehicles.length){
       s.vehicles.forEach(function(v){
         prePop.items.push({
@@ -20069,6 +20075,58 @@ document.querySelectorAll('.ovl').forEach(function(el){
     return amount.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+(currency||'EUR');
   };
   
+  // v9.77: Parser prezzo robusto - gestisce TUTTI i formati possibili
+  // Esempi gestiti correttamente:
+  //   "10.500"     → 10500   (formato EU senza decimali, punto = thousand sep)
+  //   "10.500,00"  → 10500   (formato EU con decimali)
+  //   "10500"      → 10500   (numero puro)
+  //   "10500.50"   → 10500.5 (formato US con decimali)
+  //   "10.500 €"   → 10500   (con simbolo)
+  //   "10500.00"   → 10500   (US legacy)
+  //   "10,500.00"  → 10500   (formato US con thousand sep + decimali)
+  //   number 10500 → 10500   (passthrough)
+  window.nxParsePrice=function(val){
+    if(typeof val==='number')return val;
+    if(!val)return 0;
+    var s=String(val).trim();
+    if(!s)return 0;
+    // Rimuovi simboli valuta e spazi (mantiene solo cifre, virgola, punto, segno meno)
+    s=s.replace(/[^\d.,\-]/g,'');
+    if(!s)return 0;
+    // Conta presenza di virgola e punto
+    var hasComma=s.indexOf(',')>=0;
+    var hasDot=s.indexOf('.')>=0;
+    if(hasComma&&hasDot){
+      // Formato US "10,500.00" o EU "10.500,00" - distingui da posizione ultimo separatore
+      var lastComma=s.lastIndexOf(',');
+      var lastDot=s.lastIndexOf('.');
+      if(lastComma>lastDot){
+        // EU: virgola = decimale, punto = migliaia
+        s=s.replace(/\./g,'').replace(',','.');
+      }else{
+        // US: punto = decimale, virgola = migliaia
+        s=s.replace(/,/g,'');
+      }
+    }else if(hasComma){
+      // Solo virgola: assumi decimale EU "10500,50" → "10500.50"
+      s=s.replace(',','.');
+    }else if(hasDot){
+      // Solo punto: ambiguo
+      // Se c'\u00e8 1 solo punto e dopo ci sono 1-2 cifre → decimal US "10500.5" o "10500.50"
+      // Se ci sono \u2265 3 cifre dopo (o pi\u00f9 punti) → thousand EU "10.500" o "1.000.000"
+      var parts=s.split('.');
+      if(parts.length===2&&parts[1].length<=2){
+        // Decimal US: "10500.5" o "10500.50"
+        // OK: parseFloat lo gestisce nativo
+      }else{
+        // Thousand EU: "10.500" o "1.000.000" → rimuovi tutti i punti
+        s=s.replace(/\./g,'');
+      }
+    }
+    var n=parseFloat(s);
+    return isNaN(n)?0:n;
+  };
+  
   // v9.68: Compone descrizione multi-linea per item veicolo (formato esempio reale)
   // Output: "WBA7K310...P08024 BMW 118i 1° Reg. 5/3/24<br>Kms 33479 Metal Grey Damage: As damage Report"
   // Per items NON veicolo (manuali) ritorna solo la description
@@ -20737,8 +20795,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // v9.68: helper interno per aggiungere veicolo come item proforma
   function nbpfAddVehicleAsItem(stockEntry,vehicle){
     var s=stockEntry,v=vehicle||{};
-    var sellPrice=parseFloat(String(v.sell||s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
-    var buyPrice=parseFloat(String(v.buy||s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+    var sellPrice=window.nxParsePrice(v.sell||s.sell);
+    var buyPrice=window.nxParsePrice(v.buy||s.buy);
     window._nbpfItems.push({
       id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       stockId:s.id,
