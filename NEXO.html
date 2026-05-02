@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.88 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT EXPEDIENTES: 1) Aggiunto modulo NX_SP per Microsoft Graph SharePoint API (createFolder, listSites, listDrives, uploadFile, etc); 2) Aggiunti scope Files.ReadWrite.All + Sites.ReadWrite.All (richiede re-login Microsoft 365); 3) Setup wizard in Configuracion: Discover sites → seleziona sito DMCAR → seleziona drive → crea automaticamente 3 cartelle root EXP.GEN DMCAR GROUP / EXP.GEN INNO / EXP.GEN IMPEX; 4) DB schema: nxExpedientes (lista) + nxExpCounters (per impresa) + nxSpConfig (siteId/driveId/rootFolders); 5) Numerazione progressiva per impresa: DMCAR-EXP-001, INNO-EXP-001, IMPEX-EXP-001; 6) Auto-trigger su Save Proforma: crea expediente "EXP NNN - ClientName" + sub-folders CLIENTE/PROVEEDOR/TRANSPORTE/BROKER (BROKER solo se presente); 7) Helper nxExpCreate(opts, cb) + nxExpUploadDoc(expId, subfolder, file) + nxExpFindByProforma + nxExpOpenInSharePoint. PARTE 1/2 - prossima parte: bottoni UI Apri/Upload nei modal Proforma + B2B card. -->
+<!-- NEXO v9.89 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT FIX UI: 1) hook auto-refresh card SharePoint quando updateMicrosoftConfigUI() viene chiamato (rileva login MS); 2) renderConfig() ora chiama anche spUpdateConfigUI() (refresh ad ogni apertura tab Configuracion); 3) Avviso warning chiaro nel card SharePoint quando MS è loggato MA mancano gli scope (login fatto pre-v9.88) → invita a logout/login per nuovo consent. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -4185,7 +4185,14 @@ window.spUpdateConfigUI=function(){
     dot.style.background='#f59e0b';
     txt.textContent='Sin configurar';
     txt.style.color='#f59e0b';
-    if(detail)detail.innerHTML='Microsoft 365 OK. Falta configurar el sitio SharePoint.';
+    if(detail){
+      detail.innerHTML='<div style="background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:10px;border-radius:5px;line-height:1.6;color:var(--t1)">'
+        +'<strong>\u26a0\ufe0f Importante:</strong> si la sesi\u00f3n Microsoft 365 fue iniciada <em>antes</em> de v9.88, '
+        +'el token actual <strong>no tiene los scopes SharePoint</strong>. '
+        +'Si "Descubrir sitios" da error, haz <strong>logout + login</strong> de Microsoft 365 (arriba) '
+        +'para obtener el nuevo consentimiento de Files.ReadWrite.All + Sites.ReadWrite.All.'
+        +'</div>';
+    }
     if(setup)setup.style.display='block';
     if(summary)summary.style.display='none';
   }
@@ -4377,6 +4384,8 @@ function updateMicrosoftConfigUI(){
     if(logoutBtn)logoutBtn.style.display='none';
     if(detail)detail.innerHTML='Inicia sesion con info@dmcargroup.com para enviar emails desde NEXO.';
   }
+  // v9.89: hook auto-refresh SharePoint card
+  if(typeof spUpdateConfigUI==='function')spUpdateConfigUI();
 }
 
 // ===========================================================================
@@ -11954,6 +11963,8 @@ function renderConfig(){
   updateFirebaseConfigUI();
   updateMicrosoftConfigUI();
   updateWorkerMailConfigUI();
+  // v9.89: aggiungi refresh SharePoint config
+  if(typeof spUpdateConfigUI==='function')spUpdateConfigUI();
 }
 
 // Inizializza la card "Worker Mail" con i valori salvati in localStorage
