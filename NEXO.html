@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.50 — DMCAR GROUP CRM | 2026-05-02 | Export per lista: aggiunto pulsante "⤓ Exportar" su ogni card lista (Listas tab) con scelta formato CSV/XLSX. Filename "Lista [Nome] Nexo Direct Mail.{xlsx|csv}". Rimosso pulsante "Exportar" globale dalla toolbar Marketing (era export indiscriminato senza filtro lista). Funzione mkExportListContacts(listId, fmt) gestisce entrambi i formati con loader XLSX dinamico. -->
+<!-- NEXO v9.51 — DMCAR GROUP CRM | 2026-05-02 | UI/UX Fix: 1) bottone "Eliminar" per riga contatto Marketing (oltre a quello globale); 2) Lead "Tipo de operador" → "Tipo cliente" allineato a Marketing; 3) Lead opzioni Tipo cliente identiche a Marketing (dealer/broker/cliente_final/importador/rent_a_car/otro), retro-compatibile con valori legacy (Commerciante/Privato ecc.); 4) Auto-promote post-email mostra ora correttamente il prompt di routing (rimosso silent=true che bypassava la conferma) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1341,14 +1341,15 @@ En que te puedo ayudar hoy?</div></div>
       <div><label>Email</label><input type="email" id="le-email" placeholder="elitecars@blu.it"></div>
     </div>
     <div class="g2 mb10">
-      <div><label>Tipo de operador</label>
+      <div><label>Tipo cliente</label>
         <select id="le-type">
           <option value="">--</option>
-          <option>Commerciante</option>
-          <option>Privato</option>
-          <option>Agenzia</option>
-          <option>Concesionaria</option>
-          <option>Otro</option>
+          <option value="dealer">Dealer</option>
+          <option value="broker">Broker</option>
+          <option value="cliente_final">Cliente final</option>
+          <option value="importador">Importador</option>
+          <option value="rent_a_car">Rent a car</option>
+          <option value="otro">Otro</option>
         </select>
       </div>
       <div><label>Categoria principal</label>
@@ -3180,7 +3181,7 @@ function promoteLeadToB2B(leadId,silent){
     company:l.company||'',
     country:l.country||'',
     role:'Comprador',
-    clientType:'',
+    clientType:(typeof mkMapLegacyLeadType==='function'?mkMapLegacyLeadType(l.type||''):''),
     phone:l.phone||'',
     email:l.email||'',
     notes:(l.notes||'')+(l.message?'\n\nMensaje original: '+l.message:''),
@@ -3214,12 +3215,13 @@ function promoteLeadToB2B(leadId,silent){
   if(typeof renderLeads==='function')renderLeads();
   if(typeof renderDash==='function')renderDash();
   if(!silent)showToast('\u2713 '+contact.name+' promovido a Contactos B2B');
-  // v9.49: prompt smart routing → mkContacts + assegnazione liste
-  // Solo se silent=false (cioè promote interattivo singolo). Per il bulk il caller orchestrerà
-  if(!silent&&typeof mkPromptRoutingConfirm==='function'){
+  // v9.51: prompt smart routing → mkContacts + assegnazione liste
+  // SEMPRE mostrato (anche in modalità silent dell'auto-promote post-email),
+  // perché la conferma routing è una scelta dell'utente indipendente dal flusso che ha innescato il promote.
+  if(typeof mkPromptRoutingConfirm==='function'){
     setTimeout(function(){
       mkPromptRoutingConfirm([contact]);
-    },200);
+    },silent?1700:200); // delay maggiore se silent (lascia chiudere il modal email + toast)
   }
   return true;
 }
@@ -3227,6 +3229,33 @@ function promoteLeadToB2B(leadId,silent){
 // ===========================================================================
 // v9.49: SMART ROUTING Lead → B2B → Marketing (mkContacts) con auto-asignacion listas
 // ===========================================================================
+// v9.51: mappa valori legacy del Lead "Tipo de operador" alle nuove opzioni allineate
+// con Marketing (Tipo cliente). Garantisce retro-compatibilità per lead vecchi.
+// I valori vecchi: Commerciante / Privato / Agenzia / Concesionaria / Otro
+// Mappiamo:
+//   - Commerciante → dealer
+//   - Privato      → cliente_final
+//   - Agenzia      → broker
+//   - Concesionaria→ dealer
+//   - Otro/altri   → otro
+function mkMapLegacyLeadType(val){
+  if(!val)return '';
+  var v=String(val).trim().toLowerCase();
+  // Già nuovo formato? lascia stare
+  var newVals=['dealer','broker','cliente_final','importador','rent_a_car','otro'];
+  if(newVals.indexOf(v)>=0)return v;
+  // Mappa legacy
+  var map={
+    'commerciante':'dealer',
+    'privato':'cliente_final',
+    'agenzia':'broker',
+    'concesionaria':'dealer',
+    'otro':'otro'
+  };
+  return map[v]||'otro';
+}
+window.mkMapLegacyLeadType=mkMapLegacyLeadType;
+
 // Regole di matching: contact (record contacts B2B) → lista name
 // Configurabili in futuro da Settings; per ora hardcoded come da specifiche.
 var MK_AUTOROUTING_RULES=[
@@ -7415,6 +7444,7 @@ function leadsBulkMoveToContacts(){
       country:l.country||'',
       role:'Comprador',
       myCompany:'DMCAR GROUP',
+      clientType:(typeof mkMapLegacyLeadType==='function'?mkMapLegacyLeadType(l.type||''):''),
       phone:l.phone||'',
       email:l.email||'',
       notes:'(Convertido de Lead)\n'+(l.notes||'')+(l.category?'\nCategoria: '+l.category:'')+(l.volume?'\nVolumen: '+l.volume+'/mes':''),
@@ -7467,7 +7497,8 @@ function editLead(id){
   n('le-country').value=l.country||'';
   n('le-phone').value=l.phone||'';
   n('le-email').value=l.email||'';
-  n('le-type').value=l.type||'';
+  // v9.51: mappa valori legacy del Tipo cliente alle nuove opzioni allineate a Marketing
+  n('le-type').value=mkMapLegacyLeadType(l.type||'');
   n('le-category').value=l.category||'';
   n('le-vtype').value=l.vtype||'';
   n('le-volume').value=l.volume||'';
@@ -10679,7 +10710,8 @@ function mkRender(){
       +'<td style="font-size:10px">'+mkRenderListsCellHTML(c)+'</td>'
       +'<td style="font-size:10px;color:var(--t3)">'+fmtD(c.createdAt)+'</td>'
       +'<td><div class="fc g4">'
-        +'<button class="btn bs mk-edit-btn" data-id="'+esc(c.id)+'" style="padding:2px 7px;font-size:10px">&#9998;</button>'
+        +'<button class="btn bs mk-edit-btn" data-id="'+esc(c.id)+'" title="Editar contacto" style="padding:2px 7px;font-size:10px">&#9998;</button>'
+        +'<button class="btn bd mk-del-btn" data-id="'+esc(c.id)+'" title="Eliminar definitivamente este contacto" style="padding:2px 7px;font-size:10px">&#128465;&#65039;</button>'
         +(c.status==='unsubscribed'
           ?'<button class="btn bs mk-resub-btn" data-id="'+esc(c.id)+'" title="Re-suscribir (solo si el contacto pidi\u00f3 re-inscripci\u00f3n)" style="padding:2px 7px;font-size:10px;color:var(--green)">\u2705</button>'
           :'<button class="btn bg mk-unsub-btn" data-id="'+esc(c.id)+'" title="Unsubscribe (no se elimina, status \u2192 unsubscribed)" style="padding:2px 7px;font-size:10px">\ud83d\udd12</button>')
@@ -10698,6 +10730,13 @@ function mkRender(){
   });
   body.querySelectorAll('.mk-edit-btn').forEach(function(b){
     b.addEventListener('click',function(){mkOpenEdit(this.getAttribute('data-id'));});
+  });
+  // v9.51: per-row delete
+  body.querySelectorAll('.mk-del-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      mkDelContact(this.getAttribute('data-id'));
+    });
   });
   // Click sui chip lista \u2192 applica filtro
   body.querySelectorAll('.mk-list-chip').forEach(function(ch){
@@ -10889,11 +10928,20 @@ function mkSaveContact(){
 function mkDelContact(id){
   var c=mkContacts.find(function(x){return String(x.id)===String(id);});
   if(!c)return;
-  if(!confirm('Eliminar contacto "'+(c.firstName||c.email)+'"?'))return;
+  // v9.51: messaggio più informativo
+  var msg='\u26a0\ufe0f Eliminar definitivamente este contacto?\n\n';
+  msg+='\u2022 Nombre: '+(c.firstName||'(sin nombre)')+'\n';
+  if(c.companyName)msg+='\u2022 Empresa: '+c.companyName+'\n';
+  msg+='\u2022 Email: '+(c.email||'(sin email)')+'\n\n';
+  msg+='Esta acci\u00f3n NO se puede deshacer.';
+  if(!confirm(msg))return;
   mkContacts=mkContacts.filter(function(x){return String(x.id)!==String(id);});
   mkSel.delete(id);
+  // v9.51: cleanup ghost references nelle liste (il contatto era in N liste)
+  if(typeof mkCleanGhostListReferences==='function')mkCleanGhostListReferences();
   SS('mkContacts',mkContacts);
   renderMarketing();
+  if(typeof showToast==='function')showToast('\u2713 Contacto eliminado');
 }
 function mkBulkDel(){
   if(!mkSel.size)return;
