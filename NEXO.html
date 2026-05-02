@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.67 — DMCAR GROUP CRM | 2026-05-02 | FIX caratteri Unicode escape visibili in HTML statico (\u2713, \u25cb, \u2014, \u00fa, \u00f1, \u00fa, ecc) sostituiti con HTML entities corrette (&#10003;, &#9675;, &mdash;, &uacute;, ecc). FIX bottoni "+ Nueva plantilla" che mostravano alert F3-pendiente: ora il pannello Templates mostra dinamicamente i template configurati con shortcut diretto all'editor + lista globale templates per società. Bottone 📄 templates aggiunto direttamente sulle card empresa. -->
+<!-- NEXO v9.68 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UPGRADE: 1) Layout TABELLARE 4 colonne standard auto B2B (Nome prodotto/servizio multi-linea | Cantidad | Importe | Total) - prima colonna concatena VIN+Modello+Versione+Reg+Kms+Color+Damage in formato leggibile, righe descrittive (note pagamento, tempistiche) supportate con importo 0. 2) Sistema i18n IT/ES/EN per labels (Cliente/Subtotal/IVA/Total/Bancos/Fecha/Número). Lingua default per empresa (campo "documentLanguage") + override per documento in F2 (dropdown "Idioma del documento"). Auto-wrap, allineamento numeri a destra, formato valuta es-ES. Auto-popolamento line items da Stock Vivo (VIN/brand/model/version/reg/kms/color/damage/sell). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1593,6 +1593,15 @@ En que te puedo ayudar hoy?</div></div>
         <div><label>Email contacto</label><input type="email" id="nbc-email" placeholder="admin@empresa.com"></div>
         <div><label>Tel&eacute;fono</label><input type="text" id="nbc-phone" placeholder="+420..."></div>
       </div>
+      <div style="margin-top:10px">
+        <label>Idioma por defecto de los documentos</label>
+        <select id="nbc-lang">
+          <option value="ES">&#127466;&#127480; Espa&ntilde;ol (ES)</option>
+          <option value="IT">&#127470;&#127481; Italiano (IT)</option>
+          <option value="EN">&#127468;&#127463; English (EN)</option>
+        </select>
+        <div style="font-size:10px;color:var(--t4);margin-top:3px">Aplicado a Proformas, Facturas y Notas de Cr&eacute;dito (puede sobrescribirse al crear el documento).</div>
+      </div>
     </div>
 
     <!-- BANCOS (multi-record) -->
@@ -1794,6 +1803,16 @@ En que te puedo ayudar hoy?</div></div>
           <input type="text" id="nbpf-number" placeholder="Auto-generado al guardar" readonly style="background:var(--bg2);font-family:monospace">
         </div>
       </div>
+      <div style="margin-top:10px">
+        <label>Idioma del documento</label>
+        <select id="nbpf-lang">
+          <option value="">-- Por defecto de la empresa --</option>
+          <option value="ES">&#127466;&#127480; Espa&ntilde;ol (ES)</option>
+          <option value="IT">&#127470;&#127481; Italiano (IT)</option>
+          <option value="EN">&#127468;&#127463; English (EN)</option>
+        </select>
+        <div style="font-size:10px;color:var(--t4);margin-top:3px">Sobrescribe el idioma por defecto de la empresa solo para este documento.</div>
+      </div>
     </div>
 
     <!-- CLIENTE -->
@@ -1823,9 +1842,10 @@ En que te puedo ayudar hoy?</div></div>
     <div class="card" style="padding:12px;margin-bottom:12px;background:var(--bg3)">
       <div class="fbet mb8">
         <div class="ct" style="margin:0">&#128661; Conceptos</div>
-        <div class="fc g6">
+        <div class="fc g6" style="flex-wrap:wrap">
           <button class="btn bp" onclick="nbpfAddItemFromStock()" style="font-size:11px;padding:5px 10px">+ De Stock Vivo</button>
           <button class="btn bs" onclick="nbpfAddItemManual()" style="font-size:11px;padding:5px 10px">+ Manual</button>
+          <button class="btn bs" onclick="nbpfAddDescriptiveLine()" style="font-size:11px;padding:5px 10px" title="A&ntilde;ade una l&iacute;nea de texto sin importe (ej: condiciones de pago)">+ L&iacute;nea descriptiva</button>
         </div>
       </div>
       <div id="nbpf-items-list">
@@ -18897,6 +18917,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbc-prefix-pf').value='PRO';
     document.getElementById('nbc-prefix-inv').value='INV';
     if(document.getElementById('nbc-prefix-nc'))document.getElementById('nbc-prefix-nc').value='NC';
+    if(document.getElementById('nbc-lang'))document.getElementById('nbc-lang').value='ES';
     document.getElementById('nbc-delete-btn').style.display='none';
     var sumEl=document.getElementById('nbc-tpl-summary');
     if(sumEl)sumEl.innerHTML='Guarda primero la empresa, despu\u00e9s podr\u00e1s configurar sus templates.';
@@ -18923,6 +18944,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbc-prefix-pf').value=c.proformaPrefix||'PRO';
     document.getElementById('nbc-prefix-inv').value=c.invoicePrefix||'INV';
     if(document.getElementById('nbc-prefix-nc'))document.getElementById('nbc-prefix-nc').value=c.creditNotePrefix||'NC';
+    if(document.getElementById('nbc-lang'))document.getElementById('nbc-lang').value=c.documentLanguage||'ES';
     document.getElementById('nbc-delete-btn').style.display='';
     nbcRenderBanks();
     // Update template summary
@@ -19036,6 +19058,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       email:document.getElementById('nbc-email').value.trim(),
       phone:document.getElementById('nbc-phone').value.trim(),
       banks:validBanks,
+      documentLanguage:(document.getElementById('nbc-lang')&&document.getElementById('nbc-lang').value)||'ES',
       proformaPrefix:document.getElementById('nbc-prefix-pf').value.trim()||'PRO',
       invoicePrefix:document.getElementById('nbc-prefix-inv').value.trim()||'INV',
       creditNotePrefix:(document.getElementById('nbc-prefix-nc')&&document.getElementById('nbc-prefix-nc').value.trim())||'NC',
@@ -19085,6 +19108,90 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // ========================================================================
   window._nbtplCurrentCompanyId=null;
   window._nbtplCurrentType='proforma'; // proforma | invoice | credit
+  
+  // v9.68: Dizionario i18n per labels documento
+  // Estensibile: aggiungere nuove lingue qui (es. FR, DE, PT)
+  window.NX_I18N={
+    ES:{
+      proforma:'PROFORMA',invoice:'FACTURA',credit:'NOTA DE CR\u00c9DITO',
+      proforma_sub:'Documento provisional sin valor fiscal',invoice_sub:'Documento fiscal',credit_sub:'Rectificaci\u00f3n / Anulaci\u00f3n',
+      bill_to:'Facturar a',from:'Emisor',date:'Fecha',number:'N\u00famero',
+      product_service:'Nombre del producto o servicio',quantity:'Cantidad',amount:'Importe',total:'Total',
+      unit:'unidad',units:'unidades',subtotal:'Subtotal',vat:'IVA',
+      bank_details:'Datos bancarios',iban:'IBAN',swift:'SWIFT',bank_name:'Banco',
+      legal_notes:'Notas legales',payment_terms:'Condiciones de pago',
+      vat_mode_standard:'Con IVA',vat_mode_export:'Exportaci\u00f3n (0% IVA)',vat_mode_reverse:'Reverse Charge intra-UE',vat_mode_exempt:'Exento',
+      reg:'1\u00aa Mat.',kms:'Kms',damage:'Da\u00f1os',color:'Color'
+    },
+    IT:{
+      proforma:'FATTURA PROFORMA',invoice:'FATTURA',credit:'NOTA DI CREDITO',
+      proforma_sub:'Documento provvisorio senza valore fiscale',invoice_sub:'Documento fiscale',credit_sub:'Rettifica / Annullamento',
+      bill_to:'Fatturare a',from:'Emittente',date:'Data',number:'Numero',
+      product_service:'Nome del prodotto o del servizio',quantity:'Quantit\u00e0',amount:'Importo',total:'Totale',
+      unit:'unit\u00e0',units:'unit\u00e0',subtotal:'Imponibile',vat:'IVA',
+      bank_details:'Dati bancari',iban:'IBAN',swift:'SWIFT',bank_name:'Banca',
+      legal_notes:'Note legali',payment_terms:'Condizioni di pagamento',
+      vat_mode_standard:'Con IVA',vat_mode_export:'Esportazione (0% IVA)',vat_mode_reverse:'Inversione contabile UE',vat_mode_exempt:'Esente',
+      reg:'1\u00b0 Imm.',kms:'Km',damage:'Danni',color:'Colore'
+    },
+    EN:{
+      proforma:'PROFORMA INVOICE',invoice:'INVOICE',credit:'CREDIT NOTE',
+      proforma_sub:'Provisional document, no fiscal value',invoice_sub:'Fiscal document',credit_sub:'Rectification / Cancellation',
+      bill_to:'Bill to',from:'From',date:'Date',number:'Number',
+      product_service:'Product or service name',quantity:'Quantity',amount:'Amount',total:'Total',
+      unit:'unit',units:'units',subtotal:'Subtotal',vat:'VAT',
+      bank_details:'Bank details',iban:'IBAN',swift:'SWIFT',bank_name:'Bank',
+      legal_notes:'Legal notes',payment_terms:'Payment terms',
+      vat_mode_standard:'With VAT',vat_mode_export:'Export (0% VAT)',vat_mode_reverse:'Reverse charge intra-EU',vat_mode_exempt:'Exempt',
+      reg:'1st Reg.',kms:'Kms',damage:'Damage',color:'Color'
+    }
+  };
+  
+  // Get translation for current language
+  window.nxT=function(key,lang){
+    var dict=window.NX_I18N[lang||'ES']||window.NX_I18N.ES;
+    return dict[key]||key;
+  };
+  
+  // v9.68: Format prezzo in formato europeo "16.600,00 EUR"
+  window.nxFormatPrice=function(amount,currency){
+    if(typeof amount!=='number')amount=parseFloat(amount)||0;
+    return amount.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+(currency||'EUR');
+  };
+  
+  // v9.68: Compone descrizione multi-linea per item veicolo (formato esempio reale)
+  // Output: "WBA7K310...P08024 BMW 118i 1° Reg. 5/3/24<br>Kms 33479 Metal Grey Damage: As damage Report"
+  // Per items NON veicolo (manuali) ritorna solo la description
+  window.nxComposeVehicleLine=function(item,lang){
+    var t=window.nxT;
+    if(!item)return '';
+    // Item manuale (no VIN, no model auto) → solo description con line-break
+    if(!item.vin&&!item.model&&!item.brand)return esc(item.description||'').replace(/\n/g,'<br>');
+    // Item veicolo: composizione multi-linea
+    var line1='',line2='';
+    // Linea 1: VIN MODELO VERSION 1° Reg. DATE
+    var parts1=[];
+    if(item.vin)parts1.push(esc(item.vin));
+    var modelParts=[];
+    if(item.brand)modelParts.push(item.brand);
+    if(item.model)modelParts.push(item.model);
+    if(item.version)modelParts.push(item.version);
+    if(modelParts.length)parts1.push(esc(modelParts.join(' ')));
+    if(item.reg)parts1.push(t('reg',lang)+' '+esc(item.reg));
+    line1=parts1.join(' ');
+    // Linea 2: Kms COLORE Damage: TESTO_DANNI
+    var parts2=[];
+    if(item.kms)parts2.push(t('kms',lang)+' '+esc(item.kms));
+    if(item.color)parts2.push(esc(item.color));
+    if(item.damage&&item.damage!=='--')parts2.push(t('damage',lang)+': '+esc(item.damage));
+    line2=parts2.join(' ');
+    // Linea 3 opzionale: descripcion extra (se utente l'ha aggiunta)
+    var line3=item.description&&item.description!==(item.brand+' '+item.model+' '+item.version).trim()?esc(item.description):'';
+    var html=line1;
+    if(line2)html+='<br>'+line2;
+    if(line3)html+='<br><span style="color:#888;font-size:10px;font-style:italic">'+line3+'</span>';
+    return html;
+  };
   
   // Default template config
   function nbtplDefaultConfig(type){
@@ -19218,27 +19325,34 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var bank=(company.banks||[]).find(function(b){return b.id===document.getElementById('nbtpl-bank-id').value;})||(company.banks||[])[0]||{};
     var typeMap={proforma:'PRO',invoice:'INV',credit:'NC'};
     var prefix=window._nbtplCurrentType==='proforma'?company.proformaPrefix:window._nbtplCurrentType==='invoice'?company.invoicePrefix:company.creditNotePrefix;
+    var lang=company.documentLanguage||'ES';
     return {
+      lang:lang,
       company:company,
       bank:bank,
       docNumber:(prefix||typeMap[window._nbtplCurrentType])+'/2026/0001',
       docDate:new Date().toLocaleDateString('es-ES'),
       client:{name:'Cliente Ejemplo SL',vatNumber:'ES12345678X',address:'Calle Ejemplo 42, 28001 Madrid (ES)',country:'ES',email:'cliente@ejemplo.com'},
       items:[
-        {id:'DMCAR-0001',model:'AUDI Q2 35 TDI Adrenalin',vin:'WAUZZZ8VXKA123456',quantity:1,unitPrice:35000,total:35000},
-        {id:'DMCAR-0002',model:'BMW X1 sDrive18d',vin:'WBAVL110X05K12345',quantity:1,unitPrice:42000,total:42000}
+        {vin:'WBA7K310607P08024',brand:'BMW',model:'118i',version:'',reg:'5/3/24',kms:'33479',color:'Metal Grey',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
+        {vin:'WBA7K310207N95298',brand:'BMW',model:'118i',version:'',reg:'5/3/24',kms:'35551',color:'Black',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
+        {vin:'WBA7K310907P32155',brand:'BMW',model:'118i',version:'',reg:'10/4/24',kms:'40484',color:'Black',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
+        {description:lang==='IT'?'Il cliente si impegna a versare 500 \u20ac per veicolo a titolo di prenotazione, da pagare entro 24 ore; in caso contrario, la proforma perder\u00e0 la sua validit\u00e0.':lang==='EN'?'The client undertakes to pay \u20ac500 per vehicle as a reservation fee, payable within 24 hours; otherwise, the proforma will lose its validity.':'El cliente se compromete a abonar 500 \u20ac por veh\u00edculo en concepto de reserva, pagaderos en 24 horas; en caso contrario, la proforma perder\u00e1 su validez.',quantity:1,unitPrice:0,total:0},
+        {description:lang==='IT'?'I veicoli saranno pronti per il saldo e il carico in circa 4 settimane.':lang==='EN'?'The vehicles will be ready for final payment and loading in approximately 4 weeks.':'Los veh\u00edculos estar\u00e1n listos para el pago final y la carga en aproximadamente 4 semanas.',quantity:1,unitPrice:0,total:0}
       ],
-      subtotal:77000,
-      vatRate:21,
-      vatAmount:16170,
-      total:93170
+      subtotal:49800,
+      vatRate:0,
+      vatAmount:0,
+      total:49800
     };
   }
   
-  // Render HTML preview
+  // Render HTML preview - v9.68: layout 4 colonne (Producto | Cantidad | Importe | Total) con i18n
   function nbtplRenderHTML(cfg,data){
-    var fmt=function(n){return Number(n).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' \u20ac';};
-    var company=data.company,client=data.client,bank=data.bank;
+    var lang=(data&&data.lang)||(data.company&&data.company.documentLanguage)||'ES';
+    var t=window.nxT;
+    var fmt=window.nxFormatPrice;
+    var company=data.company||{},client=data.client||{},bank=data.bank||{};
     var html='<div style="border-top:6px solid '+cfg.colorPrimary+';padding-top:20px">';
     // HEADER
     html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px">';
@@ -19252,54 +19366,57 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(company.email)html+='<br>'+esc(company.email);
     html+='</div></div>';
     html+='<div style="text-align:right">';
-    html+='<div style="background:'+cfg.colorPrimary+';color:#fff;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:700;letter-spacing:.05em;display:inline-block">'+esc(cfg.headerTitle||'')+'</div>';
+    html+='<div style="background:'+cfg.colorPrimary+';color:#fff;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:700;letter-spacing:.05em;display:inline-block">'+esc(cfg.headerTitle||t(window._nbtplCurrentType||'proforma',lang))+'</div>';
     if(cfg.headerSub)html+='<div style="font-size:10px;color:'+cfg.colorAccent+';margin-top:4px;font-style:italic">'+esc(cfg.headerSub)+'</div>';
-    html+='<div style="font-size:14px;color:#222;margin-top:10px;font-family:monospace;font-weight:700">'+esc(data.docNumber)+'</div>';
-    html+='<div style="font-size:11px;color:#666">Fecha: '+esc(data.docDate)+'</div>';
+    html+='<div style="font-size:14px;color:#222;margin-top:10px;font-family:monospace;font-weight:700">'+esc(data.docNumber||'')+'</div>';
+    html+='<div style="font-size:11px;color:#666">'+t('date',lang)+': '+esc(data.docDate||'')+'</div>';
     html+='</div></div>';
     // CLIENTE
     html+='<div style="background:#f5f5f7;border-left:4px solid '+cfg.colorAccent+';padding:12px 16px;margin-bottom:24px;border-radius:4px">';
-    html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:'+cfg.colorPrimary+';font-weight:700;margin-bottom:4px">Facturar a</div>';
+    html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:'+cfg.colorPrimary+';font-weight:700;margin-bottom:4px">'+t('bill_to',lang)+'</div>';
     html+='<div style="font-weight:700;color:#222">'+esc(client.name||'')+'</div>';
     if(client.vatNumber)html+='<div style="font-size:11px;color:#666;font-family:monospace">VAT: '+esc(client.vatNumber)+'</div>';
     html+='<div style="font-size:11px;color:#666">'+esc(client.address||'')+'</div>';
     html+='</div>';
-    // TABLE ITEMS
+    // TABLE 4 COLONNE: Nome prodotto | Cantidad | Importe | Total
     html+='<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">';
-    html+='<thead><tr style="background:'+cfg.colorPrimary+';color:#fff">';
-    if(cfg.showId)html+='<th style="padding:8px;text-align:left">ID</th>';
-    html+='<th style="padding:8px;text-align:left">Descripci\u00f3n</th>';
-    if(cfg.showVin)html+='<th style="padding:8px;text-align:left;font-family:monospace;font-size:9px">VIN</th>';
-    html+='<th style="padding:8px;text-align:center">Cant.</th>';
-    html+='<th style="padding:8px;text-align:right">Precio U.</th>';
-    html+='<th style="padding:8px;text-align:right">Total</th>';
+    html+='<thead><tr style="border-bottom:2px solid '+cfg.colorPrimary+'">';
+    html+='<th style="padding:10px 8px;text-align:left;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;text-transform:none">'+t('product_service',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:90px">'+t('quantity',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:130px">'+t('amount',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:130px">'+t('total',lang)+'</th>';
     html+='</tr></thead><tbody>';
-    data.items.forEach(function(it,i){
-      html+='<tr style="background:'+(i%2===0?'#fafafa':'#fff')+';border-bottom:1px solid #e5e5e5">';
-      if(cfg.showId)html+='<td style="padding:8px;font-family:monospace;font-size:10px;color:#666">'+esc(it.id||'')+'</td>';
-      html+='<td style="padding:8px;color:#222">'+esc(it.model||'')+'</td>';
-      if(cfg.showVin)html+='<td style="padding:8px;font-family:monospace;font-size:9px;color:#888">'+esc(it.vin||'--')+'</td>';
-      html+='<td style="padding:8px;text-align:center">'+esc(String(it.quantity||1))+'</td>';
-      html+='<td style="padding:8px;text-align:right;font-family:monospace">'+fmt(it.unitPrice)+'</td>';
-      html+='<td style="padding:8px;text-align:right;font-family:monospace;font-weight:600">'+fmt(it.total)+'</td>';
+    (data.items||[]).forEach(function(it){
+      var qty=parseFloat(it.quantity)||1;
+      var unitPrice=parseFloat(it.unitPrice)||0;
+      var total=qty*unitPrice;
+      var qtyLabel=qty===1?t('unit',lang):t('units',lang);
+      // Composizione cella prodotto multi-linea
+      var productHtml=window.nxComposeVehicleLine(it,lang);
+      html+='<tr style="border-bottom:1px solid #e5e5e5;vertical-align:top">';
+      html+='<td style="padding:14px 8px;color:#222;line-height:1.5">'+productHtml+'</td>';
+      html+='<td style="padding:14px 8px;text-align:right;color:#666;white-space:nowrap">'+qty+' '+qtyLabel+'</td>';
+      html+='<td style="padding:14px 8px;text-align:right;font-family:monospace;color:#222;white-space:nowrap">'+fmt(unitPrice)+'</td>';
+      html+='<td style="padding:14px 8px;text-align:right;font-family:monospace;font-weight:600;color:#222;white-space:nowrap">'+fmt(total)+'</td>';
       html+='</tr>';
     });
     html+='</tbody></table>';
     // TOTALS
     html+='<div style="display:flex;justify-content:flex-end;margin-bottom:24px">';
-    html+='<div style="min-width:280px">';
-    html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>Subtotal:</span><span style="font-family:monospace">'+fmt(data.subtotal)+'</span></div>';
-    html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>IVA '+data.vatRate+'%:</span><span style="font-family:monospace">'+fmt(data.vatAmount)+'</span></div>';
-    html+='<div style="display:flex;justify-content:space-between;padding:10px 12px;background:'+cfg.colorPrimary+';color:#fff;font-weight:700;font-size:15px;margin-top:6px;border-radius:4px"><span>TOTAL:</span><span style="font-family:monospace">'+fmt(data.total)+'</span></div>';
+    html+='<div style="min-width:300px">';
+    html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>'+t('subtotal',lang)+':</span><span style="font-family:monospace">'+fmt(data.subtotal||0)+'</span></div>';
+    if((data.vatAmount||0)>0||(data.vatRate||0)>0)
+      html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>'+t('vat',lang)+' '+(data.vatRate||0)+'%:</span><span style="font-family:monospace">'+fmt(data.vatAmount||0)+'</span></div>';
+    html+='<div style="display:flex;justify-content:space-between;padding:10px 12px;background:'+cfg.colorPrimary+';color:#fff;font-weight:700;font-size:15px;margin-top:6px;border-radius:4px"><span>'+t('total',lang).toUpperCase()+':</span><span style="font-family:monospace">'+fmt(data.total||0)+'</span></div>';
     html+='</div></div>';
     // BANK + NOTES
     if(cfg.showBank&&bank&&bank.iban){
       html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">';
       html+='<div style="background:#f5f5f7;padding:12px 16px;border-radius:4px">';
-      html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:'+cfg.colorPrimary+';font-weight:700;margin-bottom:6px">Datos bancarios</div>';
+      html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:'+cfg.colorPrimary+';font-weight:700;margin-bottom:6px">'+t('bank_details',lang)+'</div>';
       html+='<div style="font-size:11px;color:#222"><strong>'+esc(bank.name||'')+'</strong></div>';
-      html+='<div style="font-size:11px;color:#666;font-family:monospace">IBAN: '+esc(bank.iban||'')+'</div>';
-      if(bank.swift)html+='<div style="font-size:11px;color:#666;font-family:monospace">SWIFT: '+esc(bank.swift)+'</div>';
+      html+='<div style="font-size:11px;color:#666;font-family:monospace">'+t('iban',lang)+': '+esc(bank.iban||'')+'</div>';
+      if(bank.swift)html+='<div style="font-size:11px;color:#666;font-family:monospace">'+t('swift',lang)+': '+esc(bank.swift)+'</div>';
       html+='</div>';
       if(cfg.legalNotes){
         html+='<div style="background:#fffbeb;border-left:3px solid '+cfg.colorAccent+';padding:12px 16px;border-radius:4px;font-size:10px;color:#666;line-height:1.6">'+esc(cfg.legalNotes).replace(/\n/g,'<br>')+'</div>';
@@ -19476,6 +19593,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbpf-client-email').value=(prePopulate&&prePopulate.client&&prePopulate.client.email)||'';
     document.getElementById('nbpf-vat-mode').value='standard';
     document.getElementById('nbpf-vat-rate').value='21';
+    if(document.getElementById('nbpf-lang'))document.getElementById('nbpf-lang').value='';
     document.getElementById('nbpf-notes').value='';
     // Popola datalist clienti
     nbpfRefreshClientDatalist();
@@ -19514,9 +19632,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
   
   // Aggiungi item da Stock Vivo (modal di selezione)
+  // v9.68: estrae TUTTI i campi auto necessari (VIN/brand/model/version/reg/kms/color/damage/sell)
   window.nbpfAddItemFromStock=function(){
     if(!stock||stock.length===0){alert('No hay veh\u00edculos en Stock Vivo.');return;}
-    // Mostriamo prompt con scelta rapida (semplice)
     var availableStock=stock.filter(function(s){return s.commercialStatus!=='vendido';});
     if(availableStock.length===0){alert('Todos los veh\u00edculos est\u00e1n vendidos.');return;}
     var lines=availableStock.slice(0,30).map(function(s,i){
@@ -19524,43 +19642,99 @@ document.querySelectorAll('.ovl').forEach(function(el){
       return (i+1)+'. '+label;
     });
     var msg='Selecciona veh\u00edculo (escribe el n\u00famero):\n\n'+lines.join('\n');
-    if(availableStock.length>30)msg+='\n\n...y '+(availableStock.length-30)+' m\u00e1s. Usa el filtro en Stock Vivo si no aparece.';
+    if(availableStock.length>30)msg+='\n\n...y '+(availableStock.length-30)+' m\u00e1s.';
     var choice=prompt(msg);
     if(!choice)return;
     var idx=parseInt(choice,10)-1;
     if(isNaN(idx)||idx<0||idx>=availableStock.length){alert('Selecci\u00f3n inv\u00e1lida.');return;}
     var s=availableStock[idx];
-    var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
-    var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
-    var vinFirst=(s.vehicles&&s.vehicles[0]&&s.vehicles[0].vin)||'';
+    // Se il lotto ha più VIN, chiedi quale (o tutti)
+    var hasMultiVehicles=s.vehicles&&s.vehicles.length>1;
+    if(hasMultiVehicles){
+      var vinChoice=prompt('Este lote tiene '+s.vehicles.length+' veh\u00edculos:\n\n'
+        +s.vehicles.map(function(v,i){return (i+1)+'. '+(v.vin||'(sin VIN)')+' '+(v.color||'')+' '+(v.kms?v.kms+'km':'');}).join('\n')
+        +'\n\nEscribe:\n  - N\u00famero (1, 2...) para a\u00f1adir solo ese\n  - "all" para a\u00f1adir todos','all');
+      if(!vinChoice)return;
+      if(vinChoice.toLowerCase()==='all'){
+        s.vehicles.forEach(function(v){nbpfAddVehicleAsItem(s,v);});
+      }else{
+        var vIdx=parseInt(vinChoice,10)-1;
+        if(isNaN(vIdx)||vIdx<0||vIdx>=s.vehicles.length){alert('Selecci\u00f3n inv\u00e1lida.');return;}
+        nbpfAddVehicleAsItem(s,s.vehicles[vIdx]);
+      }
+    }else{
+      // Singolo veicolo o nessun vehicles[]
+      var v=(s.vehicles&&s.vehicles[0])||{};
+      nbpfAddVehicleAsItem(s,v);
+    }
+    nbpfRenderItems();
+    nbpfRecalc();
+  };
+  
+  // v9.68: helper interno per aggiungere veicolo come item proforma
+  function nbpfAddVehicleAsItem(stockEntry,vehicle){
+    var s=stockEntry,v=vehicle||{};
+    var sellPrice=parseFloat(String(v.sell||s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+    var buyPrice=parseFloat(String(v.buy||s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
     window._nbpfItems.push({
       id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       stockId:s.id,
       internalId:s.internalId||'',
-      description:(s.brand||'')+' '+(s.model||'')+' '+(s.version||''),
-      vin:vinFirst,
+      // Campi completi auto
+      vin:v.vin||'',
+      brand:s.brand||'',
+      model:s.model||'',
+      version:s.version||'',
+      reg:v.reg||s.reg||'',
+      kms:v.kms||s.kms||'',
+      color:v.color||(s.colors||'').split(',')[0]||'',
+      damage:v.damage||s.damage||'',
+      // Linea descrittiva opzionale
+      description:'',
+      // Quantità + prezzi
       quantity:1,
       unitPrice:sellPrice,
       total:sellPrice,
       buyPrice:buyPrice,
-      margin:sellPrice-buyPrice
+      margin:sellPrice-buyPrice,
+      isVehicle:true
     });
-    nbpfRenderItems();
-    nbpfRecalc();
-  };
+  }
+  window.nbpfAddVehicleAsItem=nbpfAddVehicleAsItem;
   
   window.nbpfAddItemManual=function(){
     window._nbpfItems.push({
       id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       stockId:'',
       internalId:'',
+      // Item manuale: nessun campo auto, solo description
+      vin:'',brand:'',model:'',version:'',reg:'',kms:'',color:'',damage:'',
       description:'',
-      vin:'',
       quantity:1,
       unitPrice:0,
       total:0,
       buyPrice:0,
-      margin:0
+      margin:0,
+      isVehicle:false
+    });
+    nbpfRenderItems();
+  };
+  
+  // v9.68: NUOVA - linea solo testo (es. condizioni pagamento, tempistiche)
+  window.nbpfAddDescriptiveLine=function(){
+    window._nbpfItems.push({
+      id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      stockId:'',
+      internalId:'',
+      vin:'',brand:'',model:'',version:'',reg:'',kms:'',color:'',damage:'',
+      description:'',
+      quantity:1,
+      unitPrice:0,
+      total:0,
+      buyPrice:0,
+      margin:0,
+      isVehicle:false,
+      isDescriptive:true
     });
     nbpfRenderItems();
   };
@@ -19578,37 +19752,69 @@ document.querySelectorAll('.ovl').forEach(function(el){
       it[field]=parseFloat(value)||0;
       it.total=(parseFloat(it.quantity)||0)*(parseFloat(it.unitPrice)||0);
       it.margin=it.total-((parseFloat(it.buyPrice)||0)*(parseFloat(it.quantity)||0));
+      nbpfRecalc();
     }else{
       it[field]=value;
     }
-    if(field==='quantity'||field==='unitPrice')nbpfRecalc();
   };
   
   window.nbpfRenderItems=function(){
     var listEl=document.getElementById('nbpf-items-list');
     if(!listEl)return;
     if(window._nbpfItems.length===0){
-      listEl.innerHTML='<div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin conceptos. A&ntilde;ade veh&iacute;culos del stock o manualmente.</div>';
+      listEl.innerHTML='<div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin conceptos. A&ntilde;ade veh&iacute;culos del stock, manual o l&iacute;nea descriptiva.</div>';
       return;
     }
     listEl.innerHTML=window._nbpfItems.map(function(it,i){
+      var isVehicle=it.vin||it.brand||it.model;
+      var isDescriptive=it.isDescriptive===true;
       var marginColor=it.margin>0?'#16a34a':it.margin<0?'#dc2626':'var(--t3)';
-      return '<div style="padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:6px">'
-        +'<div class="fbet mb6">'
-          +'<div style="font-size:10px;color:var(--t3);font-weight:600">Concepto #'+(i+1)+(it.internalId?' \u00b7 '+esc(it.internalId):'')+'</div>'
-          +'<button class="btn bd" onclick="nbpfRemoveItem(\''+esc(it.id)+'\')" style="padding:2px 7px;font-size:10px">&#10006;</button>'
-        +'</div>'
-        +'<div class="mb6">'
-          +'<input type="text" value="'+esc(it.description||'')+'" placeholder="Descripci\u00f3n del veh\u00edculo o concepto" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'description\',this.value)" style="font-size:11px">'
-        +'</div>'
-        +'<div style="display:grid;grid-template-columns:2fr 0.6fr 1fr 1fr;gap:6px;margin-bottom:4px">'
-          +'<input type="text" value="'+esc(it.vin||'')+'" placeholder="VIN" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'vin\',this.value)" style="font-family:monospace;font-size:10px">'
-          +'<input type="number" value="'+esc(String(it.quantity||1))+'" min="1" placeholder="Cant" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'quantity\',this.value)" style="font-size:11px;text-align:center">'
-          +'<input type="number" value="'+esc(String(it.unitPrice||0))+'" placeholder="Precio U." step="0.01" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'unitPrice\',this.value)" style="font-size:11px;text-align:right">'
-          +'<input type="text" value="'+(it.total||0).toLocaleString('es-ES')+' \u20ac" readonly style="background:var(--bg3);font-size:11px;text-align:right;font-family:monospace;font-weight:600">'
-        +'</div>'
-        +(it.buyPrice?'<div style="font-size:10px;color:var(--t4);text-align:right">Compra: '+it.buyPrice.toLocaleString('es-ES')+' \u20ac \u00b7 Margen: <span style="color:'+marginColor+';font-weight:600">'+(it.margin>=0?'+':'')+it.margin.toLocaleString('es-ES')+' \u20ac</span></div>':'')
-        +'</div>';
+      var typeLabel=isDescriptive?'\ud83d\udcdd L\u00ednea descriptiva':isVehicle?'\ud83d\ude97 Veh\u00edculo':'\u2728 Manual';
+      var typeBg=isDescriptive?'#fef3c7':isVehicle?'rgba(37,99,235,.08)':'#f3f4f6';
+      var html='<div style="padding:10px;background:'+typeBg+';border:1px solid var(--border);border-radius:7px;margin-bottom:8px">';
+      // Header
+      html+='<div class="fbet mb6">';
+      html+='<div style="font-size:10px;color:var(--t3);font-weight:700">'+typeLabel+' #'+(i+1)+(it.internalId?' \u00b7 '+esc(it.internalId):'')+'</div>';
+      html+='<button class="btn bd" onclick="nbpfRemoveItem(\''+esc(it.id)+'\')" style="padding:2px 7px;font-size:10px">&#10006;</button>';
+      html+='</div>';
+      
+      if(isDescriptive){
+        // Solo textarea descrizione
+        html+='<textarea rows="3" placeholder="Texto descriptivo (ej: El cliente se compromete a abonar 500 \u20ac por veh\u00edculo en concepto de reserva...)" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'description\',this.value)" style="font-size:11px;font-family:inherit;width:100%;background:#fff">'+esc(it.description||'')+'</textarea>';
+        html+='<div style="font-size:10px;color:var(--t4);margin-top:4px">Esta l\u00ednea aparece en la tabla con cantidad 1 e importe 0,00 (apta para condiciones de pago, tempistiche, notas).</div>';
+      }else if(isVehicle){
+        // Veicolo: tutti i campi auto
+        html+='<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
+        html+='<input type="text" value="'+esc(it.vin||'')+'" placeholder="VIN" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'vin\',this.value)" style="font-family:monospace;font-size:11px">';
+        html+='<input type="text" value="'+esc(it.brand||'')+'" placeholder="Marca" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'brand\',this.value)" style="font-size:11px">';
+        html+='<input type="text" value="'+esc(it.model||'')+'" placeholder="Modelo" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'model\',this.value)" style="font-size:11px">';
+        html+='<input type="text" value="'+esc(it.version||'')+'" placeholder="Versi\u00f3n" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'version\',this.value)" style="font-size:11px">';
+        html+='</div>';
+        html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;gap:6px;margin-bottom:6px">';
+        html+='<input type="text" value="'+esc(it.reg||'')+'" placeholder="1\u00aa Mat. (mm/aa)" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'reg\',this.value)" style="font-size:11px">';
+        html+='<input type="text" value="'+esc(it.kms||'')+'" placeholder="Kms" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'kms\',this.value)" style="font-size:11px">';
+        html+='<input type="text" value="'+esc(it.color||'')+'" placeholder="Color" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'color\',this.value)" style="font-size:11px">';
+        html+='<input type="text" value="'+esc(it.damage||'')+'" placeholder="Da\u00f1os" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'damage\',this.value)" style="font-size:11px">';
+        html+='</div>';
+      }else{
+        // Manuale: solo description
+        html+='<div class="mb6">';
+        html+='<input type="text" value="'+esc(it.description||'')+'" placeholder="Descripci\u00f3n del concepto (ej: Transporte, Garant\u00eda 1 a\u00f1o)" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'description\',this.value)" style="font-size:11px">';
+        html+='</div>';
+      }
+      
+      // Quantità + Prezzi (per veicolo + manuale, NO per descriptiva)
+      if(!isDescriptive){
+        html+='<div style="display:grid;grid-template-columns:0.6fr 1fr 1fr;gap:6px">';
+        html+='<input type="number" value="'+esc(String(it.quantity||1))+'" min="1" placeholder="Cant" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'quantity\',this.value)" style="font-size:11px;text-align:center">';
+        html+='<input type="number" value="'+esc(String(it.unitPrice||0))+'" placeholder="Net Price" step="0.01" oninput="nbpfUpdateItem(\''+esc(it.id)+'\',\'unitPrice\',this.value)" style="font-size:11px;text-align:right">';
+        html+='<input type="text" value="'+(it.total||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' \u20ac" readonly style="background:var(--bg3);font-size:11px;text-align:right;font-family:monospace;font-weight:600">';
+        html+='</div>';
+        if(it.buyPrice)html+='<div style="font-size:10px;color:var(--t4);text-align:right;margin-top:4px">Compra: '+it.buyPrice.toLocaleString('es-ES')+' \u20ac \u00b7 Margen: <span style="color:'+marginColor+';font-weight:600">'+(it.margin>=0?'+':'')+it.margin.toLocaleString('es-ES')+' \u20ac</span></div>';
+      }
+      
+      html+='</div>';
+      return html;
     }).join('');
   };
   
@@ -19650,6 +19856,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbpf-client-email').value=(pf.client&&pf.client.email)||'';
     document.getElementById('nbpf-vat-mode').value=pf.vatMode||'standard';
     document.getElementById('nbpf-vat-rate').value=pf.vatRate||21;
+    if(document.getElementById('nbpf-lang'))document.getElementById('nbpf-lang').value=pf.language||'';
     document.getElementById('nbpf-notes').value=pf.notes||'';
     nbpfRefreshClientDatalist();
     nbpfRenderItems();
@@ -19712,6 +19919,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       id:window._nbpfEditingId||('pf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),
       number:window._nbpfEditingId?(nxProformas.find(function(p){return p.id===window._nbpfEditingId;})||{}).number:nbpfGenerateNumber(companyId),
       companyId:companyId,
+      language:(document.getElementById('nbpf-lang')&&document.getElementById('nbpf-lang').value)||'',
       client:{
         name:clientName,
         vatNumber:document.getElementById('nbpf-client-vat').value.trim(),
@@ -19753,6 +19961,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
   
   // Preview HTML proforma (usa template configurato per la empresa)
+  // v9.68: supporto lingua + line items completi
   window.nbpfPreview=function(){
     var companyId=document.getElementById('nbpf-company').value;
     if(!companyId){alert('Selecciona la empresa emisora.');return;}
@@ -19765,22 +19974,24 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var vatMode=document.getElementById('nbpf-vat-mode').value;
     var rate=parseFloat(document.getElementById('nbpf-vat-rate').value)||0;
     var vatAmount=vatMode==='standard'?subtotal*rate/100:0;
+    // v9.68: lingua override OR default empresa
+    var langOverride=document.getElementById('nbpf-lang')&&document.getElementById('nbpf-lang').value;
+    var lang=langOverride||company.documentLanguage||'ES';
     var data={
+      lang:lang,
       company:company,
       bank:bank,
       docNumber:document.getElementById('nbpf-number').value||'PRO/2026/draft',
-      docDate:new Date().toLocaleDateString('es-ES'),
+      docDate:new Date().toLocaleDateString(lang==='IT'?'it-IT':lang==='EN'?'en-GB':'es-ES'),
       client:{
         name:document.getElementById('nbpf-client-name').value,
         vatNumber:document.getElementById('nbpf-client-vat').value,
         address:document.getElementById('nbpf-client-addr').value,
         country:document.getElementById('nbpf-client-country').value
       },
-      items:window._nbpfItems.map(function(it){
-        return {id:it.internalId||'',model:it.description,vin:it.vin,quantity:it.quantity,unitPrice:it.unitPrice,total:it.total};
-      }),
+      items:window._nbpfItems, // pass-through diretto: nxComposeVehicleLine gestisce tutti i campi
       subtotal:subtotal,
-      vatRate:rate,
+      vatRate:vatMode==='standard'?rate:0,
       vatAmount:vatAmount,
       total:subtotal+vatAmount
     };
