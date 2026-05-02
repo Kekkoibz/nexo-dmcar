@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.73 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UX: Modal di conferma dopo "Guardar template" — chiede se applicare lo stesso stile (logo/colori/banca/note/footer/banner/colors) a tutti gli altri tipi documento, mantenendo distinti solo i titoli specifici (PROFORMA INVOICE / FACTURA / NOTA DE CRÉDITO). Sostituisce l'ex prompt() di "Duplicar". 3 opzioni: Aplicar a todos / Solo este / Cancelar. -->
+<!-- NEXO v9.74 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F5 COMPLETO: 1) Modal popup obbligatorio cambio stato Stock Vivo (Reservado/En negociación/Vendido) con autocomplete cliente da B2B + bottone "+ Nuevo cliente"; 2) Sync bidirezionale Stock↔Kanban: stato comercial + cliente (clientId/clientName) salvato su entrambi i sistemi; 3) Auto-create card Kanban Won quando Vendido (con vehicleIds + clientName + margin); 4) Visual: card Won mostra info veicolo+cliente+margine; 5) Sistema notifiche Nexo Numbers: badge sidebar rosso, lista in Dashboard, popup all'apertura CRM se nuove notifiche; 6) Modal notifica con dettagli + 3 bottoni (Sí auto-genera / No / Editar pre-popolato); 7) Email automatica al contabile (Microsoft Graph, configurabile in empresa); 8) Auto-popolamento proforma da Won con dati cliente+veicoli+margine. CHIUDE LOOP COMPLETO Sales→Contabilità. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1144,11 +1144,11 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:8px">
             <div><span style="color:#16a34a">&#10003; F0</span> Setup + DB schema</div>
             <div><span style="color:#16a34a">&#10003; F1</span> CRUD Empresas</div>
-            <div><span style="color:#16a34a">&#10003; F2</span> Proformas manual (esta versi&oacute;n)</div>
-            <div><span style="color:#16a34a">&#10003; F3</span> Templates editor (esta versi&oacute;n)</div>
-            <div><span style="color:#16a34a">&#10003; F4</span> Generador PDF preview (incluido)</div>
-            <div><span style="color:var(--t4)">&#9675; F5</span> Trigger Won &rarr; Notificaci&oacute;n (siguiente)</div>
-            <div><span style="color:var(--t4)">&#9675; F6</span> Env&iacute;o email autom&aacute;tico</div>
+            <div><span style="color:#16a34a">&#10003; F2</span> Proformas manual</div>
+            <div><span style="color:#16a34a">&#10003; F3</span> Templates editor</div>
+            <div><span style="color:#16a34a">&#10003; F4</span> Generador PDF preview</div>
+            <div><span style="color:#16a34a">&#10003; F5</span> Trigger Won &rarr; Notificaci&oacute;n + Email (esta versi&oacute;n)</div>
+            <div><span style="color:var(--t4)">&#9675; F6</span> Env&iacute;o email autom&aacute;tico al cliente (siguiente)</div>
             <div><span style="color:var(--t4)">&#9675; F7</span> Pagos + conversi&oacute;n a Factura</div>
             <div><span style="color:var(--t4)">&#9675; F8</span> Reporting + export</div>
           </div>
@@ -1602,6 +1602,12 @@ En que te puedo ayudar hoy?</div></div>
         </select>
         <div style="font-size:10px;color:var(--t4);margin-top:3px">Aplicado a Proformas, Facturas y Notas de Cr&eacute;dito (puede sobrescribirse al crear el documento).</div>
       </div>
+      <!-- v9.74: F5 - Email contabile per notifiche -->
+      <div style="margin-top:10px">
+        <label>Email contabilidad (notificaciones venta)</label>
+        <input type="email" id="nbc-accountant-email" placeholder="contabilidad@empresa.com">
+        <div style="font-size:10px;color:var(--t4);margin-top:3px">Cuando un veh&iacute;culo se marca "Vendido", se enviar&aacute; una notificaci&oacute;n autom&aacute;tica a este email. Dejar vac&iacute;o para desactivar.</div>
+      </div>
     </div>
 
     <!-- BANCOS (multi-record) -->
@@ -1847,6 +1853,85 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fc g6" style="flex-wrap:wrap">
       <button class="btn bg" onclick="closeM('m-nb-tpl-applyall')" style="flex:1;min-width:120px">Solo este</button>
       <button class="btn bp" onclick="nbtplApplyToAll()" style="flex:2;min-width:180px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">&#9989; S&iacute;, aplicar a todos</button>
+    </div>
+  </div>
+</div>
+
+<!-- v9.74: F5 - MODAL POPUP CLIENTE PER CAMBIO STATO STOCK VIVO -->
+<div class="ovl" id="m-stk-sale-client">
+  <div class="modal" style="max-width:560px">
+    <div class="fbet mb14">
+      <div class="mt"><span id="ssc-modal-title">&#128276; Asignar cliente</span></div>
+      <button class="btn bg" onclick="sscCancel()" style="padding:5px 10px">X</button>
+    </div>
+    <div id="ssc-info-box" style="background:var(--bg3);padding:10px 12px;border-radius:7px;margin-bottom:14px;font-size:11px;color:var(--t3);line-height:1.6"></div>
+    <div class="card" style="padding:12px;background:var(--bg2);margin-bottom:12px">
+      <label>Cliente *</label>
+      <input type="text" id="ssc-client-search" placeholder="Empieza a escribir nombre, empresa o VAT..." autocomplete="off" oninput="sscSearchClient()" list="ssc-client-datalist">
+      <datalist id="ssc-client-datalist"></datalist>
+      <div style="font-size:10px;color:var(--t4);margin-top:3px">Selecciona un cliente existente o haz click en "+ Nuevo cliente" para crear uno nuevo.</div>
+      <div id="ssc-client-info" style="display:none;background:var(--bg3);padding:8px 10px;border-radius:6px;margin-top:8px;font-size:11px;color:var(--t2)"></div>
+    </div>
+    <div class="fc g6" style="justify-content:space-between;flex-wrap:wrap">
+      <button class="btn bs" onclick="sscNewClient()" style="font-size:11px;padding:6px 12px">+ Nuevo cliente</button>
+      <div class="fc g6">
+        <button class="btn bg" onclick="sscCancel()">Cancelar</button>
+        <button class="btn bp" onclick="sscConfirm()" id="ssc-confirm-btn" disabled>&#9989; Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- v9.74: F5 - MODAL "ENVIAR A CONTABILIDAD?" (lato sales dopo Vendido) -->
+<div class="ovl" id="m-sales-send-accounting">
+  <div class="modal" style="max-width:520px">
+    <div class="fbet mb14">
+      <div class="mt">&#127881; &iexcl;Venta registrada!</div>
+      <button class="btn bg" onclick="closeM('m-sales-send-accounting')" style="padding:5px 10px">X</button>
+    </div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px">
+      &iquest;Enviar la informaci&oacute;n a <strong>Contabilidad</strong> para generar la proforma?
+    </div>
+    <div id="ssa-summary" style="background:var(--bg3);padding:12px;border-radius:7px;margin-bottom:14px;font-size:12px;line-height:1.7"></div>
+    <div class="fc g6" style="justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn bg" onclick="closeM('m-sales-send-accounting')">No, gestiono despu&eacute;s</button>
+      <button class="btn bp" onclick="ssaConfirmSend()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">&#9989; S&iacute;, enviar a Contabilidad</button>
+    </div>
+  </div>
+</div>
+
+<!-- v9.74: F5 - MODAL NOTIFICA CONTABILE (3 bottoni) -->
+<div class="ovl" id="m-numbers-notif">
+  <div class="modal" style="max-width:620px;max-height:90vh;overflow-y:auto">
+    <div class="fbet mb14">
+      <div class="mt">&#128276; <span id="nbn-modal-title">Notificaci&oacute;n de venta</span></div>
+      <button class="btn bg" onclick="closeM('m-numbers-notif')" style="padding:5px 10px">X</button>
+    </div>
+    <div id="nbn-content" style="font-size:12px;color:var(--t2);line-height:1.7"></div>
+    <div class="fc g6" style="justify-content:flex-end;flex-wrap:wrap;margin-top:14px">
+      <button class="btn bd" onclick="numbersNotifReject()" style="font-size:11px">&#10006; No, descartar</button>
+      <button class="btn bs" onclick="numbersNotifEdit()" style="font-size:11px">&#9998; Editar antes</button>
+      <button class="btn bp" onclick="numbersNotifAccept()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">&#9989; S&iacute;, generar proforma</button>
+    </div>
+  </div>
+</div>
+
+<!-- v9.74: F5 - MODAL "ENVIAR PROFORMA AL CLIENTE?" -->
+<div class="ovl" id="m-pf-send-client">
+  <div class="modal" style="max-width:540px">
+    <div class="fbet mb14">
+      <div class="mt">&#128231; Enviar proforma al cliente</div>
+      <button class="btn bg" onclick="closeM('m-pf-send-client')" style="padding:5px 10px">X</button>
+    </div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px">
+      Proforma <strong id="psc-pfnum"></strong> guardada correctamente.<br>
+      &iquest;Enviarla por email al cliente <strong id="psc-clientname"></strong>?
+    </div>
+    <div id="psc-client-email-box" style="background:var(--bg3);padding:10px;border-radius:6px;margin-bottom:12px;font-size:11px"></div>
+    <div class="fc g6" style="justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn bg" onclick="closeM('m-pf-send-client')">No, despu&eacute;s</button>
+      <button class="btn bs" onclick="pscEditBeforeSend()" style="font-size:11px">&#9998; Editar antes</button>
+      <button class="btn bp" onclick="pscSendNow()" style="background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none">&#9993;&#65039; Enviar ahora</button>
     </div>
   </div>
 </div>
@@ -5998,19 +6083,37 @@ function renderStkTbl(){
   });
 
   // v9.58: Estado comercial inline editor
+  // v9.74: F5 - intercetta cambio stato per popup cliente obbligatorio
   tbody.querySelectorAll('.cstatus-sel').forEach(function(sel){
     sel.addEventListener('change',function(){
       var id=this.getAttribute('data-id');
       var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
       if(idx<0)return;
       var newCs=this.value;
+      var oldCs=stock[idx].commercialStatus||'libre';
+      // v9.74: Per stati che richiedono cliente, apri popup
+      if(newCs==='reservado'||newCs==='en_negociacion'||newCs==='vendido'){
+        // Salva la stato richiesto e apri popup
+        var selRef=this;
+        if(typeof window.stkOpenSaleClientModal==='function'){
+          window.stkOpenSaleClientModal(id,newCs,oldCs,function onConfirm(){
+            // OK: popup ha gestito già il save (incluso commercialStatus + clientId)
+            selRef.classList.remove('t-stk','t-1s','t-2s','t-ped','cs-libre','cs-neg','cs-res','cs-ven');
+            selRef.classList.add(stkCommercialStatusClass(newCs));
+            fStk();
+          },function onCancel(){
+            // Utente ha annullato: ripristina dropdown
+            selRef.value=oldCs;
+          });
+          return;
+        }
+      }
+      // Default: cambio diretto (libre)
       stock[idx].commercialStatus=newCs;
       stock[idx].commercialUpdatedAt=new Date().toISOString();
       SS('stock',stock);
-      // Update tag class
       this.classList.remove('t-stk','t-1s','t-2s','t-ped','cs-libre','cs-neg','cs-res','cs-ven');
       this.classList.add(stkCommercialStatusClass(newCs));
-      // Re-render per riflettere stale + banner
       fStk();
     });
     sel.addEventListener('click',function(e){e.stopPropagation();});
@@ -6523,6 +6626,491 @@ function stkUpdateFromKanban(contactId,newTag,assignedToName){
   }
 }
 window.stkUpdateFromKanban=stkUpdateFromKanban;
+
+// ============================================================================
+// v9.74: F5 - Sistema completo Stock↔Kanban + Notifiche Contabilità + Email
+// ============================================================================
+
+// State machine per popup cliente
+window._sscState={stockId:null,newCs:null,oldCs:null,clientId:null,onConfirm:null,onCancel:null};
+window._numbersNotifEditing=null;
+
+// Apri modal popup cliente quando cambia stato Stock
+window.stkOpenSaleClientModal=function(stockId,newCs,oldCs,onConfirm,onCancel){
+  var s=stock.find(function(x){return String(x.id)===String(stockId);});
+  if(!s){if(onCancel)onCancel();return;}
+  window._sscState={stockId:stockId,newCs:newCs,oldCs:oldCs,clientId:null,onConfirm:onConfirm,onCancel:onCancel};
+  // Pre-popola se Stock ha già clientId
+  var existingClientId=s.clientId||'';
+  var existingClientName=s.clientName||'';
+  // Titolo dinamico per stato
+  var statusLabels={reservado:'Reservar',en_negociacion:'En negociaci\u00f3n',vendido:'Marcar como Vendido'};
+  document.getElementById('ssc-modal-title').innerHTML='&#128276; '+esc(statusLabels[newCs]||newCs);
+  // Info box: dati veicolo
+  var vehicleInfo='<strong>'+esc((s.brand||'')+' '+(s.model||'')+' '+(s.version||''))+'</strong>';
+  if(s.internalId)vehicleInfo+=' &middot; '+esc(s.internalId);
+  if(s.vehicles&&s.vehicles.length){
+    var vinList=s.vehicles.map(function(v){return v.vin||'?';}).filter(function(v){return v!=='?';});
+    if(vinList.length)vehicleInfo+='<br><span style="font-family:monospace;font-size:10px">'+vinList.slice(0,3).join(', ')+(vinList.length>3?' (+'+(vinList.length-3)+')':'')+'</span>';
+  }
+  if(s.sell)vehicleInfo+='<br>Precio venta: <strong>'+esc(String(s.sell))+'</strong>';
+  document.getElementById('ssc-info-box').innerHTML=vehicleInfo;
+  // Reset form
+  document.getElementById('ssc-client-search').value=existingClientName;
+  document.getElementById('ssc-confirm-btn').disabled=!existingClientId;
+  if(existingClientId){
+    window._sscState.clientId=existingClientId;
+    sscShowClientInfo(existingClientId);
+  }else{
+    document.getElementById('ssc-client-info').style.display='none';
+  }
+  // Popola datalist
+  sscRefreshDatalist();
+  openM('m-stk-sale-client');
+  setTimeout(function(){document.getElementById('ssc-client-search').focus();},100);
+};
+
+window.sscRefreshDatalist=function(){
+  var dl=document.getElementById('ssc-client-datalist');
+  if(!dl)return;
+  var c=(typeof contacts!=='undefined'&&Array.isArray(contacts))?contacts:[];
+  dl.innerHTML=c.map(function(x){
+    var label=(x.name||'')+(x.company?' - '+x.company:'')+(x.vatNumber?' (VAT: '+x.vatNumber+')':'');
+    return '<option value="'+esc(label)+'" data-id="'+esc(x.id)+'"></option>';
+  }).join('');
+};
+
+window.sscSearchClient=function(){
+  var v=document.getElementById('ssc-client-search').value.trim();
+  if(v.length<2){
+    document.getElementById('ssc-confirm-btn').disabled=true;
+    document.getElementById('ssc-client-info').style.display='none';
+    window._sscState.clientId=null;
+    return;
+  }
+  var c=(typeof contacts!=='undefined'&&Array.isArray(contacts))?contacts:[];
+  // Match esatto label datalist
+  var match=c.find(function(x){
+    var label=(x.name||'')+(x.company?' - '+x.company:'')+(x.vatNumber?' (VAT: '+x.vatNumber+')':'');
+    return label.toLowerCase()===v.toLowerCase();
+  });
+  if(match){
+    window._sscState.clientId=match.id;
+    document.getElementById('ssc-confirm-btn').disabled=false;
+    sscShowClientInfo(match.id);
+    return;
+  }
+  // Match parziale (almeno per highlight)
+  var partial=c.find(function(x){
+    return (x.name||'').toLowerCase().indexOf(v.toLowerCase())>=0||(x.company||'').toLowerCase().indexOf(v.toLowerCase())>=0;
+  });
+  if(partial&&v.length>=4){
+    // Suggerisci ma non conferma automaticamente
+    document.getElementById('ssc-client-info').innerHTML='&#128172; <em>Sugerencia: '+esc(partial.name||partial.company||'')+'</em>. Selecciona del autocomplete o pulsa "+ Nuevo cliente".';
+    document.getElementById('ssc-client-info').style.display='block';
+    document.getElementById('ssc-confirm-btn').disabled=true;
+    window._sscState.clientId=null;
+  }else{
+    document.getElementById('ssc-client-info').style.display='none';
+    document.getElementById('ssc-confirm-btn').disabled=true;
+    window._sscState.clientId=null;
+  }
+};
+
+window.sscShowClientInfo=function(clientId){
+  var c=(typeof contacts!=='undefined'&&Array.isArray(contacts))?contacts:[];
+  var client=c.find(function(x){return String(x.id)===String(clientId);});
+  if(!client)return;
+  var info='<div style="font-weight:700;color:var(--t1);font-size:12px;margin-bottom:3px">'+esc(client.name||client.company||'?')+'</div>';
+  if(client.vatNumber)info+='<div style="font-family:monospace">VAT: '+esc(client.vatNumber)+'</div>';
+  if(client.email)info+='<div>&#9993;&#65039; '+esc(client.email)+'</div>';
+  if(client.phone)info+='<div>&#128241; '+esc(client.phone)+'</div>';
+  if(client.country)info+='<div>&#127757; '+esc(client.country)+'</div>';
+  document.getElementById('ssc-client-info').innerHTML=info;
+  document.getElementById('ssc-client-info').style.display='block';
+};
+
+window.sscNewClient=function(){
+  var name=prompt('Nombre del nuevo cliente:');
+  if(!name||!name.trim())return;
+  var company=prompt('Nombre empresa (opcional):')||'';
+  var vat=prompt('VAT/NIF (opcional):')||'';
+  var email=prompt('Email (opcional):')||'';
+  var phone=prompt('Tel\u00e9fono (opcional):')||'';
+  var country=prompt('Pa\u00eds (ej: ES, IT, FR) (opcional):')||'';
+  var newId='c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  var newClient={
+    id:newId,
+    name:name.trim(),
+    company:company.trim(),
+    vatNumber:vat.trim(),
+    email:email.trim(),
+    phone:phone.trim(),
+    country:country.trim().toUpperCase(),
+    type:'b2b',
+    tag:'won',
+    createdAt:new Date().toISOString(),
+    source:'stock-sale-modal'
+  };
+  if(typeof contacts==='undefined'||!Array.isArray(contacts))window.contacts=[];
+  contacts.push(newClient);
+  SS('contacts',contacts);
+  // Aggiorna UI
+  window._sscState.clientId=newId;
+  var label=name.trim()+(company.trim()?' - '+company.trim():'')+(vat.trim()?' (VAT: '+vat.trim()+')':'');
+  document.getElementById('ssc-client-search').value=label;
+  document.getElementById('ssc-confirm-btn').disabled=false;
+  sscRefreshDatalist();
+  sscShowClientInfo(newId);
+  if(typeof showToast==='function')showToast('\u2713 Cliente creado: '+name.trim());
+};
+
+window.sscCancel=function(){
+  closeM('m-stk-sale-client');
+  if(window._sscState.onCancel)window._sscState.onCancel();
+};
+
+window.sscConfirm=function(){
+  var st=window._sscState;
+  if(!st.clientId){alert('Selecciona o crea un cliente.');return;}
+  var idx=stock.findIndex(function(s){return String(s.id)===String(st.stockId);});
+  if(idx<0)return;
+  var c=(typeof contacts!=='undefined'&&Array.isArray(contacts))?contacts:[];
+  var client=c.find(function(x){return String(x.id)===String(st.clientId);});
+  if(!client){alert('Error: cliente no encontrado.');return;}
+  // Aggiorna stock
+  stock[idx].commercialStatus=st.newCs;
+  stock[idx].commercialUpdatedAt=new Date().toISOString();
+  stock[idx].clientId=client.id;
+  stock[idx].clientName=client.name||client.company||'';
+  if(st.newCs==='vendido')stock[idx].soldAt=new Date().toISOString();
+  SS('stock',stock);
+  // Sync con Kanban: cerca card esistente o crea nuova
+  nxSyncStockToKanban(st.stockId,st.newCs,client);
+  closeM('m-stk-sale-client');
+  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo \u2192 '+st.newCs+' \u00b7 Cliente: '+(client.name||client.company));
+  // Se è VENDIDO, mostra popup "Inviare a contabilità?"
+  if(st.newCs==='vendido'){
+    setTimeout(function(){
+      window.salesAskSendToAccounting(st.stockId,client);
+    },300);
+  }
+  if(st.onConfirm)st.onConfirm();
+};
+
+// Sync Stock → Kanban (cerca card o crea, aggiorna tag, salva clientId)
+window.nxSyncStockToKanban=function(stockId,newCs,client){
+  if(typeof contacts==='undefined'||!Array.isArray(contacts))return;
+  // Mappa stato → tag kanban
+  var newTag=null;
+  if(newCs==='en_negociacion')newTag='hot';
+  else if(newCs==='vendido')newTag='won';
+  else if(newCs==='reservado')newTag='hot'; // reservado = hot in kanban
+  if(!newTag)return;
+  // Cerca contact corrispondente
+  var c=contacts.find(function(x){return String(x.id)===String(client.id);});
+  if(!c)return;
+  // Verifica se ha già vehicleIds collegati al stock
+  if(!c.vehicleIds)c.vehicleIds=[];
+  if(c.vehicleIds.indexOf(stockId)<0)c.vehicleIds.push(stockId);
+  // Aggiorna tag se cambia (oldTag → newTag)
+  var oldTag=c.tag;
+  c.tag=newTag;
+  c.tagUpdatedAt=new Date().toISOString();
+  // Per Won: salva margine
+  if(newTag==='won'){
+    var s=stock.find(function(x){return String(x.id)===String(stockId);});
+    if(s){
+      var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+      var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+      c.wonMargin=sellPrice-buyPrice;
+      c.wonAt=new Date().toISOString();
+    }
+  }
+  SS('contacts',contacts);
+  // Aggiorna UI Kanban se aperta
+  if(typeof renderCont==='function')try{renderCont();}catch(e){}
+};
+
+// Lato Sales: chiede se inviare a Contabilidad
+window.salesAskSendToAccounting=function(stockId,client){
+  var s=stock.find(function(x){return String(x.id)===String(stockId);});
+  if(!s)return;
+  var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+  var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+  var margin=sellPrice-buyPrice;
+  var marginColor=margin>0?'#16a34a':margin<0?'#dc2626':'#6b7280';
+  var summary='<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px">';
+  summary+='<div style="color:var(--t3);font-weight:600">Veh\u00edculo:</div><div><strong>'+esc((s.brand||'')+' '+(s.model||'')+' '+(s.version||''))+'</strong>'+(s.internalId?' &middot; '+esc(s.internalId):'')+'</div>';
+  if(s.vehicles&&s.vehicles.length){
+    var vinList=s.vehicles.map(function(v){return v.vin||'?';}).filter(function(v){return v!=='?';});
+    if(vinList.length)summary+='<div style="color:var(--t3);font-weight:600">VIN:</div><div style="font-family:monospace;font-size:10px">'+esc(vinList.slice(0,3).join(', '))+(vinList.length>3?' (+'+(vinList.length-3)+')':'')+'</div>';
+  }
+  summary+='<div style="color:var(--t3);font-weight:600">Cliente:</div><div><strong>'+esc(client.name||client.company||'?')+'</strong></div>';
+  if(buyPrice>0)summary+='<div style="color:var(--t3);font-weight:600">Compra:</div><div style="font-family:monospace">'+buyPrice.toLocaleString('es-ES')+' \u20ac</div>';
+  if(sellPrice>0)summary+='<div style="color:var(--t3);font-weight:600">Venta:</div><div style="font-family:monospace">'+sellPrice.toLocaleString('es-ES')+' \u20ac</div>';
+  if(margin)summary+='<div style="color:var(--t3);font-weight:600">Margen:</div><div style="font-family:monospace;color:'+marginColor+';font-weight:700">'+(margin>0?'+':'')+margin.toLocaleString('es-ES')+' \u20ac</div>';
+  summary+='</div>';
+  document.getElementById('ssa-summary').innerHTML=summary;
+  window._ssaPending={stockId:stockId,clientId:client.id,sellPrice:sellPrice,buyPrice:buyPrice,margin:margin};
+  openM('m-sales-send-accounting');
+};
+
+window.ssaConfirmSend=function(){
+  if(!window._ssaPending)return;
+  var p=window._ssaPending;
+  // Crea notifica per Contabilità
+  nxNumbersCreateNotification(p);
+  closeM('m-sales-send-accounting');
+  if(typeof showToast==='function')showToast('\u2713 Notificaci\u00f3n enviada a Contabilidad');
+};
+
+// Crea notifica + invia email opzionale
+window.nxNumbersCreateNotification=function(payload){
+  if(!Array.isArray(window.nxNumbersNotifications))window.nxNumbersNotifications=LS('nxNumbersNotifications',[]);
+  var s=stock.find(function(x){return String(x.id)===String(payload.stockId);});
+  var c=(typeof contacts!=='undefined'?contacts:[]).find(function(x){return String(x.id)===String(payload.clientId);});
+  if(!s||!c)return;
+  var sender=(typeof currentUserName!=='undefined'&&currentUserName)?currentUserName:'Sales';
+  var notif={
+    id:'nbnf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    type:'sale',
+    status:'pending',
+    senderName:sender,
+    stockId:payload.stockId,
+    clientId:payload.clientId,
+    vehicleSummary:(s.brand||'')+' '+(s.model||'')+' '+(s.version||''),
+    internalId:s.internalId||'',
+    vehicleIds:[payload.stockId],
+    vins:(s.vehicles||[]).map(function(v){return v.vin||'';}).filter(Boolean),
+    clientName:c.name||c.company||'',
+    clientVat:c.vatNumber||'',
+    clientEmail:c.email||'',
+    clientCountry:c.country||'',
+    sellPrice:payload.sellPrice||0,
+    buyPrice:payload.buyPrice||0,
+    margin:payload.margin||0,
+    createdAt:new Date().toISOString()
+  };
+  window.nxNumbersNotifications.push(notif);
+  SS('nxNumbersNotifications',window.nxNumbersNotifications);
+  // Aggiorna badge sidebar
+  if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  // Email automatica al contabile (se configurato)
+  nxNumbersSendEmailToAccountant(notif);
+};
+
+// Email automatica al contabile
+window.nxNumbersSendEmailToAccountant=function(notif){
+  // Trova un'empresa con email contabile configurata (priorità: la prima)
+  var company=(nxCompanies||[]).find(function(c){return c.accountantEmail&&c.accountantEmail.indexOf('@')>0;});
+  if(!company)return;
+  var subject='[Nexo] Nueva venta para procesar: '+notif.vehicleSummary;
+  var body='<h3>Nueva venta registrada</h3>'
+    +'<p><strong>'+esc(notif.senderName)+'</strong> ha cerrado una venta:</p>'
+    +'<ul>'
+      +'<li>Veh\u00edculo: <strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' ('+esc(notif.internalId)+')':'')+'</li>'
+      +(notif.vins.length?'<li>VIN: <code>'+esc(notif.vins.join(', '))+'</code></li>':'')
+      +'<li>Cliente: <strong>'+esc(notif.clientName)+'</strong>'+(notif.clientVat?' ('+esc(notif.clientVat)+')':'')+'</li>'
+      +(notif.sellPrice?'<li>Precio venta: <strong>'+notif.sellPrice.toLocaleString('es-ES')+' \u20ac</strong></li>':'')
+      +(notif.margin?'<li>Margen: <strong>'+(notif.margin>0?'+':'')+notif.margin.toLocaleString('es-ES')+' \u20ac</strong></li>':'')
+    +'</ul>'
+    +'<p>Accede a NEXO para generar la proforma:</p>'
+    +'<p><a href="'+window.location.origin+window.location.pathname+'?v=974#numbers" style="background:#16a34a;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px">Generar proforma &rarr;</a></p>'
+    +'<hr><p style="font-size:11px;color:#888">NEXO CRM \u00b7 DMCAR GROUP</p>';
+  // Use Microsoft Graph if available
+  if(typeof window.NX_MS!=='undefined'&&window.NX_MS&&typeof window.NX_MS.sendMail==='function'){
+    try{
+      window.NX_MS.sendMail({to:company.accountantEmail,subject:subject,html:body}).catch(function(err){
+        console.warn('[F5] Email error:',err);
+      });
+      console.log('[F5] Email sent to accountant:',company.accountantEmail);
+    }catch(e){console.warn('[F5] Email send error:',e);}
+  }else{
+    console.log('[F5] Microsoft Graph not available, email skipped. Notification stored only.');
+  }
+};
+
+// Apertura notifica - lista
+window.numbersOpenNotification=function(notifId){
+  var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+  if(!notif){alert('Notificaci\u00f3n no encontrada.');return;}
+  window._numbersNotifEditing=notif;
+  document.getElementById('nbn-modal-title').textContent='Notificaci\u00f3n de venta';
+  var marginColor=notif.margin>0?'#16a34a':notif.margin<0?'#dc2626':'#6b7280';
+  var content='<div style="background:var(--bg3);padding:14px;border-radius:7px;margin-bottom:12px">'
+    +'<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Recibida de: <strong>'+esc(notif.senderName)+'</strong> &middot; '+new Date(notif.createdAt).toLocaleString('es-ES')+'</div>'
+    +'<div style="font-size:13px;line-height:1.7">'
+      +'<div><strong>'+esc(notif.senderName)+'</strong> ha cerrado una venta:</div>'
+      +'<div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px">'
+        +'<div style="color:var(--t3);font-weight:600">Veh\u00edculo:</div><div><strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' &middot; '+esc(notif.internalId):'')+'</div>'
+        +(notif.vins.length?'<div style="color:var(--t3);font-weight:600">VIN:</div><div style="font-family:monospace;font-size:10px">'+esc(notif.vins.join(', '))+'</div>':'')
+        +'<div style="color:var(--t3);font-weight:600">Cliente:</div><div><strong>'+esc(notif.clientName)+'</strong>'+(notif.clientVat?' (VAT: '+esc(notif.clientVat)+')':'')+'</div>'
+        +(notif.clientEmail?'<div style="color:var(--t3);font-weight:600">Email:</div><div>'+esc(notif.clientEmail)+'</div>':'')
+        +(notif.buyPrice?'<div style="color:var(--t3);font-weight:600">Compra:</div><div style="font-family:monospace">'+notif.buyPrice.toLocaleString('es-ES')+' \u20ac</div>':'')
+        +(notif.sellPrice?'<div style="color:var(--t3);font-weight:600">Venta:</div><div style="font-family:monospace;font-weight:700">'+notif.sellPrice.toLocaleString('es-ES')+' \u20ac</div>':'')
+        +(notif.margin?'<div style="color:var(--t3);font-weight:600">Margen:</div><div style="font-family:monospace;color:'+marginColor+';font-weight:700">'+(notif.margin>0?'+':'')+notif.margin.toLocaleString('es-ES')+' \u20ac</div>':'')
+      +'</div>'
+    +'</div></div>'
+    +'<div style="font-size:13px;color:var(--t1);font-weight:600;text-align:center;padding:8px">&iquest;Proceder con la generaci&oacute;n de la proforma?</div>';
+  document.getElementById('nbn-content').innerHTML=content;
+  openM('m-numbers-notif');
+};
+
+// Notifica accept: auto-genera proforma e salva
+window.numbersNotifAccept=function(){
+  var notif=window._numbersNotifEditing;
+  if(!notif)return;
+  closeM('m-numbers-notif');
+  // Costruisci pre-popolazione dalle info notifica
+  var prePop=nxBuildProformaFromNotif(notif);
+  // Aggiorna stato notifica
+  notif.status='accepted';
+  notif.processedAt=new Date().toISOString();
+  SS('nxNumbersNotifications',window.nxNumbersNotifications);
+  // Apre form proforma pre-popolato
+  if(typeof numbersNewProforma==='function')numbersNewProforma(prePop);
+  if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
+};
+
+window.numbersNotifEdit=function(){
+  // Editar = stesso comportamento di accept (apre form pre-popolato per modifica prima del save)
+  numbersNotifAccept();
+};
+
+window.numbersNotifReject=function(){
+  var notif=window._numbersNotifEditing;
+  if(!notif)return;
+  if(!confirm('Descartar esta notificaci\u00f3n?\n\nNo se generar\u00e1 ninguna proforma.'))return;
+  notif.status='rejected';
+  notif.processedAt=new Date().toISOString();
+  SS('nxNumbersNotifications',window.nxNumbersNotifications);
+  closeM('m-numbers-notif');
+  if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
+  if(typeof showToast==='function')showToast('\u2713 Notificaci\u00f3n descartada');
+};
+
+// Costruisci pre-popolazione proforma da una notifica
+window.nxBuildProformaFromNotif=function(notif){
+  var c=(typeof contacts!=='undefined'?contacts:[]).find(function(x){return String(x.id)===String(notif.clientId);})||{};
+  // Trova prima company disponibile come default
+  var defaultCompanyId=(nxCompanies&&nxCompanies[0]&&nxCompanies[0].id)||'';
+  var prePop={
+    companyId:defaultCompanyId,
+    client:{
+      name:c.name||c.company||notif.clientName,
+      vatNumber:c.vatNumber||notif.clientVat,
+      address:[c.address||'',c.city||'',c.zip||''].filter(Boolean).join(', '),
+      country:c.country||notif.clientCountry,
+      email:c.email||notif.clientEmail
+    },
+    items:[],
+    fromNotificationId:notif.id
+  };
+  // Popola items dal stock
+  notif.vehicleIds.forEach(function(stockId){
+    var s=stock.find(function(x){return String(x.id)===String(stockId);});
+    if(!s)return;
+    var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+    var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
+    if(s.vehicles&&s.vehicles.length){
+      s.vehicles.forEach(function(v){
+        prePop.items.push({
+          id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+          stockId:stockId,
+          internalId:s.internalId||'',
+          vin:v.vin||'',brand:s.brand||'',model:s.model||'',version:s.version||'',
+          reg:v.reg||s.reg||'',kms:v.kms||s.kms||'',color:v.color||(s.colors||'').split(',')[0]||'',damage:v.damage||s.damage||'',
+          description:'',quantity:1,unitPrice:sellPrice,total:sellPrice,
+          buyPrice:buyPrice,margin:sellPrice-buyPrice,
+          isVehicle:true
+        });
+      });
+    }else{
+      prePop.items.push({
+        id:'it_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        stockId:stockId,
+        internalId:s.internalId||'',
+        vin:'',brand:s.brand||'',model:s.model||'',version:s.version||'',
+        reg:s.reg||'',kms:s.kms||'',color:(s.colors||'').split(',')[0]||'',damage:s.damage||'',
+        description:'',quantity:1,unitPrice:sellPrice,total:sellPrice,
+        buyPrice:buyPrice,margin:sellPrice-buyPrice,
+        isVehicle:true
+      });
+    }
+  });
+  return prePop;
+};
+
+// Sales-side: dopo Save proforma chiede di inviare al cliente
+window.proformaAskSendToClient=function(pfId){
+  var pf=(nxProformas||[]).find(function(p){return p.id===pfId;});
+  if(!pf)return;
+  document.getElementById('psc-pfnum').textContent=pf.number||'';
+  document.getElementById('psc-clientname').textContent=(pf.client&&pf.client.name)||'?';
+  var emailBox=document.getElementById('psc-client-email-box');
+  if(pf.client&&pf.client.email){
+    emailBox.innerHTML='&#9993;&#65039; Email destinatario: <strong>'+esc(pf.client.email)+'</strong>';
+    emailBox.style.color='var(--t2)';
+  }else{
+    emailBox.innerHTML='&#9888;&#65039; <strong>El cliente no tiene email registrado.</strong> Edita la proforma para a\u00f1adir un email antes de enviar.';
+    emailBox.style.color='var(--orange)';
+  }
+  window._pscPendingPfId=pfId;
+  openM('m-pf-send-client');
+};
+
+window.pscEditBeforeSend=function(){
+  var pfId=window._pscPendingPfId;
+  if(!pfId)return;
+  closeM('m-pf-send-client');
+  if(typeof numbersEditProforma==='function')numbersEditProforma(pfId);
+};
+
+window.pscSendNow=function(){
+  // Per ora placeholder F6 - segna come "sent" e chiude
+  var pfId=window._pscPendingPfId;
+  if(!pfId)return;
+  var pf=(nxProformas||[]).find(function(p){return p.id===pfId;});
+  if(!pf){alert('Proforma no encontrada.');return;}
+  if(!pf.client||!pf.client.email){alert('A\u00f1ade un email al cliente antes de enviar.');return;}
+  // F6 sender (placeholder): segna come sent + log
+  pf.status='sent';
+  pf.sentAt=new Date().toISOString();
+  pf.sentTo=pf.client.email;
+  SS('nxProformas',nxProformas);
+  closeM('m-pf-send-client');
+  if(typeof showToast==='function')showToast('\u2713 Proforma '+pf.number+' marcada como enviada (F6 pendiente: env\u00edo email real)');
+  if(typeof numbersRenderProformas==='function')numbersRenderProformas();
+};
+
+// Notifications badge + check all'apertura CRM
+window.numbersCheckPendingNotifications=function(){
+  if(!Array.isArray(window.nxNumbersNotifications))window.nxNumbersNotifications=LS('nxNumbersNotifications',[]);
+  var pending=window.nxNumbersNotifications.filter(function(n){return n.status==='pending';});
+  return pending;
+};
+
+// Auto-check all'apertura CRM (popup se ci sono notifiche pendenti)
+window.numbersAutoCheckOnLoad=function(){
+  setTimeout(function(){
+    var pending=window.numbersCheckPendingNotifications();
+    if(pending.length>0){
+      // Mostra solo l'ultima
+      var last=pending[pending.length-1];
+      if(typeof showToast==='function')showToast('\ud83d\udd14 '+pending.length+' notificaci\u00f3n'+(pending.length!==1?'es':'')+' pendiente'+(pending.length!==1?'s':'')+' en Nexo Numbers');
+    }
+    if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  },1500);
+};
+// Run all'init
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){numbersAutoCheckOnLoad();});
+}else{
+  numbersAutoCheckOnLoad();
+}
 
 // Esposizione globale degli helper
 window.stkIsStale=stkIsStale;
@@ -8440,6 +9028,24 @@ function renderCont(){
       (c.notes?'<div style="font-size:12px;color:var(--t2);background:var(--bg3);border-radius:7px;padding:8px;line-height:1.6">'+esc(c.notes)+'</div>':'')+
       '<div class="fbet mt8" style="font-size:10px;color:var(--t3)"><span>'+esc(c.phone||'')+'</span><span>'+fmtD(c.lastContact||'')+'</span></div>'+
       (c.phone?'<div class="fc g6 mt8">'+quickActionsHtml(c.phone,'md')+'</div>':'')+
+      // v9.74: F5 - blocco Won con info veicolo + margine
+      ((c.tag==='won'||c.tag==='logistica')&&c.vehicleIds&&c.vehicleIds.length?(function(){
+        var vehItems=(c.vehicleIds||[]).map(function(vid){
+          var s=stock.find(function(x){return String(x.id)===String(vid);});
+          return s?s:null;
+        }).filter(Boolean);
+        if(!vehItems.length)return '';
+        var marginColor=c.wonMargin>0?'#16a34a':c.wonMargin<0?'#dc2626':'#6b7280';
+        var html='<div style="margin-top:8px;background:linear-gradient(135deg,rgba(22,163,74,.08),rgba(22,163,74,.03));border-left:3px solid #16a34a;padding:8px 10px;border-radius:6px">';
+        html+='<div style="font-size:9px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">&#127942; Venta confirmada</div>';
+        vehItems.slice(0,3).forEach(function(s){
+          html+='<div style="font-size:11px;color:var(--t1);font-weight:600">&#128661; '+esc((s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:''))+(s.internalId?' &middot; '+esc(s.internalId):'')+'</div>';
+        });
+        if(vehItems.length>3)html+='<div style="font-size:10px;color:var(--t3)">+'+(vehItems.length-3)+' m\u00e1s</div>';
+        if(c.wonMargin)html+='<div style="font-size:11px;margin-top:4px">Margen: <span style="color:'+marginColor+';font-weight:700;font-family:monospace">'+(c.wonMargin>0?'+':'')+c.wonMargin.toLocaleString('es-ES')+' \u20ac</span></div>';
+        html+='</div>';
+        return html;
+      })():'')+
       '<div class="fc g4 mt8" style="justify-content:flex-end"><button class="btn bs" onclick="editContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button><button class="btn bd" onclick="delContact(\''+c.id+'\')" style="padding:3px 8px;font-size:10px">x</button></div>'+
       '</div>';
     }).join('')||'<div style="color:var(--t3);text-align:center;padding:30px">Sin contactos</div>';
@@ -18861,20 +19467,40 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var sPr=document.getElementById('nb-stat-proformas');if(sPr)sPr.textContent=activeProformas.length;
     var sM=document.getElementById('nb-stat-month');if(sM)sM.textContent=monthTotal.toLocaleString('es-ES')+' \u20ac';
     var sMc=document.getElementById('nb-stat-month-cnt');if(sMc)sMc.textContent=monthInvoices.length+' factura'+(monthInvoices.length!==1?'s':'');
-    // Lista notifiche
+    // Lista notifiche - v9.74: F5 formato esteso
     var listEl=document.getElementById('nb-notifs-list');
     if(listEl){
       if(pending.length===0){
-        listEl.innerHTML='<div style="font-size:32px;margin-bottom:10px">\ud83d\udd14</div>'
-          +'<div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin notificaciones</div>'
-          +'<div style="font-size:11px">Cuando un vendedor mueva una oportunidad a "Won" en el Kanban, aparecer\u00e1 aqu\u00ed.</div>';
+        listEl.innerHTML='<div style="font-size:32px;margin-bottom:10px;text-align:center">\ud83d\udd14</div>'
+          +'<div style="font-weight:600;color:var(--t2);margin-bottom:5px;text-align:center">Sin notificaciones pendientes</div>'
+          +'<div style="font-size:11px;text-align:center;color:var(--t3)">Cuando un vendedor marque una venta como "Vendido" en Stock Vivo, aparecer&aacute; aqu&iacute;.</div>';
       }else{
-        listEl.innerHTML=pending.map(function(ntf){
+        // Sort: più recenti prima
+        var sortedPending=pending.slice().sort(function(a,b){
+          return String(b.createdAt||'').localeCompare(String(a.createdAt||''));
+        });
+        listEl.innerHTML=sortedPending.map(function(ntf){
+          // F5 nuovo formato (con stockId/clientId/vehicleSummary)
+          if(ntf.type==='sale'&&ntf.vehicleSummary){
+            var marginColor=ntf.margin>0?'#16a34a':ntf.margin<0?'#dc2626':'#6b7280';
+            var when=ntf.createdAt?new Date(ntf.createdAt).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+            return '<div style="padding:12px;background:var(--bg3);border-radius:7px;margin-bottom:8px;cursor:pointer;border-left:4px solid #f59e0b" onclick="numbersOpenNotification(\''+esc(ntf.id)+'\')">'
+              +'<div class="fbet">'
+                +'<div style="flex:1">'
+                  +'<div style="font-size:11px;color:var(--t3);font-weight:600">&#128276; '+esc(ntf.senderName||'Sales')+' &middot; '+esc(when)+'</div>'
+                  +'<div style="font-weight:700;font-size:13px;color:var(--t1);margin-top:3px">'+esc(ntf.vehicleSummary)+(ntf.internalId?' &middot; '+esc(ntf.internalId):'')+'</div>'
+                  +'<div style="font-size:11px;color:var(--t2);margin-top:2px">Cliente: <strong>'+esc(ntf.clientName)+'</strong>'+(ntf.clientVat?' (VAT: '+esc(ntf.clientVat)+')':'')+'</div>'
+                  +(ntf.margin?'<div style="font-size:11px;margin-top:3px">Margen: <span style="color:'+marginColor+';font-weight:700;font-family:monospace">'+(ntf.margin>0?'+':'')+ntf.margin.toLocaleString('es-ES')+' \u20ac</span></div>':'')
+                +'</div>'
+                +'<button class="btn bp" style="font-size:11px;padding:5px 12px" onclick="event.stopPropagation();numbersOpenNotification(\''+esc(ntf.id)+'\')">Procesar &rarr;</button>'
+              +'</div></div>';
+          }
+          // Fallback formato legacy (notifiche vecchie tipo Won kanban)
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border-radius:7px;margin-bottom:6px">'
             +'<div style="flex:1"><div style="font-weight:600;font-size:13px">'+esc(ntf.title||'Notificaci\u00f3n')+'</div>'
             +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc(ntf.message||'')+'</div></div>'
-            +'<div class="fc g6"><button class="btn bp" style="font-size:11px;padding:4px 10px" onclick="numbersAcceptNotif(\''+esc(ntf.id)+'\')">\u2705 Aceptar</button>'
-            +'<button class="btn bg" style="font-size:11px;padding:4px 10px" onclick="numbersRejectNotif(\''+esc(ntf.id)+'\')">Rechazar</button></div>'
+            +'<div class="fc g6"><button class="btn bp" style="font-size:11px;padding:4px 10px" onclick="numbersAcceptNotif&&numbersAcceptNotif(\''+esc(ntf.id)+'\')">\u2705 Aceptar</button>'
+            +'<button class="btn bg" style="font-size:11px;padding:4px 10px" onclick="numbersRejectNotif&&numbersRejectNotif(\''+esc(ntf.id)+'\')">Rechazar</button></div>'
             +'</div>';
         }).join('');
       }
@@ -19026,6 +19652,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbc-prefix-inv').value='INV';
     if(document.getElementById('nbc-prefix-nc'))document.getElementById('nbc-prefix-nc').value='NC';
     if(document.getElementById('nbc-lang'))document.getElementById('nbc-lang').value='ES';
+    if(document.getElementById('nbc-accountant-email'))document.getElementById('nbc-accountant-email').value='';
     document.getElementById('nbc-delete-btn').style.display='none';
     var sumEl=document.getElementById('nbc-tpl-summary');
     if(sumEl)sumEl.innerHTML='Guarda primero la empresa, despu\u00e9s podr\u00e1s configurar sus templates.';
@@ -19053,6 +19680,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.getElementById('nbc-prefix-inv').value=c.invoicePrefix||'INV';
     if(document.getElementById('nbc-prefix-nc'))document.getElementById('nbc-prefix-nc').value=c.creditNotePrefix||'NC';
     if(document.getElementById('nbc-lang'))document.getElementById('nbc-lang').value=c.documentLanguage||'ES';
+    if(document.getElementById('nbc-accountant-email'))document.getElementById('nbc-accountant-email').value=c.accountantEmail||'';
     document.getElementById('nbc-delete-btn').style.display='';
     nbcRenderBanks();
     // Update template summary
@@ -19167,6 +19795,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       phone:document.getElementById('nbc-phone').value.trim(),
       banks:validBanks,
       documentLanguage:(document.getElementById('nbc-lang')&&document.getElementById('nbc-lang').value)||'ES',
+      accountantEmail:(document.getElementById('nbc-accountant-email')&&document.getElementById('nbc-accountant-email').value.trim())||'',
       proformaPrefix:document.getElementById('nbc-prefix-pf').value.trim()||'PRO',
       invoicePrefix:document.getElementById('nbc-prefix-inv').value.trim()||'INV',
       creditNotePrefix:(document.getElementById('nbc-prefix-nc')&&document.getElementById('nbc-prefix-nc').value.trim())||'NC',
@@ -19788,6 +20417,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     window._nbpfEditingId=null;
     window._nbpfItems=prePopulate&&prePopulate.items?JSON.parse(JSON.stringify(prePopulate.items)):[];
+    // v9.74: F5 - flag se viene da notifica per chiedere invio cliente dopo save
+    window._nbpfPrePopulateFromNotif=!!(prePopulate&&prePopulate.fromNotificationId);
+    window._nbpfNotifId=prePopulate&&prePopulate.fromNotificationId||null;
     document.getElementById('nbpf-modal-title').textContent='Nueva Proforma';
     document.getElementById('nbpf-delete-btn').style.display='none';
     document.getElementById('nbpf-number').value='';
@@ -20186,8 +20818,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
     numbersUpdateBadges();
     numbersRenderProformas();
     if(typeof showToast==='function')showToast('\u2713 Proforma '+record.number+' guardada');
+    var savedId=record.id;
+    var fromNotif=window._nbpfPrePopulateFromNotif||false;
     window._nbpfEditingId=null;
     window._nbpfItems=[];
+    window._nbpfPrePopulateFromNotif=false;
+    // v9.74: F5 - se viene da notifica (Won), chiede di inviare al cliente
+    if(fromNotif&&typeof window.proformaAskSendToClient==='function'){
+      setTimeout(function(){window.proformaAskSendToClient(savedId);},300);
+    }
   };
   
   // v9.71: Toggle custom input per Términos pago / Incoterm
