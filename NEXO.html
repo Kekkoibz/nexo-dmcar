@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.66 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F2+F3: 1) F2 Proformas manual: form completo crea/edita/elimina con cliente (B2B autocomplete o manuale), items multi-row (da Stock Vivo o riga manuale), IVA mode (con IVA / 0% Export / Reverse charge), calcolo automatico totali, numerazione progressiva per società/anno (PRO/2026/0001). 2) F3 Editor Template form-based: 3 tipi (Proforma/Factura/Nota Crédito) per società, sezioni Logo/Colori/Header/Footer/Banca/Note legali, live preview HTML, salvar/duplicar/restablecer template default. Pulsante "Configurazione Template" in modal Empresa. Tutto integrato con dati real-time. -->
+<!-- NEXO v9.67 — DMCAR GROUP CRM | 2026-05-02 | FIX caratteri Unicode escape visibili in HTML statico (\u2713, \u25cb, \u2014, \u00fa, \u00f1, \u00fa, ecc) sostituiti con HTML entities corrette (&#10003;, &#9675;, &mdash;, &uacute;, ecc). FIX bottoni "+ Nueva plantilla" che mostravano alert F3-pendiente: ora il pannello Templates mostra dinamicamente i template configurati con shortcut diretto all'editor + lista globale templates per società. Bottone 📄 templates aggiunto direttamente sulle card empresa. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -757,7 +757,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="mkBulkEnrich()" style="font-size:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border:none" title="Auto-rellenar pa&iacute;s y empresa de los contactos vac&iacute;os usando el dominio del email">&#10024; Enriquecer datos</button>
           <button class="btn bs" id="mk-infer-ip-btn" onclick="mkBulkInferCountryByIP()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Inferir pa&iacute;s por IP geolocation (DNS + ipwho.is). Util para dominios .com">&#127760; Inferir pa&iacute;s (IP)</button>
           <button class="btn bs" onclick="mkBulkSyncB2BToMarketing()" style="font-size:12px" title="Re-sincroniza todos los contactos B2B en Marketing (Direct Mail) por si la columna Listas en B2B est&aacute; vac&iacute;a">&#128257; Sync B2B</button>
-          <button class="btn bs" onclick="mkBulkSyncMarketingToB2B()" style="font-size:12px" title="Crea contactos B2B desde los contactos Marketing que a&uacute;n no existen en B2B (no duplica los existentes)">&#128257; Sync \u2192 B2B</button>
+          <button class="btn bs" onclick="mkBulkSyncMarketingToB2B()" style="font-size:12px" title="Crea contactos B2B desde los contactos Marketing que a&uacute;n no existen en B2B (no duplica los existentes)">&#128257; Sync &rarr; B2B</button>
           <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
           <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
           <button class="btn bs" onclick="mkUndoLastImport()" id="mk-undo-btn" style="font-size:12px;display:none" title="Borrar todos los contactos del &uacute;ltimo import (irrevocable)">&#8617; Anular &uacute;ltimo import</button>
@@ -1121,11 +1121,11 @@ En que te puedo ayudar hoy?</div></div>
             </div>
           </div>
           <div class="card">
-            <div class="fbet mb10"><div class="ct">&#128196; Plantillas documentos</div><button class="btn bs" onclick="alert('F3: pendiente desarrollo (editor template HTML)')" style="font-size:11px">+ Nueva plantilla</button></div>
-            <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas HTML personalizables para Proformas y Facturas. Cada empresa puede usar la suya.</div>
+            <div class="fbet mb10"><div class="ct">&#128196; Plantillas documentos</div><span style="font-size:10px;color:var(--t4)">Configurar desde la empresa</span></div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas HTML personalizables para Proformas, Facturas y Notas de Cr&eacute;dito. Cada empresa tiene las suyas (3 tipos).</div>
             <div id="nb-templates-list">
               <div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">
-                Pendiente F3 \u2014 editor HTML con variables {{client.name}}, {{items}}, etc.
+                Para configurar templates, abre una empresa de la lista &rarr; bot&oacute;n &quot;Configurar templates&quot;.
               </div>
             </div>
           </div>
@@ -1135,22 +1135,22 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas para envio Proforma / Factura / Recordatorio pago, con variables dinamicas y multi-idioma.</div>
           <div id="nb-email-tpl-list">
             <div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">
-              Pendiente F3 \u2014 editor con multi-idioma (es/it/en/fr/de).
+              Pendiente F3 &mdash; editor con multi-idioma (es/it/en/fr/de).
             </div>
           </div>
         </div>
         <div class="card">
           <div class="ct">&#128737;&#65039; Estado del m&oacute;dulo (Roadmap)</div>
           <div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:8px">
-            <div><span style="color:#16a34a">\u2713 F0</span> Setup + DB schema</div>
-            <div><span style="color:#16a34a">\u2713 F1</span> CRUD Empresas</div>
-            <div><span style="color:#16a34a">\u2713 F2</span> Proformas manual (esta versi&oacute;n)</div>
-            <div><span style="color:#16a34a">\u2713 F3</span> Templates editor (esta versi&oacute;n)</div>
-            <div><span style="color:#16a34a">\u2713 F4</span> Generador PDF preview (incluido)</div>
-            <div><span style="color:var(--t4)">\u25cb F5</span> Trigger Won \u2192 Notificaci&oacute;n (siguiente)</div>
-            <div><span style="color:var(--t4)">\u25cb F6</span> Env&iacute;o email autom&aacute;tico</div>
-            <div><span style="color:var(--t4)">\u25cb F7</span> Pagos + conversi&oacute;n a Factura</div>
-            <div><span style="color:var(--t4)">\u25cb F8</span> Reporting + export</div>
+            <div><span style="color:#16a34a">&#10003; F0</span> Setup + DB schema</div>
+            <div><span style="color:#16a34a">&#10003; F1</span> CRUD Empresas</div>
+            <div><span style="color:#16a34a">&#10003; F2</span> Proformas manual (esta versi&oacute;n)</div>
+            <div><span style="color:#16a34a">&#10003; F3</span> Templates editor (esta versi&oacute;n)</div>
+            <div><span style="color:#16a34a">&#10003; F4</span> Generador PDF preview (incluido)</div>
+            <div><span style="color:var(--t4)">&#9675; F5</span> Trigger Won &rarr; Notificaci&oacute;n (siguiente)</div>
+            <div><span style="color:var(--t4)">&#9675; F6</span> Env&iacute;o email autom&aacute;tico</div>
+            <div><span style="color:var(--t4)">&#9675; F7</span> Pagos + conversi&oacute;n a Factura</div>
+            <div><span style="color:var(--t4)">&#9675; F8</span> Reporting + export</div>
           </div>
         </div>
       </div>
@@ -1565,7 +1565,7 @@ En que te puedo ayudar hoy?</div></div>
       </div>
       <div class="mb10">
         <label>Domicilio fiscal (calle + n&uacute;mero) *</label>
-        <input type="text" id="nbc-street" placeholder="Ej: \u0160t\u011bp\u00e1nsk\u00e1 1742/27">
+        <input type="text" id="nbc-street" placeholder="Ej: Calle Principal 42">
       </div>
       <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px">
         <div><label>CP / ZIP *</label><input type="text" id="nbc-zip" placeholder="11000"></div>
@@ -1601,9 +1601,9 @@ En que te puedo ayudar hoy?</div></div>
         <div class="ct" style="margin:0">&#127974; Bancos</div>
         <button class="btn bp" onclick="nbcAddBank()" style="font-size:11px;padding:5px 12px">+ Banca</button>
       </div>
-      <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Puede registrar varias cuentas bancarias para la misma empresa (\u00fatil para clientes en distintos pa\u00edses).</div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Puede registrar varias cuentas bancarias para la misma empresa (&uacute;til para clientes en distintos pa&iacute;ses).</div>
       <div id="nbc-banks-list">
-        <div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin bancos a\u00fan. Click "+ Banca" para a\u00f1adir.</div>
+        <div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin bancos a&uacute;n. Click "+ Banca" para a&ntilde;adir.</div>
       </div>
     </div>
 
@@ -2678,7 +2678,7 @@ En que te puedo ayudar hoy?</div></div>
             <input type="text" id="camp-name" placeholder="ej: Newsletter Mayo - AUDI Q5" style="flex:1">
             <button type="button" class="btn bs" onclick="campAutoFillName()" style="font-size:10px;padding:6px 10px;white-space:nowrap" title="Rellenar autom&aacute;ticamente con #ID + t&iacute;tulo del coche seleccionado">⚡ Auto</button>
           </div>
-          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click '\u26a1 Auto' para rellenar con #ID + t&iacute;tulo del coche.</div>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Click '&#9889; Auto' para rellenar con #ID + t&iacute;tulo del coche.</div>
         </div>
         <!-- 2. Asunto del email -->
         <div class="mb14">
@@ -18818,37 +18818,62 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // Sub-render: Configuración (lista empresas)
   window.numbersRenderConfig=function(){
     var listEl=document.getElementById('nb-companies-list');
-    if(!listEl)return;
-    var companies=nxCompanies||[];
-    if(companies.length===0){
-      listEl.innerHTML='<div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">'
-        +'<div style="margin-bottom:8px">No hay empresas configuradas todav\u00eda.</div>'
-        +'<div style="font-size:11px">Click "+ Nueva empresa" para a\u00f1adir la primera.</div>'
-        +'</div>';
-      return;
-    }
-    // Render lista companies con card per ognuna
-    listEl.innerHTML=companies.map(function(c){
-      var nBanks=(c.banks||[]).length;
-      return '<div style="padding:12px;background:var(--bg3);border-radius:7px;margin-bottom:8px;cursor:pointer" onclick="numbersEditCompany(\''+esc(c.id)+'\')">'
-        +'<div class="fbet">'
-          +'<div style="flex:1">'
-            +'<div style="font-weight:700;font-size:13px;color:var(--t1)">'+esc(c.name||'Sin nombre')+'</div>'
-            +'<div style="font-size:11px;color:var(--t3);margin-top:3px;font-family:monospace">VAT: '+esc(c.vatNumber||'?')+'</div>'
-            +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc(((c.address&&c.address.street)||'')+(c.address&&c.address.city?', '+c.address.city:'')+(c.address&&c.address.country?' ('+c.address.country+')':''))+'</div>'
-            +'<div class="fc g6" style="margin-top:6px;flex-wrap:wrap">'
-              +(nBanks>0?'<span style="font-size:10px;background:rgba(16,185,129,.15);color:#065f46;padding:2px 7px;border-radius:5px">\ud83c\udfe6 '+nBanks+' banco'+(nBanks!==1?'s':'')+'</span>':'<span style="font-size:10px;color:var(--t4)">Sin bancos</span>')
-              +(c.proformaPrefix?'<span style="font-size:10px;background:rgba(37,99,235,.15);color:#1e40af;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.proformaPrefix)+'/&hellip;</span>':'')
-              +(c.invoicePrefix?'<span style="font-size:10px;background:rgba(124,58,237,.15);color:#5b21b6;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.invoicePrefix)+'/&hellip;</span>':'')
+    if(listEl){
+      var companies=nxCompanies||[];
+      if(companies.length===0){
+        listEl.innerHTML='<div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">'
+          +'<div style="margin-bottom:8px">No hay empresas configuradas todav\u00eda.</div>'
+          +'<div style="font-size:11px">Click "+ Nueva empresa" para a\u00f1adir la primera.</div>'
+          +'</div>';
+      }else{
+        listEl.innerHTML=companies.map(function(c){
+          var nBanks=(c.banks||[]).length;
+          var nTpls=(nxDocTemplates||[]).filter(function(t){return t.companyId===c.id;}).length;
+          return '<div style="padding:12px;background:var(--bg3);border-radius:7px;margin-bottom:8px;cursor:pointer" onclick="numbersEditCompany(\''+esc(c.id)+'\')">'
+            +'<div class="fbet">'
+              +'<div style="flex:1">'
+                +'<div style="font-weight:700;font-size:13px;color:var(--t1)">'+esc(c.name||'Sin nombre')+'</div>'
+                +'<div style="font-size:11px;color:var(--t3);margin-top:3px;font-family:monospace">VAT: '+esc(c.vatNumber||'?')+'</div>'
+                +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc(((c.address&&c.address.street)||'')+(c.address&&c.address.city?', '+c.address.city:'')+(c.address&&c.address.country?' ('+c.address.country+')':''))+'</div>'
+                +'<div class="fc g6" style="margin-top:6px;flex-wrap:wrap">'
+                  +(nBanks>0?'<span style="font-size:10px;background:rgba(16,185,129,.15);color:#065f46;padding:2px 7px;border-radius:5px">\ud83c\udfe6 '+nBanks+' banco'+(nBanks!==1?'s':'')+'</span>':'<span style="font-size:10px;color:var(--t4)">Sin bancos</span>')
+                  +(nTpls>0?'<span style="font-size:10px;background:rgba(124,58,237,.15);color:#5b21b6;padding:2px 7px;border-radius:5px">\ud83d\udcc4 '+nTpls+' template'+(nTpls!==1?'s':'')+'</span>':'<span style="font-size:10px;color:var(--orange)">\u26a0\ufe0f Sin templates</span>')
+                  +(c.proformaPrefix?'<span style="font-size:10px;background:rgba(37,99,235,.15);color:#1e40af;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.proformaPrefix)+'/&hellip;</span>':'')
+                  +(c.invoicePrefix?'<span style="font-size:10px;background:rgba(245,158,11,.15);color:#92400e;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.invoicePrefix)+'/&hellip;</span>':'')
+                +'</div>'
+              +'</div>'
+              +'<div class="fc g4">'
+                +'<button class="btn bs" onclick="event.stopPropagation();numbersEditCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px" title="Editar empresa">&#9998;</button>'
+                +'<button class="btn bs" onclick="event.stopPropagation();nbtplOpen(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none" title="Configurar templates">&#128196;</button>'
+                +'<button class="btn bd" onclick="event.stopPropagation();numbersDeleteCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px" title="Eliminar">&#128465;</button>'
+              +'</div>'
             +'</div>'
-          +'</div>'
-          +'<div class="fc g4">'
-            +'<button class="btn bs" onclick="event.stopPropagation();numbersEditCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px">&#9998;</button>'
-            +'<button class="btn bd" onclick="event.stopPropagation();numbersDeleteCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px">&#128465;</button>'
-          +'</div>'
-        +'</div>'
-        +'</div>';
-    }).join('');
+            +'</div>';
+        }).join('');
+      }
+    }
+    // Render lista templates (resumen globale)
+    var tplListEl=document.getElementById('nb-templates-list');
+    if(tplListEl){
+      var allTpls=nxDocTemplates||[];
+      if(allTpls.length===0){
+        tplListEl.innerHTML='<div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">'
+          +'Para configurar templates, abre una empresa de la lista &rarr; bot&oacute;n &quot;Configurar templates&quot;.'
+          +'</div>';
+      }else{
+        var typeLabels={proforma:'Proforma',invoice:'Factura',credit:'Nota Cr\u00e9dito'};
+        var typeColors={proforma:'#3b82f6',invoice:'#7c3aed',credit:'#f59e0b'};
+        tplListEl.innerHTML=allTpls.map(function(t){
+          var company=(nxCompanies||[]).find(function(c){return c.id===t.companyId;})||{};
+          var color=typeColors[t.type]||'#6b7280';
+          return '<div style="padding:8px 12px;background:var(--bg3);border-radius:6px;margin-bottom:5px;cursor:pointer;display:flex;align-items:center;gap:10px" onclick="nbtplOpen(\''+esc(t.companyId)+'\')">'
+            +'<span style="background:'+color+'22;color:'+color+';padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase">'+esc(typeLabels[t.type]||t.type)+'</span>'
+            +'<div style="flex:1"><div style="font-size:12px;font-weight:600">'+esc(company.name||'?')+'</div></div>'
+            +'<button class="btn bs" onclick="event.stopPropagation();nbtplOpen(\''+esc(t.companyId)+'\')" style="padding:3px 8px;font-size:10px">&#9998;</button>'
+            +'</div>';
+        }).join('');
+      }
+    }
   };
   
   // Buffer per i bancos durante editing (separato da nxCompanies finché non si salva)
