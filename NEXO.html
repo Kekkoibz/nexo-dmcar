@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.72 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UI: Banner Note Legali (laterale, riquadro giallo "Pago a 30 días...") ora completamente personalizzabile con 4 controlli: color testo, color fondo (era hardcoded #fffbeb giallo), color bordo sinistro (era hardcoded colorAccent), bold on/off. Default ora neutro grigio chiaro al posto del giallo. -->
+<!-- NEXO v9.73 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UX: Modal di conferma dopo "Guardar template" — chiede se applicare lo stesso stile (logo/colori/banca/note/footer/banner/colors) a tutti gli altri tipi documento, mantenendo distinti solo i titoli specifici (PROFORMA INVOICE / FACTURA / NOTA DE CRÉDITO). Sostituisce l'ex prompt() di "Duplicar". 3 opzioni: Aplicar a todos / Solo este / Cancelar. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1821,6 +1821,32 @@ En que te puedo ayudar hoy?</div></div>
         <div style="font-size:11px;color:var(--t3);margin-bottom:10px;text-align:center">Vista previa con datos de ejemplo &middot; <span style="color:var(--acc)">live</span></div>
         <div id="nbtpl-preview" style="background:#fff;max-width:800px;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.15);border-radius:4px;padding:40px;font-family:Arial,sans-serif;color:#333;font-size:12px;min-height:600px"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- v9.73: Modal conferma "Aplicar mismo estilo a todos los documentos" -->
+<div class="ovl" id="m-nb-tpl-applyall">
+  <div class="modal" style="max-width:520px">
+    <div class="fbet mb14">
+      <div class="mt">&#127912; &iquest;Aplicar mismo estilo a todos los documentos?</div>
+      <button class="btn bg" onclick="closeM('m-nb-tpl-applyall')" style="padding:5px 10px">X</button>
+    </div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:14px">
+      Has guardado el template <strong id="nbtpl-aa-current">Proforma</strong>.<br><br>
+      &iquest;Quieres usar el <strong>mismo estilo</strong> (logo, colores, banco, notas, footer, banner) tambi&eacute;n para los otros documentos de esta empresa?
+      <div style="background:var(--bg3);padding:10px;border-radius:6px;margin-top:10px;font-size:11px;color:var(--t3)">
+        &#9989; <strong>Lo que se copia:</strong> logo, colores principales, banco, notas legales, footer, banner.<br>
+        &#10071; <strong>Lo que cambia:</strong> el t&iacute;tulo del documento (PROFORMA INVOICE / FACTURA / NOTA DE CR&Eacute;DITO).
+      </div>
+    </div>
+    <div style="background:rgba(37,99,235,.08);padding:10px;border-radius:7px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">Se aplicar&aacute; a:</div>
+      <div id="nbtpl-aa-targets" style="font-size:11px;color:var(--t3)"></div>
+    </div>
+    <div class="fc g6" style="flex-wrap:wrap">
+      <button class="btn bg" onclick="closeM('m-nb-tpl-applyall')" style="flex:1;min-width:120px">Solo este</button>
+      <button class="btn bp" onclick="nbtplApplyToAll()" style="flex:2;min-width:180px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">&#9989; S&iacute;, aplicar a todos</button>
     </div>
   </div>
 </div>
@@ -19582,6 +19608,68 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     SS('nxDocTemplates',nxDocTemplates);
     if(typeof showToast==='function')showToast('\u2713 Template '+typeLabels[type]+' guardado');
+    // v9.73: Chiede se applicare lo stesso stile agli altri tipi
+    nbtplAskApplyToAll();
+  };
+  
+  // v9.73: Mostra modal conferma per applicare stesso stile agli altri tipi
+  window.nbtplAskApplyToAll=function(){
+    var current=window._nbtplCurrentType;
+    var typeLabels={proforma:'Proforma',invoice:'Factura',credit:'Nota de Cr\u00e9dito'};
+    var others=['proforma','invoice','credit'].filter(function(t){return t!==current;});
+    document.getElementById('nbtpl-aa-current').textContent=typeLabels[current];
+    document.getElementById('nbtpl-aa-targets').innerHTML=others.map(function(t){
+      return '&#10003; '+typeLabels[t];
+    }).join('<br>');
+    openM('m-nb-tpl-applyall');
+  };
+  
+  // v9.73: Applica stile corrente a tutti i tipi (mantiene solo titoli specifici)
+  window.nbtplApplyToAll=function(){
+    if(!window._nbtplCurrentCompanyId)return;
+    var cfg=nbtplGetCurrentConfig();
+    var current=window._nbtplCurrentType;
+    var typeLabels={proforma:'Proforma',invoice:'Factura',credit:'Nota de Cr\u00e9dito'};
+    var others=['proforma','invoice','credit'].filter(function(t){return t!==current;});
+    var company=nxCompanies.find(function(c){return c.id===window._nbtplCurrentCompanyId;})||{};
+    var copied=[];
+    others.forEach(function(targetType){
+      // Recupera i titoli specifici di destinazione (PROFORMA / FACTURA / NOTA CRÉDITO)
+      var targetDef=nbtplDefaultConfig(targetType);
+      // Recupera config esistente per mantenere customizzazioni manuali del titolo se ci sono
+      var existing=(nxDocTemplates||[]).find(function(t){
+        return t.companyId===window._nbtplCurrentCompanyId&&t.type===targetType;
+      });
+      var existingTitle=existing&&existing.config&&existing.config.headerTitle;
+      var existingSub=existing&&existing.config&&existing.config.headerSub;
+      // Costruisci config: tutto da current MA con titoli specifici del tipo target
+      var newCfg=Object.assign({},cfg,{
+        headerTitle:existingTitle||targetDef.headerTitle,
+        headerSub:existingSub||targetDef.headerSub
+      });
+      var existingIdx=(nxDocTemplates||[]).findIndex(function(t){
+        return t.companyId===window._nbtplCurrentCompanyId&&t.type===targetType;
+      });
+      var record={
+        id:existingIdx>=0?nxDocTemplates[existingIdx].id:'tpl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+targetType,
+        companyId:window._nbtplCurrentCompanyId,
+        type:targetType,
+        name:typeLabels[targetType]+' '+(company.name||''),
+        config:newCfg,
+        updatedAt:new Date().toISOString()
+      };
+      if(existingIdx>=0){
+        record.createdAt=nxDocTemplates[existingIdx].createdAt;
+        nxDocTemplates[existingIdx]=record;
+      }else{
+        record.createdAt=new Date().toISOString();
+        nxDocTemplates.push(record);
+      }
+      copied.push(typeLabels[targetType]);
+    });
+    SS('nxDocTemplates',nxDocTemplates);
+    closeM('m-nb-tpl-applyall');
+    if(typeof showToast==='function')showToast('\u2713 Estilo aplicado a: '+copied.join(', '));
   };
   
   // Duplica template (es. da Proforma a Factura)
