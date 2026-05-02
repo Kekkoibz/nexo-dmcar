@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.48 — DMCAR GROUP CRM | 2026-05-02 | Fix bug liste: 1) modal "Editar contactos" forza reset view+selection, mostra chip "en N listas" in vista Todos per evitare confusione su quale lista appartiene il contatto; 2) blocca creazione liste con nome duplicato (case-insensitive trim) sia in mkSaveList che durante import; 3) messaggio duplicato contatto migliorato (mostra nome+empresa+email del contatto esistente, conferma esplicita per actualizar) -->
+<!-- NEXO v9.49 — DMCAR GROUP CRM | 2026-05-02 | Smart routing Lead→B2B: promoteLeadToB2B (singolo + bulk) ora copia il contatto anche in mkContacts (Direct Mail), calcola le liste matchate (country IT→"Italia", BE→"Belgio", customerType=broker→"Broker") e mostra modal conferma obbligatoria con preview {Sí / Sí a todos / No}. Auto-crea le liste se mancano. Stesso check anti-duplicato lista (case-insensitive). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -3215,8 +3215,340 @@ function promoteLeadToB2B(leadId,silent){
   if(typeof renderLeads==='function')renderLeads();
   if(typeof renderDash==='function')renderDash();
   if(!silent)showToast('\u2713 '+contact.name+' promovido a Contactos B2B');
+  // v9.49: prompt smart routing → mkContacts + assegnazione liste
+  // Solo se silent=false (cioè promote interattivo singolo). Per il bulk il caller orchestrerà
+  if(!silent&&typeof mkPromptRoutingConfirm==='function'){
+    setTimeout(function(){
+      mkPromptRoutingConfirm([contact]);
+    },200);
+  }
   return true;
 }
+
+// ===========================================================================
+// v9.49: SMART ROUTING Lead → B2B → Marketing (mkContacts) con auto-asignacion listas
+// ===========================================================================
+// Regole di matching: contact (record contacts B2B) → lista name
+// Configurabili in futuro da Settings; per ora hardcoded come da specifiche.
+var MK_AUTOROUTING_RULES=[
+  // Country (italiano/spagnolo/inglese)
+  {match:function(c){return mkCountryMatches(c.country,['italia','italy','it']);},listName:'Italia',reason:'Italia (por país)'},
+  {match:function(c){return mkCountryMatches(c.country,['b\u00e9lgica','belgica','belgio','belgium','be']);},listName:'Belgio',reason:'Belgio (por país)'},
+  // Tipo cliente
+  {match:function(c){return (c.clientType||c.customerType||'').toLowerCase()==='broker';},listName:'Broker',reason:'Broker (por tipo)'}
+];
+
+// Helper: country matching tolerante a maiuscole/spazi/accenti
+function mkCountryMatches(country,aliases){
+  if(!country)return false;
+  var key=String(country).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  for(var i=0;i<aliases.length;i++){
+    var a=String(aliases[i]).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    if(key===a)return true;
+  }
+  return false;
+}
+
+// Calcola le liste matchate per un contact B2B (record di "contacts")
+// Ritorna array di {listName, reason}
+function mkComputeAutoroutingMatches(contactB2B){
+  if(!contactB2B)return [];
+  var matches=[];
+  MK_AUTOROUTING_RULES.forEach(function(rule){
+    try{
+      if(rule.match(contactB2B))matches.push({listName:rule.listName,reason:rule.reason});
+    }catch(e){console.warn('[autorouting] rule error:',e);}
+  });
+  return matches;
+}
+
+// Trova o crea una lista static per nome (case-insensitive trim)
+// Ritorna la lista
+function mkFindOrCreateListByName(listName){
+  var key=String(listName||'').trim().toLowerCase();
+  if(!key)return null;
+  var found=mkLists.find(function(l){return (l.name||'').trim().toLowerCase()===key;});
+  if(found){
+    // Se è dinamica legacy, NON la usiamo (no add manuale possibile)
+    if(found.type==='dynamic'){
+      console.warn('[mkFindOrCreateListByName] Lista "'+listName+'" exists but is dynamic legacy. Creating new static.');
+      // Non possiamo aggiungere a dinamiche → creiamo una nuova static col stesso nome (impossibile per dup check)
+      // Soluzione: usiamo nome alternativo "Italia (auto)"
+      var altName=listName+' (auto)';
+      var altFound=mkLists.find(function(l){return (l.name||'').trim().toLowerCase()===altName.toLowerCase();});
+      if(altFound)return altFound;
+      var altRec={
+        id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        name:altName,
+        desc:'Lista auto-creada por routing (Lead\u2192B2B)',
+        type:'static',
+        contactIds:[],
+        createdAt:new Date().toISOString()
+      };
+      mkLists.push(altRec);
+      SS('mkLists',mkLists);
+      return altRec;
+    }
+    return found;
+  }
+  // Crea nuova
+  var rec={
+    id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    name:listName,
+    desc:'Lista auto-creada por routing (Lead\u2192B2B)',
+    type:'static',
+    contactIds:[],
+    createdAt:new Date().toISOString()
+  };
+  mkLists.push(rec);
+  SS('mkLists',mkLists);
+  return rec;
+}
+
+// Copia/aggiorna un record contact B2B in mkContacts (Direct Mail)
+// Ritorna l'ID di mkContacts creato/trovato
+function mkSyncFromB2B(contactB2B){
+  if(!contactB2B)return null;
+  if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts))return null;
+  var email=mkNormEmail(contactB2B.email||'');
+  if(!email||!mkValidEmail(email))return null;
+  var existing=mkFindByEmail(email);
+  if(existing){
+    // Update soft: solo campi vuoti o updatedAt
+    existing.firstName=existing.firstName||contactB2B.name||'';
+    existing.companyName=existing.companyName||contactB2B.company||'';
+    existing.country=existing.country||contactB2B.country||'';
+    existing.phone=existing.phone||contactB2B.phone||'';
+    existing.customerType=existing.customerType||(contactB2B.clientType||'');
+    existing.updatedAt=new Date().toISOString();
+    SS('mkContacts',mkContacts);
+    return existing.id;
+  }
+  // Crea nuovo
+  var newRec={
+    id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    firstName:contactB2B.name||'',
+    companyName:contactB2B.company||'',
+    email:email,
+    phone:contactB2B.phone||'',
+    country:contactB2B.country||'',
+    customerType:contactB2B.clientType||'',
+    status:'subscribed',
+    interest:[],
+    origin:'lead_promote',
+    notes:contactB2B.notes||'',
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  };
+  if(typeof mkAutoEnrich==='function')mkAutoEnrich(newRec);
+  mkContacts.push(newRec);
+  if(typeof mkCntCounter!=='undefined'){mkCntCounter++;SS('mkCntCounter',mkCntCounter);}
+  SS('mkContacts',mkContacts);
+  return newRec.id;
+}
+
+// Esegue effettivamente l'assegnazione contatto → liste matchate
+// Ritorna numero di liste a cui è stato aggiunto
+function mkExecuteAutoroutingFor(contactB2B){
+  var matches=mkComputeAutoroutingMatches(contactB2B);
+  if(matches.length===0)return 0;
+  var mkId=mkSyncFromB2B(contactB2B);
+  if(!mkId)return 0;
+  var added=0;
+  matches.forEach(function(m){
+    var lst=mkFindOrCreateListByName(m.listName);
+    if(!lst)return;
+    if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+    if(lst.contactIds.indexOf(mkId)<0){lst.contactIds.push(mkId);added++;}
+  });
+  if(added>0)SS('mkLists',mkLists);
+  return added;
+}
+
+// ===========================================================================
+// v9.49: MODAL CONFERMA AUTO-ROUTING (single + bulk)
+// ===========================================================================
+// Stato del modal corrente
+var _mkRoutingState={
+  pending:[],       // [{contact, matches}]
+  yesAll:false,     // se true → applica a tutti senza chiedere
+  onComplete:null   // callback quando finito
+};
+
+// Apre la conferma per UNA lista di contatti B2B (può essere 1 o N)
+// onComplete: function(stats) chiamato quando tutti processati
+function mkPromptRoutingConfirm(contactsB2B,onComplete){
+  if(!Array.isArray(contactsB2B))contactsB2B=[contactsB2B];
+  // Calcola pending: solo contatti che hanno matches
+  var pending=[];
+  contactsB2B.forEach(function(c){
+    var matches=mkComputeAutoroutingMatches(c);
+    if(matches.length>0)pending.push({contact:c,matches:matches});
+  });
+  if(pending.length===0){
+    if(typeof onComplete==='function')onComplete({routed:0,skipped:0,listsTouched:0});
+    return;
+  }
+  _mkRoutingState={
+    pending:pending,
+    yesAll:false,
+    stats:{routed:0,skipped:0,listsTouched:0,total:pending.length},
+    onComplete:onComplete
+  };
+  // Se è 1 solo contatto: dialog semplice. Se sono N: dialog bulk con preview
+  if(pending.length===1){
+    mkRoutingShowSingleDialog();
+  }else{
+    mkRoutingShowBulkDialog();
+  }
+}
+
+// Dialog single contact
+function mkRoutingShowSingleDialog(){
+  var st=_mkRoutingState;
+  if(!st.pending.length){mkRoutingFinalize();return;}
+  var item=st.pending[0];
+  var c=item.contact;
+  var name=c.name||c.email||'(sin nombre)';
+  var emp=c.company?' ('+c.company+')':'';
+  var listLines=item.matches.map(function(m){return '\u2192 '+m.listName+' \u2014 '+m.reason;}).join('\n');
+  var msg='\ud83d\udccb \u00bfA\u00f1adir el contacto a las listas correspondientes?\n\n';
+  msg+=name+emp+'\n\n';
+  msg+=listLines+'\n\n';
+  msg+='[S\u00ed] = a\u00f1adir a las listas indicadas\n[Cancelar] = no a\u00f1adir';
+  if(confirm(msg)){
+    var added=mkExecuteAutoroutingFor(c);
+    st.stats.routed++;
+    st.stats.listsTouched+=added;
+  }else{
+    st.stats.skipped++;
+  }
+  st.pending.shift();
+  mkRoutingFinalize();
+}
+
+// Dialog bulk (con elenco completo + Sí/Sí a todos/No)
+function mkRoutingShowBulkDialog(){
+  // Render modal HTML dinamico
+  var st=_mkRoutingState;
+  if(!st.pending.length){mkRoutingFinalize();return;}
+  // Build HTML preview
+  var rowsHtml=st.pending.map(function(item){
+    var c=item.contact;
+    var name=esc(c.name||c.email||'(sin nombre)');
+    var emp=c.company?' <span style="color:var(--t3);font-weight:400">&middot; '+esc(c.company)+'</span>':'';
+    var chips=item.matches.map(function(m){
+      return '<span style="background:rgba(37,99,235,.15);color:var(--acc);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-right:3px">\ud83d\udccb '+esc(m.listName)+'</span>';
+    }).join('');
+    return '<div style="padding:6px 10px;background:var(--bg2);border-radius:6px;margin-bottom:4px">'
+      +'<div style="font-size:12px;font-weight:600">'+name+emp+'</div>'
+      +'<div style="font-size:10px;color:var(--t3);margin-top:2px">'+chips+'</div>'
+    +'</div>';
+  }).join('');
+  // Crea modal se non esiste
+  var existing=n('m-mk-routing-bulk');
+  if(existing){existing.parentNode.removeChild(existing);}
+  var ovl=document.createElement('div');
+  ovl.className='ovl';
+  ovl.id='m-mk-routing-bulk';
+  ovl.style.display='flex';
+  ovl.innerHTML=
+    '<div class="modal" style="max-width:640px">'
+      +'<div class="fbet mb14">'
+        +'<div class="mt">\ud83d\udccb \u00bfA\u00f1adir '+st.pending.length+' contactos a sus listas?</div>'
+        +'<button class="btn bg" onclick="mkRoutingCancelAll()" style="padding:5px 10px">X</button>'
+      +'</div>'
+      +'<div style="background:var(--bg3);border-radius:7px;padding:10px;font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">'
+        +'NEXO ha detectado que los siguientes contactos coinciden con reglas de auto-routing.<br>Las listas se crear\u00e1n autom\u00e1ticamente si no existen.'
+      +'</div>'
+      +'<div style="max-height:50vh;overflow-y:auto;background:var(--bg3);border-radius:7px;padding:10px">'+rowsHtml+'</div>'
+      +'<div class="fc g8" style="margin-top:14px;flex-wrap:wrap">'
+        +'<button class="btn bg" onclick="mkRoutingCancelAll()" style="flex:1">No \u2014 cancelar todo</button>'
+        +'<button class="btn bs" onclick="mkRoutingProcessOne()" style="flex:1" title="Confirma s\u00f3lo el primero, luego pregunta uno a uno">S\u00ed (uno por uno)</button>'
+        +'<button class="btn bp" onclick="mkRoutingYesAll()" style="flex:2;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">\u2705 S\u00ed a todos</button>'
+      +'</div>'
+    +'</div>';
+  document.body.appendChild(ovl);
+}
+
+// "Sí a todos" → applica tutti senza più chiedere
+function mkRoutingYesAll(){
+  var st=_mkRoutingState;
+  st.yesAll=true;
+  // Chiudi modal
+  var m=n('m-mk-routing-bulk');if(m)m.parentNode.removeChild(m);
+  // Process all pending
+  while(st.pending.length){
+    var item=st.pending.shift();
+    var added=mkExecuteAutoroutingFor(item.contact);
+    st.stats.routed++;
+    st.stats.listsTouched+=added;
+  }
+  mkRoutingFinalize();
+}
+
+// "Sí (uno por uno)" — prende il primo, lo applica, poi mostra single per il prossimo
+function mkRoutingProcessOne(){
+  var st=_mkRoutingState;
+  // Chiudi modal bulk
+  var m=n('m-mk-routing-bulk');if(m)m.parentNode.removeChild(m);
+  if(!st.pending.length){mkRoutingFinalize();return;}
+  // Switch a single mode
+  mkRoutingShowSingleDialog();
+}
+
+// "No / Cancelar" → annulla tutto
+function mkRoutingCancelAll(){
+  var st=_mkRoutingState;
+  var m=n('m-mk-routing-bulk');if(m)m.parentNode.removeChild(m);
+  st.stats.skipped+=st.pending.length;
+  st.pending=[];
+  mkRoutingFinalize();
+}
+
+// Fine flusso → callback + render
+function mkRoutingFinalize(){
+  var st=_mkRoutingState;
+  if(st.pending.length>0){
+    // Ancora da processare (single mode). Se yesAll, apply
+    if(st.yesAll){
+      while(st.pending.length){
+        var item=st.pending.shift();
+        var added=mkExecuteAutoroutingFor(item.contact);
+        st.stats.routed++;
+        st.stats.listsTouched+=added;
+      }
+    }else if(st.pending.length>0){
+      // Continua single
+      mkRoutingShowSingleDialog();
+      return;
+    }
+  }
+  // Done
+  if(typeof renderMarketing==='function')renderMarketing();
+  if(typeof showToast==='function'){
+    if(st.stats.routed>0){
+      showToast('\u2713 '+st.stats.routed+' contacto'+(st.stats.routed!==1?'s':'')+' a\u00f1adido'+(st.stats.routed!==1?'s':'')+' a '+st.stats.listsTouched+' lista'+(st.stats.listsTouched!==1?'s':''));
+    }else if(st.stats.skipped>0){
+      showToast('Auto-routing cancelado');
+    }
+  }
+  if(typeof st.onComplete==='function')st.onComplete(st.stats);
+  // Reset state
+  _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{}};
+}
+
+// Espone globalmente
+window.mkComputeAutoroutingMatches=mkComputeAutoroutingMatches;
+window.mkPromptRoutingConfirm=mkPromptRoutingConfirm;
+window.mkRoutingYesAll=mkRoutingYesAll;
+window.mkRoutingProcessOne=mkRoutingProcessOne;
+window.mkRoutingCancelAll=mkRoutingCancelAll;
+window.mkSyncFromB2B=mkSyncFromB2B;
+window.mkExecuteAutoroutingFor=mkExecuteAutoroutingFor;
+// END SMART ROUTING
+// ===========================================================================
+
 
 function quickSendEmail(id){
   var l=leads.find(function(x){return String(x.id)===String(id);});
@@ -7075,6 +7407,7 @@ function leadsBulkMoveToContacts(){
   var ids=Array.from(leadSel);if(!ids.length) return;
   var selected=leads.filter(function(l){return leadSel.has(l.id);});
   if(!confirm('Mover '+selected.length+' lead'+(selected.length!==1?'s':'')+' a Contactos B2B? Se eliminaran de Leads despues.')) return;
+  var createdContacts=[];
   selected.forEach(function(l){
     var contact={
       id:Date.now()+'_'+Math.floor(Math.random()*9999),
@@ -7090,6 +7423,7 @@ function leadsBulkMoveToContacts(){
       lastContact:new Date().toISOString().split('T')[0]
     };
     contacts.push(contact);
+    createdContacts.push(contact);
   });
   SS('contacts',contacts);
   // Remove from leads
@@ -7100,6 +7434,12 @@ function leadsBulkMoveToContacts(){
   renderLeads();
   renderContactos&&renderContactos();
   renderDash();
+  // v9.49: prompt smart routing per i contatti creati (filtra solo quelli con match)
+  if(typeof mkPromptRoutingConfirm==='function'&&createdContacts.length>0){
+    setTimeout(function(){
+      mkPromptRoutingConfirm(createdContacts);
+    },300);
+  }
 }
 
 // (Old renderLeadsKanban removed - kanban view moved to B2B module)
