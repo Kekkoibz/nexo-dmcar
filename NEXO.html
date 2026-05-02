@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.83 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix 3: stkFixDaciaQuantity ora gestisce il caso reale: units='Varias' (stringa, non numero) + vehicles=[] vuoto + colors="Metallic (12 units)". Detect quantità da pattern "(N units/unidades)" in colors. Estrae colore base rimuovendo il suffisso "(N units)". -->
+<!-- NEXO v9.84 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix Dacia DEFINITIVO con log debug. Stesso fix v9.83 ma rinominato per forzare cache-bust. Stampa debug per ogni Dacia analizzata. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6587,13 +6587,14 @@ window.stkFixDaciaQuantity=function(){
     var qtyFromColors=0;
     var qtyMatch=colors.match(/\((\d+)\s*(?:units?|unidades?|u\.?)\)/i);
     if(qtyMatch)qtyFromColors=parseInt(qtyMatch[1],10);
+    // v9.84 DEBUG
+    console.log('[FixDacia DEBUG]',s.internalId||s.id,'units:',unitsStr,'vehicles:',actualVehicles,'colors:',colors,'isVarias:',isVarias,'qtyFromColors:',qtyFromColors);
     // Caso 1: "Varias" + zero/1 vehicles
     // Caso 2: units numerico declarato >= 2 ma vehicles[] sotto-dimensionato
     var needsFix=false;
     var targetQty=12;
     if(isVarias&&actualVehicles<=1){
       needsFix=true;
-      // Priorità: qty da colors > 12 default
       targetQty=qtyFromColors>0?qtyFromColors:12;
     }else if(declaredUnits>=2&&actualVehicles<declaredUnits){
       needsFix=true;
