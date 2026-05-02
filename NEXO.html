@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.81 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix retroattivo: aggiunto helper consola stkFixDaciaQuantity() per correggere stock esistenti con quantità sbagliata. Helper generico stkExpandLote(stockId, quantity) per espandere ogni record stock aggregato a N veicoli (deep clone vehicles[0] o creazione dummies). Toast feedback sull'azione. NB: il safety net AI v9.80 funziona solo su NUOVE importazioni; per i record già importati pre-v9.80 va usato l'helper di backfill manuale. -->
+<!-- NEXO v9.82 — DMCAR GROUP CRM | 2026-05-02 | STOCK Hotfix 2: 1) stkFixDaciaQuantity esteso: ora cattura anche stock con units!='1' MA vehicles.length<units (caso reale: units='12' ma vehicles=[1 entry sola]). Match più permissivo su colors (qualsiasi che non sia colore esplicito singolo); 2) Email "Contatta Fornitore" multilingua: rileva lingua del fornitore da provider.country o stock.country (IT/ES/EN/FR/DE) e genera subject+body localizzato. Campi tradotti: "Solicitud info" → "Request info" (EN) / "Richiesta info" (IT) / "Demande info" (FR) / "Anfrage" (DE). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6405,29 +6405,32 @@ function stkReleaseFromNegotiation(id){
 window.stkReleaseFromNegotiation=stkReleaseFromNegotiation;
 
 // v9.78: Contattare fornitore via email precompilata (mailto)
-// v9.79+v9.80: lookup esteso multi-fonte (anche per company name)
+// v9.79+v9.80+v9.82: lookup esteso multi-fonte + multilingua per paese fornitore
 function stkContactSupplier(id){
   var s=stock.find(function(x){return String(x.id)===String(id);});
   if(!s){alert('Veh\u00edculo no encontrado.');return;}
   // Estrai email del fornitore da MULTIPLE fonti in priorità
   var supplierEmail=s.providerEmail||s.supplierEmail||(s.provider&&typeof s.provider==='object'&&s.provider.email)||'';
   var supplierName=s.provider||s.supplier||'';
+  var providerCountry=''; // v9.82: per detect lingua
   // 2. Se c'è sourceProviderId → match diretto su providers
-  if(!supplierEmail&&s.sourceProviderId&&Array.isArray(providers)){
+  if(s.sourceProviderId&&Array.isArray(providers)){
     var prov0=providers.find(function(p){return p&&String(p.id)===String(s.sourceProviderId);});
-    if(prov0&&prov0.email){supplierEmail=prov0.email;supplierName=prov0.company||prov0.name||supplierName;}
+    if(prov0){
+      if(!supplierEmail&&prov0.email){supplierEmail=prov0.email;}
+      if(!supplierName)supplierName=prov0.company||prov0.name||'';
+      providerCountry=prov0.country||prov0.fiscalCountry||'';
+    }
   }
   // 3. Cerca per nome/azienda nello stock vs providers
-  if(!supplierEmail&&supplierName&&Array.isArray(providers)){
+  if((!supplierEmail||!providerCountry)&&supplierName&&Array.isArray(providers)){
     var sname=String(supplierName).toLowerCase().trim();
-    // Match esatto su company OR name
     var prov=providers.find(function(p){
       if(!p)return false;
       var pn=String(p.name||'').toLowerCase().trim();
       var pc=String(p.company||'').toLowerCase().trim();
       return pn===sname||pc===sname;
     });
-    // Match parziale (sname contains pc/pn or viceversa) per gestire "Europe Cars" vs "Europe Cars Trade SP. Z O.O."
     if(!prov){
       prov=providers.find(function(p){
         if(!p)return false;
@@ -6438,17 +6441,41 @@ function stkContactSupplier(id){
         return false;
       });
     }
-    if(prov&&prov.email)supplierEmail=prov.email;
+    if(prov){
+      if(!supplierEmail&&prov.email)supplierEmail=prov.email;
+      if(!providerCountry)providerCountry=prov.country||prov.fiscalCountry||'';
+    }
   }
-  // Costruisci subject + body (v9.80: SOLO subject minimo, body vuoto)
+  // v9.82: Detect lingua dal paese fornitore
+  // Default ES, supportate IT/EN/FR/DE/ES/PT
+  function detectLang(country){
+    var c=String(country||'').toLowerCase().trim();
+    // Mappa paesi → lingua
+    if(/italia|italy|^it$/.test(c))return 'it';
+    if(/spain|espa|^es$/.test(c))return 'es';
+    if(/france|francia|^fr$/.test(c))return 'fr';
+    if(/germany|germania|deutschland|^de$|^at$|austria|switzerland|svizzera|^ch$/.test(c))return 'de';
+    if(/portugal|^pt$/.test(c))return 'pt';
+    // Paesi anglofoni o con business in inglese
+    if(/uk|united kingdom|england|^gb$|ireland|^ie$|usa|^us$|netherlands|holland|^nl$|sweden|^se$|denmark|^dk$|norway|^no$|finland|^fi$|poland|polonia|^pl$|czech|^cz$|hungary|^hu$|lithuania|^lt$|latvia|^lv$|estonia|^ee$|romania|^ro$|bulgaria|^bg$|greece|^gr$/.test(c))return 'en';
+    return 'es'; // default Spanish
+  }
+  var lang=detectLang(providerCountry);
+  // Dictionary i18n
+  var L={
+    es:{subject:'Solicitud info',ref:'Ref',units:'u.'},
+    en:{subject:'Info request',ref:'Ref',units:'units'},
+    it:{subject:'Richiesta info',ref:'Rif',units:'u.'},
+    fr:{subject:'Demande info',ref:'R\u00e9f',units:'u.'},
+    de:{subject:'Anfrage',ref:'Ref',units:'St.'},
+    pt:{subject:'Pedido info',ref:'Ref',units:'u.'}
+  };
+  var t=L[lang]||L.es;
+  // Costruisci subject + body (minimo)
   var modelStr=(s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:'');
   var qty=s.uds||(s.vehicles&&s.vehicles.length)||1;
-  var subject='Solicitud info - '+modelStr+(s.internalId?' ('+s.internalId+')':'');
-  // v9.80: Body VUOTO (l'utente lo scrive a mano), SOLO 1-2 righe minime di riferimento
-  var body='Ref: '+modelStr+' \u00b7 '+qty+' u.\n\n';
-  // v9.80: Reply ad email originale (mantiene thread)
-  var sourceMailId=s.sourceMailId||'';
-  // Apri client email - sempre standard mailto (gli ID Microsoft Graph non sono compatibili con mailto)
+  var subject=t.subject+' - '+modelStr+(s.internalId?' ('+s.internalId+')':'');
+  var body=t.ref+': '+modelStr+' \u00b7 '+qty+' '+t.units+'\n\n';
   var mailto='mailto:'+encodeURIComponent(supplierEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
   if(!supplierEmail){
     var msg='No hay email del proveedor registrado para este lote.\n\n';
@@ -6457,9 +6484,8 @@ function stkContactSupplier(id){
     if(confirm(msg))window.open(mailto,'_blank');
     return;
   }
-  // Apri
   window.location.href=mailto;
-  if(typeof showToast==='function')showToast('\u2713 Email abierto: '+supplierEmail);
+  if(typeof showToast==='function')showToast('\u2713 Email '+lang.toUpperCase()+': '+supplierEmail);
 }
 window.stkContactSupplier=stkContactSupplier;
 
@@ -6542,38 +6568,59 @@ window.stkExpandLote=function(stockIdOrInternalId,quantity){
   return {ok:true,quantity:quantity,internalId:s.internalId};
 };
 
-// v9.81: Helper specifico per fix retroattivo Dacia "Varias" → 12 unità Unknown
+// v9.81+v9.82: Helper specifico per fix retroattivo Dacia "Varias" → 12 unità Unknown
+// v9.82: ora cattura anche units='12' ma vehicles=[1 entry sola]
 // Esegui in consola: stkFixDaciaQuantity()
 window.stkFixDaciaQuantity=function(){
   if(!Array.isArray(stock))return console.error('stock no disponible');
   var fixed=[];
   stock.forEach(function(s){
     var brand=String(s.brand||'').toUpperCase();
-    var colors=String(s.colors||'').toLowerCase();
-    var isVarias=/varias|^$|^--$/i.test(colors)||colors==='';
-    var hasOnlyOneVehicle=!s.vehicles||s.vehicles.length<=1;
-    // Match tipico: Dacia, "Varias" colors, 1 entry sola → probabilmente lotto da 12
-    if(brand==='DACIA'&&isVarias&&hasOnlyOneVehicle){
-      // Espandi a 12 unidades Unknown
+    if(brand!=='DACIA')return;
+    var declaredUnits=parseInt(String(s.units||'1'),10)||1;
+    var actualVehicles=(s.vehicles&&s.vehicles.length)||0;
+    // Caso 1: units dichiarate >= 2 ma vehicles[] sotto-dimensionato → espandi
+    // Caso 2: units=1 ma colors contiene "Varias" o multiple → probabile lotto
+    var colors=String(s.colors||'');
+    var isLotto=declaredUnits>=2&&actualVehicles<declaredUnits;
+    var isVarias=/varias/i.test(colors)&&actualVehicles<=1;
+    if(isLotto||isVarias){
+      var targetQty=Math.max(declaredUnits,12); // Dacia tipico = 12
+      // Determina colore template
+      var templateColor='Unknown';
+      if(s.vehicles&&s.vehicles[0]&&s.vehicles[0].color&&!/varias|^--$|^$/i.test(s.vehicles[0].color)){
+        templateColor=s.vehicles[0].color;
+      }else if(colors&&!/varias/i.test(colors)){
+        templateColor=colors.split(',')[0].trim()||'Unknown';
+      }
       var template={
-        vin:'--',color:'Unknown',kms:s.kms||'--',damage:s.damage||'0 \u20ac',
+        vin:'--',color:templateColor,kms:s.kms||'--',damage:s.damage||'0 \u20ac',
         reg:s.reg||'--',location:'--',buy:''
       };
-      s.vehicles=[];
-      for(var i=0;i<12;i++)s.vehicles.push(JSON.parse(JSON.stringify(template)));
-      s.units='12';
-      s.colors='Unknown';
-      fixed.push(s.internalId||s.id);
+      // Se ha già qualche vehicle, mantienilo come template
+      if(s.vehicles&&s.vehicles[0]){
+        template=JSON.parse(JSON.stringify(s.vehicles[0]));
+        if(/varias|^--$|^$/i.test(template.color||''))template.color='Unknown';
+      }
+      var newVehicles=[];
+      for(var i=0;i<targetQty;i++)newVehicles.push(JSON.parse(JSON.stringify(template)));
+      s.vehicles=newVehicles;
+      s.units=String(targetQty);
+      s.colors=template.color;
+      fixed.push((s.internalId||s.id)+' ('+actualVehicles+' \u2192 '+targetQty+')');
     }
   });
   if(fixed.length>0){
     SS('stock',stock);
     console.log('[FixDacia] Aggiornati:',fixed);
-    if(typeof showToast==='function')showToast('\u2713 Dacia fix: '+fixed.length+' lotto(i) espanso(s) a 12 unidades Unknown');
+    if(typeof showToast==='function')showToast('\u2713 Dacia fix: '+fixed.length+' lotto(i) espanso');
     if(typeof fStk==='function')fStk();
   }else{
-    console.log('[FixDacia] Nessun lotto Dacia da fixare (gi\u00e0 ok o nessun match)');
-    if(typeof showToast==='function')showToast('Ningun lote Dacia con "Varias" encontrado');
+    console.log('[FixDacia] Nessun lotto Dacia da fixare. Stock Dacia trovati:');
+    stock.filter(function(s){return String(s.brand||'').toUpperCase()==='DACIA';}).forEach(function(s){
+      console.log('  -',s.internalId||s.id,'units:',s.units,'vehicles:',(s.vehicles||[]).length,'colors:',s.colors);
+    });
+    if(typeof showToast==='function')showToast('Ningun lote Dacia para fixar (ver consola)');
   }
   return {fixed:fixed.length,ids:fixed};
 };
