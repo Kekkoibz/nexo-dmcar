@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.93 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS Vista Contable Master Sheet (38 colonne / 7 blocchi colorati): GENERAL (Data/NumExp/Impresa/VIN), FORNITORE acq, CLIENTE vend, TRASPORTO (acq+vend separati), AUTO (brand/model/version/reg/km/color/damage), MARGINI (Profit Auto + Profit Trasporto SEPARATI), BROKER (Seller/Destinatario/FT/DataInc/Imp + REAL FEES). KPI live: Vehículos, Profit Auto totale, Profit Trasporto totale, REAL FEES totale. Auto-popolato da Stock + Proformas + Facturas. Helper nxAccGetExtended() legge accDocs[] del stock (popolati da AI parser in Fase 2). Export XLSX (lazy-load SheetJS) + Export CSV (BOM UTF-8, separator ;). -->
+<!-- NEXO v9.94 — DMCAR GROUP CRM | 2026-05-02 | AI DOCUMENT PARSER (Fase 2 Vista Contable): nxAIAnalyzeDoc estrae testo PDF via pdf.js, manda a Claude Haiku 4.5 con prompt strutturato, riceve JSON {docType, docNumber, docDate, supplierName, totalAmount, lines:[{vin, amount, description}]}. Match VIN multi-livello (stock vehicles + stock root). Modal nxShowAIDocConfirm con: dati AI estratti (chip viola), expedientes match con line items + subtotali, VIN in propiedad (no expediente), VIN unmatched. Auto-archive: upload PDF in cartella corretta (PROVEEDOR/TRANSPORTE/BROKER/CLIENTE) di OGNI expediente match + scrive accDocs[] strutturati su ogni stock per VIN. nxWriteAccDoc deduplica per (docNumber+date+vin). Vista Contable si auto-popola dopo. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -23487,10 +23487,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // ========================================================================
   // v9.92: Upload doc proveedor con classificazione multi-VIN
+  // v9.94: AI Document Parser con Claude Haiku 4.5
   // ========================================================================
   window.numbersUploadProveedorDoc=function(){
     if(!window.nxSpConfig||!window.nxSpConfig.siteId){
       alert('SharePoint no configurado. Ve a Configuraci\u00f3n > SharePoint primero.');return;
+    }
+    if(!getKey()){
+      if(!confirm('AI Parser requiere API key Anthropic.\n\n\u00bfIr a Configuraci\u00f3n para configurar?'))return;
+      go('config');return;
     }
     var input=document.createElement('input');
     input.type='file';
@@ -23500,12 +23505,335 @@ document.querySelectorAll('.ovl').forEach(function(el){
     input.onchange=function(){
       var f=input.files&&input.files[0];
       if(!f){document.body.removeChild(input);return;}
-      // Per PDF: prova ad estrarre testo lato client per cercare VIN multipli
-      // Per altri formati: usa solo nome file
-      nxAnalyzeProveedorDoc(f);
+      // v9.94: nuovo flusso con AI parser
+      nxAIAnalyzeDoc(f);
       document.body.removeChild(input);
     };
     input.click();
+  };
+
+  // ========================================================================
+  // v9.94: AI DOCUMENT PARSER - estrae dati strutturati da PDF fattura
+  // ========================================================================
+  window.nxAIAnalyzeDoc=function(file){
+    if(typeof showToast==='function')showToast('\u26a1 AI analizando documento...',3000);
+    // Step 1: estrai testo dal PDF
+    var isPdf=/\.pdf$/i.test(file.name);
+    if(!isPdf){
+      // Per non-PDF usa solo nome file
+      nxAIParseWithClaude(file,'',[],function(parsed,err){
+        if(err){alert('Error AI: '+err);return;}
+        nxShowAIDocConfirm(file,parsed);
+      });
+      return;
+    }
+    // PDF: estrai testo
+    nxExtractTextFromPdf(file,function(text,vins){
+      // Limita a 30k chars per evitare token overflow
+      var textTrimmed=String(text||'').substring(0,30000);
+      nxAIParseWithClaude(file,textTrimmed,vins||[],function(parsed,err){
+        if(err){alert('Error AI: '+err);return;}
+        nxShowAIDocConfirm(file,parsed);
+      });
+    });
+  };
+
+  // Estrae TUTTO il testo dal PDF (non solo VIN)
+  window.nxExtractTextFromPdf=function(file,cb){
+    function doExtract(){
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var data=new Uint8Array(e.target.result);
+        pdfjsLib.getDocument({data:data}).promise.then(function(pdf){
+          var textPromises=[];
+          for(var i=1;i<=pdf.numPages;i++){
+            textPromises.push(pdf.getPage(i).then(function(p){return p.getTextContent();}));
+          }
+          Promise.all(textPromises).then(function(pages){
+            var allText=pages.map(function(p){return p.items.map(function(it){return it.str;}).join(' ');}).join('\n\n');
+            var vins=String(allText).toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g)||[];
+            cb(allText,vins);
+          }).catch(function(){cb('',[]);});
+        }).catch(function(){cb('',[]);});
+      };
+      reader.onerror=function(){cb('',[]);};
+      reader.readAsArrayBuffer(file);
+    }
+    if(typeof pdfjsLib!=='undefined'){doExtract();return;}
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      doExtract();
+    };
+    s.onerror=function(){cb('',[]);};
+    document.head.appendChild(s);
+  };
+
+  // Chiama Claude Haiku con prompt strutturato per parsing fattura
+  window.nxAIParseWithClaude=function(file,docText,foundVins,cb){
+    var fileName=file.name;
+    var systemPrompt='Sei un parser specializzato di documenti fiscali (fatture/proforme). '
+      +'Estrai dati strutturati da fatture in italiano, spagnolo, inglese, tedesco, francese, portoghese. '
+      +'Restituisci SOLO JSON valido senza commenti, senza markdown fence, senza testo extra.\n\n'
+      +'SCHEMA OBBLIGATORIO:\n'
+      +'{\n'
+      +'  "docType": "factura_proveedor" | "factura_transporte_acq" | "factura_transporte_vend" | "broker_factura" | "factura_cliente" | "proforma_proveedor" | "otro",\n'
+      +'  "docNumber": "numero fattura/proforma esatto come scritto",\n'
+      +'  "docDate": "YYYY-MM-DD",\n'
+      +'  "supplierName": "ragione sociale del fornitore (chi emette la fattura)",\n'
+      +'  "clientName": "ragione sociale del destinatario (a chi è indirizzata)",\n'
+      +'  "totalAmount": numero (totale documento),\n'
+      +'  "currency": "EUR" | "USD" | etc,\n'
+      +'  "lines": [\n'
+      +'    { "vin": "VIN17caratteri", "amount": numero, "description": "descrizione riga" }\n'
+      +'  ]\n'
+      +'}\n\n'
+      +'REGOLE:\n'
+      +'- VIN: 17 caratteri alfanumerici esclusi I/O/Q\n'
+      +'- Per ogni VIN trovato, prova ad estrarre l\'importo della riga corrispondente\n'
+      +'- Se non riesci a separare gli importi per VIN, dividi il totale equamente tra i VIN\n'
+      +'- docType: "factura_transporte_acq" se è trasporto pagato a fornitore esterno (es. CMR, transport)\n'
+      +'- docType: "broker_factura" se contiene parole come "commissione", "provvigione", "broker", "intermediazione"\n'
+      +'- docType: "factura_proveedor" se è acquisto auto da fornitore\n'
+      +'- Date: converti SEMPRE a YYYY-MM-DD (es. "27/01/2025" → "2025-01-27")\n'
+      +'- Importi: usa . come decimale, no separatori migliaia (es. 1234.56)\n'
+      +'- Se un campo manca, usa null';
+    var userMessage='Filename: '+fileName+'\n\n';
+    if(foundVins.length){
+      userMessage+='VIN già rilevati nel testo: '+foundVins.join(', ')+'\n\n';
+    }
+    userMessage+='Testo estratto dal documento:\n\n'+docText;
+    if(!docText){userMessage+='(no extracted text - usa solo il filename per inferire docType)';}
+    callAPI(systemPrompt,userMessage,3000,function(resp,err){
+      if(err){cb(null,err);return;}
+      try{
+        // Pulisci JSON da eventuali fence markdown
+        var clean=String(resp||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+        var parsed=JSON.parse(clean);
+        cb(parsed,null);
+      }catch(e){
+        console.error('[AI Parser] Parse error:',e,'\nResponse:',resp);
+        cb(null,'JSON inv\u00e1lido del AI: '+e.message);
+      }
+    });
+  };
+
+  // Mostra dialog conferma con VIN matched + dati AI estratti
+  window.nxShowAIDocConfirm=function(file,parsed){
+    var matchedExps={}; // expId → {exp, lines:[]}
+    var inPropriedad=[]; // VIN in stock ma senza expediente
+    var unmatchedLines=[]; // VIN non trovati
+    (parsed.lines||[]).forEach(function(line){
+      if(!line.vin){unmatchedLines.push(line);return;}
+      var vinUp=String(line.vin).toUpperCase();
+      // Trova stock per VIN
+      var found=null;
+      for(var i=0;i<stock.length;i++){
+        var s=stock[i];
+        if(String(s.vin||'').toUpperCase()===vinUp){found={s:s};break;}
+        if(s.vehicles&&s.vehicles.length){
+          for(var j=0;j<s.vehicles.length;j++){
+            if(String(s.vehicles[j].vin||'').toUpperCase()===vinUp){found={s:s,vidx:j};break;}
+          }
+          if(found)break;
+        }
+      }
+      if(!found){unmatchedLines.push(line);return;}
+      var exp=(window.nxExpedientes||[]).find(function(e){return e.vehicleIds&&e.vehicleIds.indexOf(found.s.id)>=0;});
+      if(exp){
+        if(!matchedExps[exp.id])matchedExps[exp.id]={exp:exp,lines:[]};
+        matchedExps[exp.id].lines.push({line:line,stock:found.s});
+      }else{
+        inPropriedad.push({line:line,stock:found.s});
+      }
+    });
+    var expCount=Object.keys(matchedExps).length;
+    // Build modal HTML
+    var totalImp=parsed.totalAmount||0;
+    var totalParsedLines=(parsed.lines||[]).reduce(function(a,l){return a+(l.amount||0);},0);
+    var docTypeLabels={
+      'factura_proveedor':'Factura Proveedor (Auto)',
+      'factura_transporte_acq':'Factura Transporte (Acq)',
+      'factura_transporte_vend':'Factura Transporte (Vend)',
+      'broker_factura':'Factura Broker / Comisión',
+      'factura_cliente':'Factura Cliente',
+      'proforma_proveedor':'Proforma Proveedor',
+      'otro':'Otro documento'
+    };
+    var docTypeLabel=docTypeLabels[parsed.docType]||parsed.docType||'?';
+    var html='<div id="m-ai-doc" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-ai-doc\')">'
+      +'<div class="modal" style="max-width:720px;padding:0">'
+        +'<div class="mh"><span>&#129302; AI Parser &mdash; Documento analizado</span><button class="mx" onclick="closeM(\'m-ai-doc\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(124,58,237,.06);padding:14px;border-radius:7px;margin-bottom:14px;border-left:4px solid #7c3aed">'
+            +'<div style="font-size:11px;color:#7c3aed;font-weight:700;margin-bottom:6px">&#129302; Datos extra\u00eddos por IA:</div>'
+            +'<table style="width:100%;font-size:12px">'
+              +'<tr><td style="padding:3px 8px;color:var(--t3);width:120px">Tipo</td><td><strong>'+esc(docTypeLabel)+'</strong></td></tr>'
+              +'<tr><td style="padding:3px 8px;color:var(--t3)">N\u00famero</td><td><strong>'+esc(parsed.docNumber||'?')+'</strong></td></tr>'
+              +'<tr><td style="padding:3px 8px;color:var(--t3)">Fecha</td><td>'+esc(parsed.docDate||'?')+'</td></tr>'
+              +'<tr><td style="padding:3px 8px;color:var(--t3)">Proveedor</td><td><strong>'+esc(parsed.supplierName||'?')+'</strong></td></tr>'
+              +'<tr><td style="padding:3px 8px;color:var(--t3)">Total</td><td><strong>'+esc(String(totalImp))+' '+esc(parsed.currency||'EUR')+'</strong></td></tr>'
+              +'<tr><td style="padding:3px 8px;color:var(--t3)">L\u00edneas detectadas</td><td><strong>'+(parsed.lines||[]).length+'</strong></td></tr>'
+            +'</table>'
+          +'</div>';
+    if((parsed.lines||[]).length===0){
+      html+='<div style="background:rgba(220,38,38,.08);border-left:4px solid #dc2626;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#dc2626">\u26a0\ufe0f No se detectaron l\u00edneas con VIN</strong><br>'
+        +'<span style="font-size:11px">El documento podr\u00eda no contener VIN o el AI no los reconoci\u00f3.</span>'
+      +'</div>';
+    }
+    // Expedientes match
+    if(expCount>0){
+      html+='<div style="background:rgba(22,163,74,.08);border-left:4px solid #16a34a;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#16a34a">\u2713 '+expCount+' expediente(s) reconocido(s)</strong>'
+        +'<table style="width:100%;font-size:11px;margin-top:8px"><thead><tr style="border-bottom:1px solid rgba(0,0,0,.1)">'
+          +'<th style="text-align:left;padding:4px">Expediente</th>'
+          +'<th style="text-align:left;padding:4px">VIN</th>'
+          +'<th style="text-align:right;padding:4px">Importo</th>'
+        +'</tr></thead><tbody>';
+      Object.keys(matchedExps).forEach(function(eid){
+        var m=matchedExps[eid];
+        var subtotal=m.lines.reduce(function(a,l){return a+(l.line.amount||0);},0);
+        m.lines.forEach(function(ll,idx){
+          html+='<tr>'
+            +(idx===0?'<td rowspan="'+m.lines.length+'" style="padding:4px;vertical-align:top"><strong>'+esc(m.exp.fullName)+'</strong><br><span style="color:var(--t3);font-size:10px">'+esc(m.exp.companyCode)+' &middot; subtotal: '+subtotal.toLocaleString('es-ES',{maximumFractionDigits:2})+'</span></td>':'')
+            +'<td style="padding:4px;font-family:monospace;font-size:10px">'+esc(ll.line.vin||'')+'</td>'
+            +'<td style="padding:4px;text-align:right;font-family:monospace">'+(ll.line.amount?ll.line.amount.toLocaleString('es-ES',{maximumFractionDigits:2}):'<span style="color:var(--t4)">\u2014</span>')+'</td>'
+          +'</tr>';
+        });
+      });
+      html+='</tbody></table></div>';
+    }
+    // VIN in propriedad (no expediente)
+    if(inPropriedad.length>0){
+      html+='<div style="background:rgba(245,158,11,.08);border-left:4px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#f59e0b">\u{1F3E0} '+inPropriedad.length+' veh\u00edculo(s) en propiedad (sin expediente)</strong>'
+        +'<div style="font-size:11px;color:var(--t3);margin-top:4px">Estos VIN existen en stock pero a\u00fan no vendidos. Los datos contables se asociar\u00e1n al stock pero no se subir\u00e1n a SharePoint.</div>'
+        +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px">Ver lista</summary><div style="font-size:10px;font-family:monospace;margin-top:6px;max-height:120px;overflow-y:auto">'
+        +inPropriedad.map(function(p){return '<div>'+esc(p.line.vin||'?')+' &middot; '+esc((p.stock.brand||'')+' '+(p.stock.model||''))+(p.line.amount?' &middot; '+p.line.amount.toLocaleString('es-ES',{maximumFractionDigits:2}):'')+'</div>';}).join('')
+        +'</div></details>'
+      +'</div>';
+    }
+    // VIN unmatched
+    if(unmatchedLines.length>0){
+      html+='<div style="background:rgba(148,163,184,.1);border-left:4px solid #94a3b8;padding:12px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:var(--t2)">\u2754 '+unmatchedLines.length+' l\u00ednea(s) sin VIN reconocido</strong>'
+        +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px">Ver detalles</summary><div style="font-size:10px;margin-top:6px;max-height:120px;overflow-y:auto">'
+        +unmatchedLines.map(function(l){return '<div>'+esc(l.vin||'(no VIN)')+(l.description?' &middot; '+esc(l.description.substring(0,60)):'')+(l.amount?' &middot; '+l.amount.toLocaleString('es-ES'):'')+'</div>';}).join('')
+        +'</div></details>'
+      +'</div>';
+    }
+    // Action plan summary
+    html+='<div style="background:var(--bg3);padding:12px;border-radius:6px;margin-bottom:12px;font-size:11px;line-height:1.7">'
+      +'<strong style="color:var(--t1);font-size:12px">\ud83d\udcdd Plan de archivado:</strong><br>'
+      +'\u2022 Subir <code>'+esc(file.name)+'</code> en carpeta <strong>PROVEEDOR/</strong> de '+expCount+' expediente(s)<br>'
+      +'\u2022 Asociar datos contables (n\u00famero, fecha, importo) a '+(expCount>0?Object.keys(matchedExps).reduce(function(a,k){return a+matchedExps[k].lines.length;},0):0)+' VIN en expedientes<br>'
+      +(inPropriedad.length>0?'\u2022 Asociar datos contables a '+inPropriedad.length+' VIN en stock (sin upload a SharePoint)<br>':'')
+      +'\u2022 La Vista Contable se actualizar\u00e1 autom\u00e1ticamente con: <code>'+esc(parsed.docNumber||'?')+'</code> &middot; '+esc(parsed.docDate||'?')
+    +'</div>';
+    html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
+      +'<button class="btn bg" onclick="closeM(\'m-ai-doc\')">Cancelar</button>'
+      +'<button class="btn bs" onclick="nxAIDocManual()">Modificar manualmente</button>'
+      +(expCount>0||inPropriedad.length>0
+        ?'<button class="btn bp" onclick="nxAIDocAutoArchive()" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none">&#129302;\u2728 Auto-archivar</button>'
+        :'<button class="btn bg" disabled>&#129302; Nada para archivar</button>')
+    +'</div>';
+    html+='</div></div></div>';
+    var old=n('m-ai-doc');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    window._nxAIDocCtx={file:file,parsed:parsed,matchedExps:matchedExps,inPropriedad:inPropriedad,unmatchedLines:unmatchedLines};
+  };
+
+  // Auto-archive con dati AI
+  window.nxAIDocAutoArchive=function(){
+    var ctx=window._nxAIDocCtx;
+    if(!ctx)return;
+    var p=ctx.parsed;
+    var docTypeNorm=p.docType||'factura_proveedor';
+    // Determina cartella SharePoint
+    var folderMap={
+      'factura_proveedor':'PROVEEDOR',
+      'proforma_proveedor':'PROVEEDOR',
+      'factura_transporte_acq':'TRANSPORTE',
+      'factura_transporte_vend':'TRANSPORTE',
+      'broker_factura':'BROKER',
+      'factura_cliente':'CLIENTE',
+      'otro':'PROVEEDOR'
+    };
+    var spFolder=folderMap[docTypeNorm]||'PROVEEDOR';
+    var expIds=Object.keys(ctx.matchedExps);
+    var totalActions=expIds.length+ctx.inPropriedad.length;
+    if(typeof showToast==='function')showToast('\u26a1 Procesando '+totalActions+' acciones...',3000);
+    // Step 1: Upload SharePoint a tutti expedientes
+    var pendingUploads=expIds.length;
+    var uploadResults={ok:0,errs:[]};
+    if(expIds.length===0)afterUploads();
+    expIds.forEach(function(eid){
+      var m=ctx.matchedExps[eid];
+      // Scrivi accDocs su ogni stock di questo expediente
+      m.lines.forEach(function(ll){
+        nxWriteAccDoc(ll.stock,ll.line.vin,p,ll.line.amount);
+      });
+      // Upload file in cartella spFolder dell'expediente
+      nxExpUploadDoc(eid,spFolder,ctx.file.name,ctx.file,function(success,data){
+        pendingUploads--;
+        if(success)uploadResults.ok++;
+        else uploadResults.errs.push(eid+': '+data);
+        if(pendingUploads===0)afterUploads();
+      });
+    });
+    function afterUploads(){
+      // Step 2: Scrivi accDocs su VIN in propriedad (solo dati, no SharePoint)
+      ctx.inPropriedad.forEach(function(p2){
+        nxWriteAccDoc(p2.stock,p2.line.vin,p,p2.line.amount);
+      });
+      // Salva stock
+      SS('stock',stock);
+      closeM('m-ai-doc');
+      // Refresh Vista
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      // Toast finale
+      var msg='\u2728 Doc archivado: '+uploadResults.ok+' SharePoint';
+      if(ctx.inPropriedad.length>0)msg+=', '+ctx.inPropriedad.length+' propiedad';
+      if(uploadResults.errs.length>0)msg+=' \u00b7 '+uploadResults.errs.length+' errores';
+      if(typeof showToast==='function')showToast(msg,6000);
+      if(uploadResults.errs.length>0)console.warn('[AI archive] Errors:',uploadResults.errs);
+    }
+  };
+
+  // Scrive un record accDocs sullo stock per un VIN specifico
+  window.nxWriteAccDoc=function(stockObj,vin,parsed,amount){
+    if(!stockObj.accDocs)stockObj.accDocs=[];
+    // Genera ID unico per evitare duplicati
+    var docId=(parsed.docNumber||'?')+'_'+(parsed.docDate||'')+'_'+String(vin||'').toUpperCase();
+    // Se già esiste, aggiorna invece di duplicare
+    var existing=stockObj.accDocs.find(function(d){return d._id===docId&&d.type===parsed.docType;});
+    var record={
+      _id:docId,
+      type:parsed.docType||'factura_proveedor',
+      docNumber:parsed.docNumber||'',
+      docDate:parsed.docDate||'',
+      paymentDate:parsed.docDate||'',
+      amount:amount||0,
+      currency:parsed.currency||'EUR',
+      supplier:parsed.supplierName||'',
+      vin:String(vin||'').toUpperCase(),
+      addedAt:new Date().toISOString()
+    };
+    if(existing){
+      Object.assign(existing,record);
+    }else{
+      stockObj.accDocs.push(record);
+    }
+  };
+
+  // Manuale: usa il classificatore standard senza AI
+  window.nxAIDocManual=function(){
+    var ctx=window._nxAIDocCtx;
+    if(!ctx)return;
+    closeM('m-ai-doc');
+    nxDocSmartUpload(ctx.file,ctx.file.name,{docType:ctx.parsed.docType||'factura_proveedor'});
   };
 
   // Analizza file proveedor: estrae VIN da nome + (per PDF) cerca dentro
