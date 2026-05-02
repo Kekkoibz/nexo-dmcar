@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.78 — DMCAR GROUP CRM | 2026-05-02 | NEXO + STOCK VIVO BUGFIX MULTI: 1) Email importer Stock: parser più robusto per "Color:" multilinea (linea separata) - estrae correttamente "12 x Metalic" come 12 unità + colore Metalic invece di "varias". Pattern "N x COLOR" detection migliorata. Fallback "Unknown" se colori non specificati. Estrazione "Minimum order N units" per minOrder; 2) FIX seller orfano in stato libre: dopo "Liberar" da quick-action, soldBy/clientId/clientName vengono cancellati (prima rimanevano residui visivi sotto Asignado). Anche Estado Comercial dropdown: cambio a "libre" cancella seller; 3) FIX margine non calcolato: ricalcolo cross-row in render Stock Vivo usando nxParsePrice (era affetto dal bug v9.77 ma in alcuni casi i campi sell/buy avevano whitespace/formati misti); 4) Bottone "Contatta Fornitore" su ogni riga Stock: apre mailto: precompilato con dettagli veicolo + lista campi mancanti (VIN, colori esatti, foto, ecc); 5) Default colore "Unknown" quando importatore non riesce a detectare colore. -->
+<!-- NEXO v9.79 — DMCAR GROUP CRM | 2026-05-02 | NEXO + STOCK BUGFIX 3: 1) Seller orfano completo: campo "Asignado a" ora nascosto/disabilitato quando estado_comercial='libre'. Inline edit blocco quando libre. Render mostra "—" grigio invece del nome. 2) Email fornitore: estrazione automatica da campo "from" durante import email + persistenza in stock.providerEmail. Update di providersDB (deduplicato) con email se non c'è. Bottone Contattare Fornitore ora cerca prima in stock.providerEmail, poi providers list, poi nel raw email cache. Prompt AI esteso per estrarre email contatto da firma email body. 3) Mantenuto fix v9.78 ma estesa pulizia anche su nxSyncStockToKanban quando newCs!=vendido per evitare residui kanban. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5939,14 +5939,22 @@ function renderStkTbl(){
     });
     html+='</select></td>';
     // v9.58: Asignado (free-text) - v9.75: mostra soldBy se vendido
-    var assignedDisp=item.assignedTo||'';
+    // v9.79: NASCONDE completamente "Asignado a" quando stato=libre (no seller orfano)
+    var cs2=String(item.commercialStatus||'libre').toLowerCase();
+    var isLibre=(cs2==='libre'||cs2===''||!cs2);
+    var assignedDisp=isLibre?'':(item.assignedTo||'');
     var soldByBadge='';
     if(item.commercialStatus==='vendido'&&item.soldBy){
       soldByBadge='<div style="font-size:9px;color:#16a34a;font-weight:600;margin-top:2px" title="Vendedor"><span>&#127942; '+esc(item.soldBy)+'</span></div>';
     }
     var isStale=stkIsStale(item);
     var staleIcon=isStale?'<span title="Sin actualizar &gt;24h" style="color:#f59e0b;font-weight:700">&#9888;&#65039; </span>':'';
-    html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)">'+soldByBadge+'</td>';
+    if(isLibre){
+      // Stato libre: cella vuota con dash grigio (no input)
+      html+='<td style="font-size:10px;white-space:nowrap;color:var(--t4);text-align:center">&mdash;</td>';
+    }else{
+      html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)">'+soldByBadge+'</td>';
+    }
     // Notas
     html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
       (noteDisp?'&#128221; '+esc(noteDisp):'&#128221; Nota')+'</button></td>';
@@ -6397,16 +6405,32 @@ function stkReleaseFromNegotiation(id){
 window.stkReleaseFromNegotiation=stkReleaseFromNegotiation;
 
 // v9.78: Contattare fornitore via email precompilata (mailto)
+// v9.79: lookup esteso multi-fonte
 function stkContactSupplier(id){
   var s=stock.find(function(x){return String(x.id)===String(id);});
   if(!s){alert('Veh\u00edculo no encontrado.');return;}
-  // Estrai email del fornitore da diverse fonti
-  var supplierEmail=s.providerEmail||s.supplierEmail||(s.provider&&s.provider.email)||'';
-  // Se non c'è email diretta, prova a estrarre dal nome provider via providers list
-  if(!supplierEmail&&typeof providers!=='undefined'&&Array.isArray(providers)&&s.provider){
-    var pname=String(s.provider).toLowerCase().trim();
-    var prov=providers.find(function(p){return p&&p.name&&p.name.toLowerCase().trim()===pname;});
-    if(prov)supplierEmail=prov.email||'';
+  // Estrai email del fornitore da MULTIPLE fonti in priorità
+  var supplierEmail=s.providerEmail||s.supplierEmail||(s.provider&&typeof s.provider==='object'&&s.provider.email)||'';
+  // 2. Cerca in providers list per nome
+  if(!supplierEmail){
+    var pname=String(s.provider||s.supplier||'').toLowerCase().trim();
+    if(pname){
+      // Cerca in providers (legacy)
+      if(typeof providers!=='undefined'&&Array.isArray(providers)){
+        var prov=providers.find(function(p){return p&&p.name&&p.name.toLowerCase().trim()===pname;});
+        if(prov)supplierEmail=prov.email||'';
+      }
+      // Cerca anche in providersDB se esiste
+      if(!supplierEmail&&typeof providersDB!=='undefined'&&Array.isArray(providersDB)){
+        var prov2=providersDB.find(function(p){return p&&(p.name||p.company)&&String(p.name||p.company).toLowerCase().trim()===pname;});
+        if(prov2)supplierEmail=prov2.email||'';
+      }
+    }
+  }
+  // 3. Cerca per sourceProviderId
+  if(!supplierEmail&&s.sourceProviderId&&typeof providersDB!=='undefined'&&Array.isArray(providersDB)){
+    var prov3=providersDB.find(function(p){return p&&String(p.id)===String(s.sourceProviderId);});
+    if(prov3)supplierEmail=prov3.email||'';
   }
   // Costruisci subject + body
   var modelStr=(s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:'');
@@ -6414,13 +6438,13 @@ function stkContactSupplier(id){
   var subject='Solicitud informaci\u00f3n adicional - '+modelStr+(s.internalId?' ('+s.internalId+')':'');
   // Identifica campi mancanti
   var missing=[];
-  var hasVin=s.vehicles&&s.vehicles.some(function(v){return v.vin;});
+  var hasVin=s.vehicles&&s.vehicles.some(function(v){return v.vin&&v.vin!=='--';});
   if(!hasVin)missing.push('- N\u00fameros VIN/chasis de cada veh\u00edculo');
-  if(!s.colors||s.colors.toLowerCase()==='unknown'||s.colors.toLowerCase()==='varias')missing.push('- Colores espec\u00edficos por unidad');
-  if(!s.kms&&!(s.vehicles&&s.vehicles.some(function(v){return v.kms;})))missing.push('- Kilometraje exacto');
-  if(!s.reg&&!(s.vehicles&&s.vehicles.some(function(v){return v.reg;})))missing.push('- Fecha primera matriculaci\u00f3n');
-  if(!s.damage&&!(s.vehicles&&s.vehicles.some(function(v){return v.damage;})))missing.push('- Estado / da\u00f1os reportados');
-  if(!s.equipment)missing.push('- Equipamiento detallado');
+  if(!s.colors||/unknown|varias|--|^$/i.test(String(s.colors).trim()))missing.push('- Colores espec\u00edficos por unidad');
+  if(!s.kms&&!(s.vehicles&&s.vehicles.some(function(v){return v.kms&&v.kms!=='--';})))missing.push('- Kilometraje exacto');
+  if(!s.reg&&!(s.vehicles&&s.vehicles.some(function(v){return v.reg&&v.reg!=='--';})))missing.push('- Fecha primera matriculaci\u00f3n');
+  if(!s.damage&&!(s.vehicles&&s.vehicles.some(function(v){return v.damage&&v.damage!=='--';})))missing.push('- Estado / da\u00f1os reportados');
+  if(!s.equip&&!s.equipment)missing.push('- Equipamiento detallado');
   var body='Hola,\n\n';
   body+='Le contacto en relaci\u00f3n al lote:\n\n';
   body+='Veh\u00edculo: '+modelStr+'\n';
@@ -6440,21 +6464,49 @@ function stkContactSupplier(id){
   body+='Saludos cordiales,\nDMCAR GROUP';
   // Apri client email
   var mailto='mailto:'+encodeURIComponent(supplierEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-  // Limita lunghezza URL (alcuni client hanno limite ~2000 caratteri)
   if(mailto.length>2000){
     body=body.substring(0,1500)+'\n\n[Mensaje truncado por longitud]';
     mailto='mailto:'+encodeURIComponent(supplierEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
   }
   if(!supplierEmail){
-    if(confirm('No hay email del proveedor registrado para este lote.\n\n\u00bfAbrir cliente de email con destinatario vac\u00edo? (Tendr\u00e1s que escribir el email del proveedor manualmente)'))
-      window.open(mailto,'_blank');
+    var msg='No hay email del proveedor registrado para este lote.\n\n';
+    if(s.provider||s.supplier)msg+='Proveedor: '+(s.provider||s.supplier)+'\n\n';
+    msg+='\u00bfAbrir cliente de email con destinatario vac\u00edo? (Tendr\u00e1s que escribir el email del proveedor manualmente)';
+    if(confirm(msg))window.open(mailto,'_blank');
     return;
   }
   // Apri
   window.location.href=mailto;
-  if(typeof showToast==='function')showToast('\u2713 Email precompilado abierto');
+  if(typeof showToast==='function')showToast('\u2713 Email precompilado abierto: '+supplierEmail);
 }
 window.stkContactSupplier=stkContactSupplier;
+
+// v9.79: Helper consola per backfill retroattivo email proveedor su stock vecchi
+// Da eseguire UNA TANTUM in console: stkBackfillProviderEmails()
+window.stkBackfillProviderEmails=function(){
+  if(!Array.isArray(stock))return;
+  var updated=0,skipped=0,nomatch=0;
+  stock.forEach(function(s){
+    if(s.providerEmail&&s.providerEmail.indexOf('@')>0){skipped++;return;}
+    // Cerca per sourceProviderId
+    if(s.sourceProviderId&&Array.isArray(providers)){
+      var p=providers.find(function(x){return String(x.id)===String(s.sourceProviderId);});
+      if(p&&p.email){s.providerEmail=p.email;updated++;return;}
+    }
+    // Cerca per nome provider
+    var pname=String(s.provider||s.supplier||'').toLowerCase().trim();
+    if(pname&&Array.isArray(providers)){
+      var p2=providers.find(function(x){return x&&x.name&&x.name.toLowerCase().trim()===pname;});
+      if(p2&&p2.email){s.providerEmail=p2.email;updated++;return;}
+    }
+    nomatch++;
+  });
+  SS('stock',stock);
+  console.log('[Backfill] updated:',updated,'skipped (already had):',skipped,'no match:',nomatch);
+  if(typeof showToast==='function')showToast('\u2713 Backfill: '+updated+' actualizados, '+skipped+' ya OK, '+nomatch+' sin match');
+  if(typeof fStk==='function')fStk();
+  return {updated:updated,skipped:skipped,nomatch:nomatch};
+};
 
 // Aggiorna datalist con nomi unici già usati (per autocomplete)
 function stkRefreshAssignedDatalist(){
@@ -12443,6 +12495,9 @@ function provStockProcessOne(mailId){
             bodyText=String(msg.body.content||'').trim();
           }
         }
+        // v9.79: estrai from email per usarlo come providerEmail
+        var fromEmail=(msg.from&&msg.from.emailAddress&&msg.from.emailAddress.address||'').toLowerCase();
+        var fromName=(msg.from&&msg.from.emailAddress&&msg.from.emailAddress.name)||'';
         // 2. Scarica allegati se ce ne sono
         if(msg.hasAttachments){
           var urlAtt='https://graph.microsoft.com/v1.0/me/messages/'+encodeURIComponent(mailId)+'/attachments';
@@ -12450,13 +12505,15 @@ function provStockProcessOne(mailId){
             if(!r.ok)throw new Error('Graph attachments HTTP '+r.status);
             return r.json();
           }).then(function(attData){
-            var atts=(attData.value||[]).filter(function(a){return a.contentBytes;}); // solo file con bytes
-            return {body:bodyText,subject:msg.subject||'',attachments:atts};
+            var atts=(attData.value||[]).filter(function(a){return a.contentBytes;});
+            return {body:bodyText,subject:msg.subject||'',attachments:atts,fromEmail:fromEmail,fromName:fromName};
           });
         }else{
-          return {body:bodyText,subject:msg.subject||'',attachments:[]};
+          return {body:bodyText,subject:msg.subject||'',attachments:[],fromEmail:fromEmail,fromName:fromName};
         }
       }).then(function(mailData){
+        // v9.79: cattura mailData per accesso al fromEmail dopo parser AI
+        window._provStockLastMailData=mailData;
         // 3. Manda tutto ad AI per estrarre lista auto
         return provStockExtractCarsFromMail(mailData);
       }).then(function(cars){
@@ -12465,6 +12522,8 @@ function provStockProcessOne(mailId){
         // Le auto con stessa versione vengono raggruppate in 1 stock-item con vehicles[] dettaglio
         var added=0,dup=0,unitsAdded=0,unitsDup=0;
         var supplierName=_provStockCurrentProvider?(_provStockCurrentProvider.company||_provStockCurrentProvider.name||''):'';
+        // v9.79: estrai email del fornitore dalla mail (priorità: provider record → from email)
+        var providerEmail=(_provStockCurrentProvider&&_provStockCurrentProvider.email)||(window._provStockLastMailData&&window._provStockLastMailData.fromEmail)||'';
 
         // Helper normalizzazione per chiave gruppo
         function normKey(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim();}
@@ -12532,6 +12591,9 @@ function provStockProcessOne(mailId){
             var allColors={};
             existing.vehicles.forEach(function(v){if(v.color&&v.color!=='--')allColors[v.color]=1;});
             existing.colors=Object.keys(allColors).join(', ')||existing.colors;
+            // v9.79: aggiorna providerEmail se vuoto e ora abbiamo l'email
+            if(!existing.providerEmail&&providerEmail)existing.providerEmail=providerEmail;
+            if(!existing.provider&&supplierName)existing.provider=supplierName;
             existing.notes=(existing.notes||'')+' | Updated '+new Date().toLocaleDateString('es-ES');
           }else{
             // NUOVO GRUPPO: crea stock-item con tutti i veicoli
@@ -12590,6 +12652,8 @@ function provStockProcessOne(mailId){
               buy:groupBuy,
               sell:'',
               supplier:supplierName,
+              provider:supplierName,
+              providerEmail:providerEmail,
               status:'Stock',
               pickup:'--',
               notes:'Importado de email Provider ('+new Date().toLocaleDateString('es-ES')+')',
