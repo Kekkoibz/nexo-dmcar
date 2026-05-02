@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.51 — DMCAR GROUP CRM | 2026-05-02 | UI/UX Fix: 1) bottone "Eliminar" per riga contatto Marketing (oltre a quello globale); 2) Lead "Tipo de operador" → "Tipo cliente" allineato a Marketing; 3) Lead opzioni Tipo cliente identiche a Marketing (dealer/broker/cliente_final/importador/rent_a_car/otro), retro-compatibile con valori legacy (Commerciante/Privato ecc.); 4) Auto-promote post-email mostra ora correttamente il prompt di routing (rimosso silent=true che bypassava la conferma) -->
+<!-- NEXO v9.52 — DMCAR GROUP CRM | 2026-05-02 | Bug fix routing: aggiunto try/catch granulare in tutto il flusso (mkExecuteAutoroutingFor, mkSyncFromB2B, mkFindOrCreateListByName, mkRoutingShowSingleDialog, mkRoutingYesAll, mkRoutingFinalize) con logging dettagliato. Defensiva: assicura mkContacts/mkLists arrays anche se localStorage corrotto. Fix: validazione email pre-routing, return safe in caso di errori, alert chiaro all'utente con dettagli errore. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2357,11 +2357,27 @@ En que te puedo ayudar hoy?</div></div>
 
 <script>
 // Global error handler - shows errors visually on mobile
+// v9.52: enriched info + auto-hide after 30s + console log
 window.onerror = function(msg, src, line, col, err) {
+  // Console log with full context for debugging
+  console.error('[NEXO onerror]','msg:',msg,'src:',src,'line:',line,'col:',col,'err:',err);
   var div = document.createElement('div');
-  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;padding:12px;font-size:12px;z-index:9999;font-family:monospace';
-  div.textContent = 'ERROR line ' + line + ': ' + msg;
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ef4444;color:#fff;padding:12px;font-size:12px;z-index:9999;font-family:monospace;cursor:pointer';
+  var detail = 'ERROR line ' + (line||'?') + ': ' + msg;
+  if (err && err.stack) detail += '\n[Click para detalles]';
+  div.textContent = detail;
+  div.title='Click para cerrar / ver detalles';
+  div.onclick = function(){
+    if(err && err.stack){
+      alert('Error: '+msg+'\n\nStack:\n'+err.stack);
+    }
+    div.parentNode && div.parentNode.removeChild(div);
+  };
   document.body.appendChild(div);
+  // Auto-hide dopo 30 secondi
+  setTimeout(function(){
+    if(div.parentNode)div.parentNode.removeChild(div);
+  },30000);
   return false;
 };
 'use strict';
@@ -3291,106 +3307,153 @@ function mkComputeAutoroutingMatches(contactB2B){
 }
 
 // Trova o crea una lista static per nome (case-insensitive trim)
-// Ritorna la lista
+// Ritorna la lista, o null se errore
 function mkFindOrCreateListByName(listName){
-  var key=String(listName||'').trim().toLowerCase();
-  if(!key)return null;
-  var found=mkLists.find(function(l){return (l.name||'').trim().toLowerCase()===key;});
-  if(found){
-    // Se è dinamica legacy, NON la usiamo (no add manuale possibile)
-    if(found.type==='dynamic'){
-      console.warn('[mkFindOrCreateListByName] Lista "'+listName+'" exists but is dynamic legacy. Creating new static.');
-      // Non possiamo aggiungere a dinamiche → creiamo una nuova static col stesso nome (impossibile per dup check)
-      // Soluzione: usiamo nome alternativo "Italia (auto)"
-      var altName=listName+' (auto)';
-      var altFound=mkLists.find(function(l){return (l.name||'').trim().toLowerCase()===altName.toLowerCase();});
-      if(altFound)return altFound;
-      var altRec={
-        id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-        name:altName,
-        desc:'Lista auto-creada por routing (Lead\u2192B2B)',
-        type:'static',
-        contactIds:[],
-        createdAt:new Date().toISOString()
-      };
-      mkLists.push(altRec);
-      SS('mkLists',mkLists);
-      return altRec;
+  try{
+    var key=String(listName||'').trim().toLowerCase();
+    if(!key)return null;
+    if(!Array.isArray(mkLists)){
+      console.warn('[mkFindOrCreateListByName] mkLists not array, resetting');
+      mkLists=[];
     }
-    return found;
+    var found=mkLists.find(function(l){return l&&(l.name||'').trim().toLowerCase()===key;});
+    if(found){
+      // Se è dinamica legacy, NON la usiamo (no add manuale possibile)
+      if(found.type==='dynamic'){
+        console.warn('[mkFindOrCreateListByName] Lista "'+listName+'" exists but is dynamic legacy. Creating new static.');
+        var altName=listName+' (auto)';
+        var altFound=mkLists.find(function(l){return l&&(l.name||'').trim().toLowerCase()===altName.toLowerCase();});
+        if(altFound)return altFound;
+        var altRec={
+          id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+          name:altName,
+          desc:'Lista auto-creada por routing (Lead\u2192B2B)',
+          type:'static',
+          contactIds:[],
+          createdAt:new Date().toISOString()
+        };
+        mkLists.push(altRec);
+        SS('mkLists',mkLists);
+        return altRec;
+      }
+      return found;
+    }
+    // Crea nuova
+    var rec={
+      id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      name:listName,
+      desc:'Lista auto-creada por routing (Lead\u2192B2B)',
+      type:'static',
+      contactIds:[],
+      createdAt:new Date().toISOString()
+    };
+    mkLists.push(rec);
+    SS('mkLists',mkLists);
+    return rec;
+  }catch(err){
+    console.error('[mkFindOrCreateListByName] FATAL ERROR:',err);
+    return null;
   }
-  // Crea nuova
-  var rec={
-    id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    name:listName,
-    desc:'Lista auto-creada por routing (Lead\u2192B2B)',
-    type:'static',
-    contactIds:[],
-    createdAt:new Date().toISOString()
-  };
-  mkLists.push(rec);
-  SS('mkLists',mkLists);
-  return rec;
 }
 
 // Copia/aggiorna un record contact B2B in mkContacts (Direct Mail)
-// Ritorna l'ID di mkContacts creato/trovato
-function mkSyncFromB2B(contactB2B){
-  if(!contactB2B)return null;
-  if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts))return null;
-  var email=mkNormEmail(contactB2B.email||'');
-  if(!email||!mkValidEmail(email))return null;
-  var existing=mkFindByEmail(email);
-  if(existing){
-    // Update soft: solo campi vuoti o updatedAt
-    existing.firstName=existing.firstName||contactB2B.name||'';
-    existing.companyName=existing.companyName||contactB2B.company||'';
-    existing.country=existing.country||contactB2B.country||'';
-    existing.phone=existing.phone||contactB2B.phone||'';
-    existing.customerType=existing.customerType||(contactB2B.clientType||'');
-    existing.updatedAt=new Date().toISOString();
+// Ritorna l'ID di mkContacts creato/trovato, o null se errore
+function mkSyncFromB2B(contactB2B,sourceTag){
+  try{
+    if(!contactB2B){console.warn('[mkSyncFromB2B] contactB2B null');return null;}
+    if(typeof mkContacts==='undefined'){console.warn('[mkSyncFromB2B] mkContacts undefined');return null;}
+    if(!Array.isArray(mkContacts)){
+      console.warn('[mkSyncFromB2B] mkContacts not array, resetting');
+      mkContacts=[];
+    }
+    var emailRaw=contactB2B.email||'';
+    if(typeof mkNormEmail!=='function'){console.warn('[mkSyncFromB2B] mkNormEmail missing');return null;}
+    var email=mkNormEmail(emailRaw);
+    if(!email||(typeof mkValidEmail==='function'&&!mkValidEmail(email))){
+      console.log('[mkSyncFromB2B] skip: email no valida ('+emailRaw+')');
+      return null;
+    }
+    var existing=null;
+    if(typeof mkFindByEmail==='function'){
+      existing=mkFindByEmail(email);
+    }else{
+      existing=mkContacts.find(function(c){return (c.email||'').toLowerCase()===email.toLowerCase();});
+    }
+    if(existing){
+      // Update soft: solo campi vuoti
+      existing.firstName=existing.firstName||contactB2B.name||'';
+      existing.companyName=existing.companyName||contactB2B.company||'';
+      existing.country=existing.country||contactB2B.country||'';
+      existing.phone=existing.phone||contactB2B.phone||'';
+      existing.customerType=existing.customerType||(contactB2B.clientType||'');
+      existing.updatedAt=new Date().toISOString();
+      SS('mkContacts',mkContacts);
+      return existing.id;
+    }
+    // Crea nuovo
+    var newRec={
+      id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      firstName:contactB2B.name||'',
+      companyName:contactB2B.company||'',
+      email:email,
+      phone:contactB2B.phone||'',
+      country:contactB2B.country||'',
+      customerType:contactB2B.clientType||'',
+      status:'subscribed',
+      interest:[],
+      origin:sourceTag||'lead_promote',
+      notes:contactB2B.notes||'',
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString()
+    };
+    if(typeof mkAutoEnrich==='function'){
+      try{mkAutoEnrich(newRec);}catch(e){console.warn('[mkSyncFromB2B] mkAutoEnrich error:',e);}
+    }
+    mkContacts.push(newRec);
+    if(typeof mkCntCounter!=='undefined'){mkCntCounter++;SS('mkCntCounter',mkCntCounter);}
     SS('mkContacts',mkContacts);
-    return existing.id;
+    return newRec.id;
+  }catch(err){
+    console.error('[mkSyncFromB2B] FATAL ERROR:',err,contactB2B);
+    return null;
   }
-  // Crea nuovo
-  var newRec={
-    id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    firstName:contactB2B.name||'',
-    companyName:contactB2B.company||'',
-    email:email,
-    phone:contactB2B.phone||'',
-    country:contactB2B.country||'',
-    customerType:contactB2B.clientType||'',
-    status:'subscribed',
-    interest:[],
-    origin:'lead_promote',
-    notes:contactB2B.notes||'',
-    createdAt:new Date().toISOString(),
-    updatedAt:new Date().toISOString()
-  };
-  if(typeof mkAutoEnrich==='function')mkAutoEnrich(newRec);
-  mkContacts.push(newRec);
-  if(typeof mkCntCounter!=='undefined'){mkCntCounter++;SS('mkCntCounter',mkCntCounter);}
-  SS('mkContacts',mkContacts);
-  return newRec.id;
 }
 
 // Esegue effettivamente l'assegnazione contatto → liste matchate
-// Ritorna numero di liste a cui è stato aggiunto
+// Ritorna numero di liste a cui è stato aggiunto, o 0 se errore
 function mkExecuteAutoroutingFor(contactB2B){
-  var matches=mkComputeAutoroutingMatches(contactB2B);
-  if(matches.length===0)return 0;
-  var mkId=mkSyncFromB2B(contactB2B);
-  if(!mkId)return 0;
-  var added=0;
-  matches.forEach(function(m){
-    var lst=mkFindOrCreateListByName(m.listName);
-    if(!lst)return;
-    if(!Array.isArray(lst.contactIds))lst.contactIds=[];
-    if(lst.contactIds.indexOf(mkId)<0){lst.contactIds.push(mkId);added++;}
-  });
-  if(added>0)SS('mkLists',mkLists);
-  return added;
+  try{
+    if(!contactB2B){console.warn('[mkExecuteAutoroutingFor] contactB2B null');return 0;}
+    var matches=mkComputeAutoroutingMatches(contactB2B);
+    console.log('[mkExecuteAutoroutingFor] matches per',contactB2B.email||contactB2B.name,':',matches);
+    if(matches.length===0)return 0;
+    var mkId=mkSyncFromB2B(contactB2B);
+    if(!mkId){
+      console.warn('[mkExecuteAutoroutingFor] mkSyncFromB2B returned null per',contactB2B);
+      return 0;
+    }
+    if(!Array.isArray(mkLists)){
+      console.warn('[mkExecuteAutoroutingFor] mkLists not array, resetting');
+      mkLists=[];
+    }
+    var added=0;
+    matches.forEach(function(m){
+      try{
+        var lst=mkFindOrCreateListByName(m.listName);
+        if(!lst){console.warn('[mkExecuteAutoroutingFor] lista non trovata/creata:',m.listName);return;}
+        if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+        if(lst.contactIds.indexOf(mkId)<0){lst.contactIds.push(mkId);added++;}
+      }catch(eInner){
+        console.error('[mkExecuteAutoroutingFor] errore su lista',m.listName,':',eInner);
+      }
+    });
+    if(added>0)SS('mkLists',mkLists);
+    console.log('[mkExecuteAutoroutingFor] done. added='+added);
+    return added;
+  }catch(err){
+    console.error('[mkExecuteAutoroutingFor] FATAL ERROR:',err,contactB2B);
+    return 0;
+  }
 }
 
 // ===========================================================================
@@ -3406,53 +3469,78 @@ var _mkRoutingState={
 // Apre la conferma per UNA lista di contatti B2B (può essere 1 o N)
 // onComplete: function(stats) chiamato quando tutti processati
 function mkPromptRoutingConfirm(contactsB2B,onComplete){
-  if(!Array.isArray(contactsB2B))contactsB2B=[contactsB2B];
-  // Calcola pending: solo contatti che hanno matches
-  var pending=[];
-  contactsB2B.forEach(function(c){
-    var matches=mkComputeAutoroutingMatches(c);
-    if(matches.length>0)pending.push({contact:c,matches:matches});
-  });
-  if(pending.length===0){
-    if(typeof onComplete==='function')onComplete({routed:0,skipped:0,listsTouched:0});
-    return;
-  }
-  _mkRoutingState={
-    pending:pending,
-    yesAll:false,
-    stats:{routed:0,skipped:0,listsTouched:0,total:pending.length},
-    onComplete:onComplete
-  };
-  // Se è 1 solo contatto: dialog semplice. Se sono N: dialog bulk con preview
-  if(pending.length===1){
-    mkRoutingShowSingleDialog();
-  }else{
-    mkRoutingShowBulkDialog();
+  try{
+    if(!contactsB2B){console.warn('[mkPromptRoutingConfirm] no contacts');return;}
+    if(!Array.isArray(contactsB2B))contactsB2B=[contactsB2B];
+    // Calcola pending: solo contatti che hanno matches
+    var pending=[];
+    contactsB2B.forEach(function(c){
+      try{
+        if(!c)return;
+        var matches=mkComputeAutoroutingMatches(c);
+        if(matches.length>0)pending.push({contact:c,matches:matches});
+      }catch(eM){console.warn('[mkPromptRoutingConfirm] match error:',eM,c);}
+    });
+    console.log('[mkPromptRoutingConfirm] pending count:',pending.length);
+    if(pending.length===0){
+      if(typeof onComplete==='function')onComplete({routed:0,skipped:0,listsTouched:0});
+      return;
+    }
+    _mkRoutingState={
+      pending:pending,
+      yesAll:false,
+      stats:{routed:0,skipped:0,listsTouched:0,total:pending.length},
+      onComplete:onComplete
+    };
+    // Se è 1 solo contatto: dialog semplice. Se sono N: dialog bulk con preview
+    if(pending.length===1){
+      mkRoutingShowSingleDialog();
+    }else{
+      mkRoutingShowBulkDialog();
+    }
+  }catch(err){
+    console.error('[mkPromptRoutingConfirm] FATAL:',err);
+    alert('Error en auto-routing:\n'+(err&&err.message||err));
   }
 }
 
 // Dialog single contact
 function mkRoutingShowSingleDialog(){
-  var st=_mkRoutingState;
-  if(!st.pending.length){mkRoutingFinalize();return;}
-  var item=st.pending[0];
-  var c=item.contact;
-  var name=c.name||c.email||'(sin nombre)';
-  var emp=c.company?' ('+c.company+')':'';
-  var listLines=item.matches.map(function(m){return '\u2192 '+m.listName+' \u2014 '+m.reason;}).join('\n');
-  var msg='\ud83d\udccb \u00bfA\u00f1adir el contacto a las listas correspondientes?\n\n';
-  msg+=name+emp+'\n\n';
-  msg+=listLines+'\n\n';
-  msg+='[S\u00ed] = a\u00f1adir a las listas indicadas\n[Cancelar] = no a\u00f1adir';
-  if(confirm(msg)){
-    var added=mkExecuteAutoroutingFor(c);
-    st.stats.routed++;
-    st.stats.listsTouched+=added;
-  }else{
-    st.stats.skipped++;
+  try{
+    var st=_mkRoutingState;
+    if(!st||!Array.isArray(st.pending)||!st.pending.length){
+      console.log('[mkRoutingShowSingleDialog] no pending, finalize');
+      mkRoutingFinalize();return;
+    }
+    var item=st.pending[0];
+    if(!item||!item.contact||!Array.isArray(item.matches)){
+      console.warn('[mkRoutingShowSingleDialog] item invalido, skip',item);
+      st.pending.shift();
+      mkRoutingFinalize();return;
+    }
+    var c=item.contact;
+    var name=c.name||c.email||'(sin nombre)';
+    var emp=c.company?' ('+c.company+')':'';
+    var listLines=item.matches.map(function(m){return '\u2192 '+m.listName+' \u2014 '+m.reason;}).join('\n');
+    var msg='\ud83d\udccb \u00bfA\u00f1adir el contacto a las listas correspondientes?\n\n';
+    msg+=name+emp+'\n\n';
+    msg+=listLines+'\n\n';
+    msg+='[OK] = a\u00f1adir a las listas indicadas\n[Cancelar] = no a\u00f1adir';
+    if(confirm(msg)){
+      var added=mkExecuteAutoroutingFor(c);
+      st.stats.routed++;
+      st.stats.listsTouched+=added;
+    }else{
+      st.stats.skipped++;
+    }
+    st.pending.shift();
+    mkRoutingFinalize();
+  }catch(err){
+    console.error('[mkRoutingShowSingleDialog] FATAL:',err);
+    alert('Error en routing single:\n'+(err&&err.message||err));
+    // Forza reset state per non bloccare app
+    _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
   }
-  st.pending.shift();
-  mkRoutingFinalize();
 }
 
 // Dialog bulk (con elenco completo + Sí/Sí a todos/No)
@@ -3536,34 +3624,48 @@ function mkRoutingCancelAll(){
 
 // Fine flusso → callback + render
 function mkRoutingFinalize(){
-  var st=_mkRoutingState;
-  if(st.pending.length>0){
-    // Ancora da processare (single mode). Se yesAll, apply
-    if(st.yesAll){
-      while(st.pending.length){
-        var item=st.pending.shift();
-        var added=mkExecuteAutoroutingFor(item.contact);
-        st.stats.routed++;
-        st.stats.listsTouched+=added;
+  try{
+    var st=_mkRoutingState;
+    if(!st||!st.stats)st={pending:[],yesAll:false,stats:{routed:0,skipped:0,listsTouched:0}};
+    if(Array.isArray(st.pending)&&st.pending.length>0){
+      // Ancora da processare (single mode). Se yesAll, apply
+      if(st.yesAll){
+        while(st.pending.length){
+          try{
+            var item=st.pending.shift();
+            if(item&&item.contact){
+              var added=mkExecuteAutoroutingFor(item.contact);
+              st.stats.routed++;
+              st.stats.listsTouched+=added;
+            }
+          }catch(eIter){console.error('[mkRoutingFinalize] iter error:',eIter);}
+        }
+      }else if(st.pending.length>0){
+        // Continua single
+        mkRoutingShowSingleDialog();
+        return;
       }
-    }else if(st.pending.length>0){
-      // Continua single
-      mkRoutingShowSingleDialog();
-      return;
     }
-  }
-  // Done
-  if(typeof renderMarketing==='function')renderMarketing();
-  if(typeof showToast==='function'){
-    if(st.stats.routed>0){
-      showToast('\u2713 '+st.stats.routed+' contacto'+(st.stats.routed!==1?'s':'')+' a\u00f1adido'+(st.stats.routed!==1?'s':'')+' a '+st.stats.listsTouched+' lista'+(st.stats.listsTouched!==1?'s':''));
-    }else if(st.stats.skipped>0){
-      showToast('Auto-routing cancelado');
+    // Done
+    try{if(typeof renderMarketing==='function')renderMarketing();}catch(eR){console.warn('[mkRoutingFinalize] renderMarketing error:',eR);}
+    try{
+      if(typeof showToast==='function'){
+        if(st.stats.routed>0){
+          showToast('\u2713 '+st.stats.routed+' contacto'+(st.stats.routed!==1?'s':'')+' a\u00f1adido'+(st.stats.routed!==1?'s':'')+' a '+st.stats.listsTouched+' lista'+(st.stats.listsTouched!==1?'s':''));
+        }else if(st.stats.skipped>0){
+          showToast('Auto-routing cancelado');
+        }
+      }
+    }catch(eT){console.warn('[mkRoutingFinalize] showToast error:',eT);}
+    if(typeof st.onComplete==='function'){
+      try{st.onComplete(st.stats);}catch(eC){console.warn('[mkRoutingFinalize] onComplete error:',eC);}
     }
+    // Reset state
+    _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
+  }catch(err){
+    console.error('[mkRoutingFinalize] FATAL:',err);
+    _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
   }
-  if(typeof st.onComplete==='function')st.onComplete(st.stats);
-  // Reset state
-  _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{}};
 }
 
 // Espone globalmente
