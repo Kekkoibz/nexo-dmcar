@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.90 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT setup wizard step "Cartella padre": dopo aver scelto sito + drive, l'utente sceglie la cartella padre (root del drive o una cartella esistente come "NEXO"). Il sistema crea automaticamente "NEXO STORAGE" dentro quel padre, e dentro "NEXO STORAGE" crea le 3 cartelle EXP.GEN. findOrCreateFolder usato ovunque (idempotente: se esiste già la riusa). nxSpConfig include parentFolderId/Name + storageFolderId/Url. Setup paso a paso aggiornato a 6 steps. -->
+<!-- NEXO v9.91 — DMCAR GROUP CRM | 2026-05-02 | SHAREPOINT EXPEDIENTES PARTE 2: 1) Document Classifier intelligente — nxExtractVin (regex 17 caratteri), nxDetectDocType (score-based su keywords), NX_DOC_TYPES con 9 tipologie + cartella suggerita; 2) nxFindExpedienteSmart con priorità VIN → proformaId → stockId → clientId+date; 3) Modal di conferma archivado (nxDocConfirmUpload): mostra expediente riconosciuto + tipo doc + cartella destino, utente può cambiare manualmente prima di salvare; 4) nxDocSmartUpload(blob, fileName, hints) wrapper end-to-end; 5) Card Proforma riga: bottone 📁 Abrir expediente + 📤 Upload doc + 📁+ Crear expediente (se mancante); 6) Modal Proforma editing: sezione "Expediente SharePoint" con stato, link "Abrir en SharePoint", bottone "Generar y subir PDF", drag&drop area per upload manuale, lista documenti raggruppati per cartella; 7) nxProformaGeneratePDF(id, {uploadToExpediente}) — genera PDF reale dal record salvato + auto-upload in CLIENTE/; 8) Bottoni footer modal: 📥 PDF (download) + 📤 A SharePoint (upload diretto). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2137,10 +2137,31 @@ En que te puedo ayudar hoy?</div></div>
       </div>
     </div>
 
+    <!-- v9.91: Sezione Expediente + Drag&drop documenti (visibile solo in editing) -->
+    <div id="nbpf-exp-section" style="display:none;margin-top:18px;padding:14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+      <div class="fbet" style="margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:var(--t1)">&#128193; Expediente SharePoint</div>
+        <div id="nbpf-exp-status" style="font-size:11px"></div>
+      </div>
+      <div id="nbpf-exp-info" style="font-size:11px;color:var(--t3);margin-bottom:10px"></div>
+      <!-- Drag & Drop -->
+      <div id="nbpf-dropzone" style="border:2px dashed var(--border);border-radius:7px;padding:18px;text-align:center;cursor:pointer;font-size:12px;color:var(--t3);transition:all .15s">
+        <div style="font-size:24px;margin-bottom:6px">&#128194;</div>
+        <div><strong>Arrastra archivos aqu\u00ed</strong> o click para seleccionar</div>
+        <div style="font-size:10px;margin-top:4px;color:var(--t4)">PDF, Word, Excel, im\u00e1genes &mdash; se subir\u00e1n a la subcarpeta correcta</div>
+      </div>
+      <input type="file" id="nbpf-file-input" multiple style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls,.cmr">
+      <!-- Lista documenti già caricati -->
+      <div id="nbpf-docs-list" style="margin-top:12px"></div>
+    </div>
+
     <!-- ACTIONS -->
-    <div class="fc g8" style="justify-content:flex-end">
+    <div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">
       <button class="btn bg" onclick="closeM('m-nb-proforma')">Cancelar</button>
       <button class="btn bd" id="nbpf-delete-btn" onclick="nbpfDelete()" style="display:none">&#128465; Eliminar</button>
+      <!-- v9.91: PDF + Expediente buttons (visibili solo in editing di proforma esistente) -->
+      <button class="btn bs" id="nbpf-pdf-btn" onclick="nbpfDownloadPDF()" style="display:none" title="Descargar PDF">&#128229; PDF</button>
+      <button class="btn bs" id="nbpf-up-exp-btn" onclick="nbpfUploadToExpediente()" style="display:none;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none" title="Subir PDF al expediente SharePoint">&#128228; A SharePoint</button>
       <button class="btn bs" onclick="nbpfPreview()" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none">&#128065;&#65039; Preview</button>
       <button class="btn bp" onclick="nbpfSave()">&#128190; Guardar Proforma</button>
     </div>
@@ -4136,7 +4157,304 @@ window.nxExpUploadDoc=function(expId,subfolder,fileName,blob,cb){
   if(!sub)return cb(false,'Sub-carpeta '+subfolder+' no existe en este expediente');
   NX_SP.uploadFile(exp.siteId,exp.driveId,sub.id,fileName,blob,function(ok,data){
     if(!ok)return cb(false,data);
+    // Aggiunge ai metadata expediente
+    if(!exp.documents)exp.documents=[];
+    exp.documents.push({
+      name:data.name,
+      webUrl:data.webUrl,
+      id:data.id,
+      subfolder:subfolder,
+      uploadedAt:new Date().toISOString(),
+      sizeBytes:data.size||0
+    });
+    exp.updatedAt=new Date().toISOString();
+    SS('nxExpedientes',window.nxExpedientes);
     cb(true,{name:data.name,webUrl:data.webUrl,id:data.id});
+  });
+};
+
+// ===========================================================================
+// v9.91: Document Classifier - riconoscimento automatico expediente + cartella
+// ===========================================================================
+
+// Tipi documento + cartella suggerita
+window.NX_DOC_TYPES={
+  'proforma_cliente':{label:'Proforma cliente',subfolder:'CLIENTE',keywords:['proforma','pro','quotation']},
+  'factura_cliente':{label:'Factura cliente',subfolder:'CLIENTE',keywords:['factura','invoice','fattura','fc-']},
+  'nota_credito':{label:'Nota de cr\u00e9dito',subfolder:'CLIENTE',keywords:['nota','credito','credit','nc-']},
+  'proforma_proveedor':{label:'Proforma proveedor',subfolder:'PROVEEDOR',keywords:['proforma_compra','proveedor_pro','pi-']},
+  'factura_proveedor':{label:'Factura proveedor',subfolder:'PROVEEDOR',keywords:['factura_compra','proveedor','ricevuta','acquisto']},
+  'cmr':{label:'CMR / Documento transporte',subfolder:'TRANSPORTE',keywords:['cmr','transporte','transport','ddt']},
+  'factura_transporte':{label:'Factura transporte',subfolder:'TRANSPORTE',keywords:['transporte','transport','shipping','spedizione']},
+  'broker_factura':{label:'Factura broker / Comisi\u00f3n',subfolder:'BROKER',keywords:['broker','commission','provvigione','comision']},
+  'broker_doc':{label:'Documentaci\u00f3n broker',subfolder:'BROKER',keywords:['broker','intermediar']},
+  'otro':{label:'Otro documento',subfolder:'CLIENTE',keywords:[]}
+};
+
+// Estrae VIN dal nome file o testo (regex 17 caratteri alfanumerici, no I/O/Q)
+window.nxExtractVin=function(text){
+  if(!text)return null;
+  var s=String(text).toUpperCase();
+  // VIN standard: 17 caratteri, esclude I, O, Q
+  var match=s.match(/\b[A-HJ-NPR-Z0-9]{17}\b/);
+  return match?match[0]:null;
+};
+
+// Auto-detect tipo documento da filename
+window.nxDetectDocType=function(fileName){
+  if(!fileName)return 'otro';
+  var fn=String(fileName).toLowerCase();
+  // Score-based: chi ha più keyword match vince
+  var bestType='otro';
+  var bestScore=0;
+  Object.keys(NX_DOC_TYPES).forEach(function(type){
+    var def=NX_DOC_TYPES[type];
+    var score=0;
+    def.keywords.forEach(function(kw){
+      if(fn.indexOf(kw)>=0)score++;
+    });
+    if(score>bestScore){bestScore=score;bestType=type;}
+  });
+  return bestType;
+};
+
+// Trova expediente da criteri (VIN, proformaId, clientId, stockId)
+window.nxFindExpedienteSmart=function(criteria){
+  var exps=window.nxExpedientes||[];
+  if(!exps.length)return null;
+  // Priorità 1: VIN diretto
+  if(criteria.vin){
+    var vinUpper=String(criteria.vin).toUpperCase();
+    var byVin=exps.find(function(e){
+      // Cerca VIN dentro stock items collegati
+      var vehIds=e.vehicleIds||[];
+      for(var i=0;i<vehIds.length;i++){
+        var s=stock.find(function(x){return String(x.id)===String(vehIds[i]);});
+        if(s){
+          if(String(s.vin||'').toUpperCase()===vinUpper)return true;
+          if(s.vehicles&&s.vehicles.length){
+            for(var j=0;j<s.vehicles.length;j++){
+              if(String(s.vehicles[j].vin||'').toUpperCase()===vinUpper)return true;
+            }
+          }
+        }
+      }
+      return false;
+    });
+    if(byVin)return byVin;
+  }
+  // Priorità 2: Proforma ID
+  if(criteria.proformaId){
+    var byProf=exps.find(function(e){
+      return e.proformaIds&&e.proformaIds.indexOf(criteria.proformaId)>=0;
+    });
+    if(byProf)return byProf;
+  }
+  // Priorità 3: Stock ID
+  if(criteria.stockId){
+    var byStk=exps.find(function(e){
+      return e.vehicleIds&&e.vehicleIds.indexOf(criteria.stockId)>=0;
+    });
+    if(byStk)return byStk;
+  }
+  // Priorità 4: Cliente (con eventuale data per disambiguare)
+  if(criteria.clientId){
+    var byCli=exps.filter(function(e){return e.clientId===criteria.clientId;});
+    if(byCli.length===1)return byCli[0];
+    if(byCli.length>1){
+      // Più expedienti per stesso cliente → ritorna quello più recente
+      byCli.sort(function(a,b){return new Date(b.createdAt)-new Date(a.createdAt);});
+      return byCli[0];
+    }
+  }
+  return null;
+};
+
+// Mostra modal di conferma con preview + selezione manuale se necessario
+// opts: {fileName, blob, autoExpId, autoSubfolder, autoDocType}
+window.nxDocConfirmUpload=function(opts){
+  var exp=(window.nxExpedientes||[]).find(function(e){return e.id===opts.autoExpId;});
+  var html='<div id="m-doc-upload" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-doc-upload\')">'
+    +'<div class="modal" style="max-width:550px;padding:0">'
+      +'<div class="mh"><span>&#128194; Confirmar archivado documento</span><button class="mx" onclick="closeM(\'m-doc-upload\')">&times;</button></div>'
+      +'<div class="mb">'
+        +'<div style="background:rgba(37,99,235,.06);padding:12px;border-radius:7px;margin-bottom:14px;font-size:12px;line-height:1.6">'
+          +'<strong>&#128206; Archivo:</strong> '+esc(opts.fileName)+'<br>'
+          +(opts.blob&&opts.blob.size?'<strong>Tama\u00f1o:</strong> '+(opts.blob.size/1024).toFixed(1)+' KB<br>':'')
+        +'</div>'
+        +(exp?
+          '<div style="background:rgba(22,163,74,.08);border-left:4px solid #16a34a;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-weight:700;color:#16a34a;font-size:13px;margin-bottom:6px">&#10003; Expediente reconocido</div>'
+            +'<div style="font-size:12px;line-height:1.6">'
+              +'<strong>'+esc(exp.fullName)+'</strong><br>'
+              +'<span style="color:var(--t3)">Empresa: <strong>'+esc(exp.companyCode)+'</strong> &middot; Cliente: <strong>'+esc(exp.clientName||'?')+'</strong></span>'
+            +'</div>'
+          +'</div>'
+        :
+          '<div style="background:rgba(245,158,11,.08);border-left:4px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-weight:700;color:#f59e0b;font-size:13px;margin-bottom:6px">&#9888;&#65039; Expediente no reconocido</div>'
+            +'<div style="font-size:12px;line-height:1.6">No se detect\u00f3 VIN ni cliente. Selecciona manualmente abajo.</div>'
+          +'</div>'
+        )
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">'
+          +'<div>'
+            +'<label style="font-size:11px;color:var(--t3);font-weight:600">Tipo documento</label>'
+            +'<select id="doc-up-type" onchange="nxDocOnTypeChange()" style="width:100%;font-size:12px">'
+            +Object.keys(NX_DOC_TYPES).map(function(k){
+              return '<option value="'+esc(k)+'"'+(k===opts.autoDocType?' selected':'')+'>'+esc(NX_DOC_TYPES[k].label)+'</option>';
+            }).join('')
+            +'</select>'
+          +'</div>'
+          +'<div>'
+            +'<label style="font-size:11px;color:var(--t3);font-weight:600">Carpeta destino</label>'
+            +'<select id="doc-up-subfolder" style="width:100%;font-size:12px">'
+              +'<option value="CLIENTE"'+(opts.autoSubfolder==='CLIENTE'?' selected':'')+'>CLIENTE</option>'
+              +'<option value="PROVEEDOR"'+(opts.autoSubfolder==='PROVEEDOR'?' selected':'')+'>PROVEEDOR</option>'
+              +'<option value="TRANSPORTE"'+(opts.autoSubfolder==='TRANSPORTE'?' selected':'')+'>TRANSPORTE</option>'
+              +'<option value="BROKER"'+(opts.autoSubfolder==='BROKER'?' selected':'')+'>BROKER</option>'
+            +'</select>'
+          +'</div>'
+        +'</div>'
+        +'<div style="margin-bottom:14px">'
+          +'<label style="font-size:11px;color:var(--t3);font-weight:600">Expediente</label>'
+          +'<select id="doc-up-exp" style="width:100%;font-size:12px">'
+          +'<option value="">— Selecciona expediente —</option>'
+          +(window.nxExpedientes||[]).slice().reverse().slice(0,50).map(function(e){
+            return '<option value="'+esc(e.id)+'"'+(e.id===opts.autoExpId?' selected':'')+'>'+esc(e.fullName)+' &middot; '+esc(e.companyCode)+'</option>';
+          }).join('')
+          +'</select>'
+        +'</div>'
+        +'<div style="margin-bottom:14px">'
+          +'<label style="font-size:11px;color:var(--t3);font-weight:600">Nombre archivo (puedes editar)</label>'
+          +'<input type="text" id="doc-up-fname" value="'+esc(opts.fileName)+'" style="width:100%;font-size:12px;font-family:monospace">'
+        +'</div>'
+        +'<div class="fc g8" style="justify-content:flex-end">'
+          +'<button class="btn bs" onclick="closeM(\'m-doc-upload\')">Cancelar</button>'
+          +'<button class="btn bp" onclick="nxDocConfirmUploadDo()" id="doc-up-go">&#128190; Subir a SharePoint</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+  // Append modal to body
+  var oldModal=n('m-doc-upload');
+  if(oldModal)oldModal.parentNode.removeChild(oldModal);
+  document.body.insertAdjacentHTML('beforeend',html);
+  // Salva blob in window per recupero al click
+  window._nxDocUploadBlob=opts.blob;
+};
+
+// Quando l'utente cambia il tipo doc, aggiorna automaticamente la cartella consigliata
+window.nxDocOnTypeChange=function(){
+  var typeSel=n('doc-up-type');
+  var subSel=n('doc-up-subfolder');
+  if(!typeSel||!subSel)return;
+  var def=NX_DOC_TYPES[typeSel.value];
+  if(def&&def.subfolder)subSel.value=def.subfolder;
+};
+
+// Esegue l'upload effettivo dopo conferma
+window.nxDocConfirmUploadDo=function(){
+  var expId=n('doc-up-exp').value;
+  var subfolder=n('doc-up-subfolder').value;
+  var fname=n('doc-up-fname').value||'documento.pdf';
+  var blob=window._nxDocUploadBlob;
+  if(!expId){alert('Selecciona un expediente.');return;}
+  if(!blob){alert('Archivo no encontrado en memoria.');return;}
+  var btn=n('doc-up-go');
+  if(btn){btn.disabled=true;btn.textContent='Subiendo...';}
+  nxExpUploadDoc(expId,subfolder,fname,blob,function(ok,data){
+    if(btn){btn.disabled=false;btn.textContent='\ud83d\udcbe Subir a SharePoint';}
+    if(!ok){
+      alert('Error subiendo: '+data);
+      return;
+    }
+    closeM('m-doc-upload');
+    window._nxDocUploadBlob=null;
+    if(typeof showToast==='function')showToast('\u2713 '+fname+' subido a '+subfolder,5000);
+    // Eventualmente apri il file in nuova tab
+    if(data.webUrl&&confirm('\u2713 Archivo subido correctamente.\n\n\u00bfAbrir en SharePoint ahora?'))window.open(data.webUrl,'_blank','noopener');
+  });
+};
+
+// Wrapper smart: prende un blob + filename + hints (proformaId/stockId/clientId), classifica e mostra modal
+window.nxDocSmartUpload=function(blob,fileName,hints){
+  hints=hints||{};
+  // Estrai VIN da filename se possibile
+  var vin=hints.vin||nxExtractVin(fileName);
+  // Trova expediente
+  var exp=nxFindExpedienteSmart({
+    vin:vin,
+    proformaId:hints.proformaId,
+    stockId:hints.stockId,
+    clientId:hints.clientId
+  });
+  // Auto-detect tipo doc
+  var docType=hints.docType||nxDetectDocType(fileName);
+  var subfolder=(NX_DOC_TYPES[docType]&&NX_DOC_TYPES[docType].subfolder)||'CLIENTE';
+  // Mostra modal
+  nxDocConfirmUpload({
+    fileName:fileName,
+    blob:blob,
+    autoExpId:exp?exp.id:null,
+    autoSubfolder:subfolder,
+    autoDocType:docType
+  });
+};
+
+// File picker per upload manuale da card Proforma
+window.nxProformaUploadDoc=function(proformaId){
+  var p=(window.nxProformas||[]).find(function(x){return x.id===proformaId;});
+  if(!p){alert('Proforma no encontrada');return;}
+  // Crea input file invisibile
+  var input=document.createElement('input');
+  input.type='file';
+  input.accept='.pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx,.xls';
+  input.style.display='none';
+  document.body.appendChild(input);
+  input.onchange=function(){
+    var f=input.files&&input.files[0];
+    if(!f){document.body.removeChild(input);return;}
+    nxDocSmartUpload(f,f.name,{
+      proformaId:proformaId,
+      clientId:(p.client&&p.client.id)||null,
+      docType:'proforma_cliente'  // hint default ma utente può cambiare
+    });
+    document.body.removeChild(input);
+  };
+  input.click();
+};
+
+// Crea manualmente expediente per una proforma (se non esiste)
+window.nxProformaCreateExpediente=function(proformaId){
+  var p=(window.nxProformas||[]).find(function(x){return x.id===proformaId;});
+  if(!p){alert('Proforma no encontrada');return;}
+  if(!window.nxSpConfig||!window.nxSpConfig.siteId){
+    alert('SharePoint no configurado. Ve a Configuraci\u00f3n > SharePoint primero.');return;
+  }
+  if(window.nxExpFindByProforma(proformaId)){
+    alert('Esta proforma ya tiene un expediente asociado.');return;
+  }
+  if(!confirm('\u00bfCrear expediente en SharePoint para esta proforma?\n\nCliente: '+((p.client&&p.client.name)||'?')+'\nN\u00famero: '+(p.number||'?')))return;
+  var vehicleIds=[];
+  (p.items||[]).forEach(function(it){if(it.stockId)vehicleIds.push(it.stockId);});
+  nxExpCreate({
+    companyId:p.companyId,
+    clientName:(p.client&&p.client.name)||'',
+    clientId:(p.client&&p.client.id)||'',
+    vehicleIds:vehicleIds,
+    sellerName:p.sellerName||'',
+    brokerName:p.brokerName||'',
+    transportProvider:p.transportProvider||'',
+    proformaId:p.id
+  },function(ok,exp){
+    if(ok){
+      p.expedienteId=exp.id;
+      SS('nxProformas',nxProformas);
+      if(typeof showToast==='function')showToast('\u2713 Expediente '+exp.fullName+' creado',5000);
+      numbersRenderProformas();
+    }else{
+      alert('Error creando expediente: '+exp);
+    }
   });
 };
 
@@ -20787,14 +21105,25 @@ document.querySelectorAll('.ovl').forEach(function(el){
         var dateStr=p.createdAt?new Date(p.createdAt).toLocaleDateString('es-ES'):'';
         var status=p.status||'draft';
         var totalFmt=(p.total||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' \u20ac';
+        // v9.91: cerca expediente associato
+        var exp=p.expedienteId?(window.nxExpedientes||[]).find(function(e){return e.id===p.expedienteId;}):null;
+        if(!exp&&typeof window.nxExpFindByProforma==='function')exp=window.nxExpFindByProforma(p.id);
+        var expBtnHtml='';
+        if(exp){
+          expBtnHtml='<button class="btn bs" onclick="event.stopPropagation();nxExpOpenInSharePoint(\''+esc(exp.id)+'\')" style="padding:4px 9px;font-size:11px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff" title="Abrir expediente '+esc(exp.fullName)+' en SharePoint">&#128193;</button>'
+            +'<button class="btn bs" onclick="event.stopPropagation();nxProformaUploadDoc(\''+esc(p.id)+'\')" style="padding:4px 9px;font-size:11px" title="Subir documento al expediente">&#128228;</button>';
+        }else if(window.nxSpConfig&&window.nxSpConfig.siteId){
+          expBtnHtml='<button class="btn bs" onclick="event.stopPropagation();nxProformaCreateExpediente(\''+esc(p.id)+'\')" style="padding:4px 9px;font-size:11px;color:var(--orange);border-color:var(--orange)" title="Crear expediente">&#128193;+</button>';
+        }
         return '<tr style="cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s" onclick="numbersEditProforma(\''+esc(p.id)+'\')" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
-          +'<td style="padding:10px 12px;font-family:monospace;font-weight:600;color:var(--t1)">'+esc(p.number||'')+'</td>'
+          +'<td style="padding:10px 12px;font-family:monospace;font-weight:600;color:var(--t1)">'+esc(p.number||'')+(exp?'<br><span style="font-size:9px;color:var(--t4);font-weight:400">'+esc(exp.companyCode)+'-'+esc(exp.number)+'</span>':'')+'</td>'
           +'<td style="padding:10px 12px;font-size:11px;color:var(--t3)">'+esc(dateStr)+'</td>'
           +'<td style="padding:10px 12px;font-size:12px;color:var(--t2)">'+esc(company.name||'?')+'</td>'
           +'<td style="padding:10px 12px;font-size:12px"><strong style="color:var(--t1)">'+esc((p.client&&p.client.name)||'?')+'</strong></td>'
           +'<td style="padding:10px 12px;text-align:right;font-family:monospace;font-weight:700;color:var(--acc);white-space:nowrap">'+totalFmt+'</td>'
           +'<td style="padding:10px 12px;text-align:center"><span style="background:'+statusColors[status]+'22;color:'+statusColors[status]+';padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em">'+esc(statusLabels[status]||status)+'</span></td>'
-          +'<td style="padding:10px 12px;text-align:center"><div class="fc g4" style="justify-content:center">'
+          +'<td style="padding:10px 12px;text-align:center"><div class="fc g4" style="justify-content:center;flex-wrap:wrap">'
+            +expBtnHtml
             +'<button class="btn bs" onclick="event.stopPropagation();numbersEditProforma(\''+esc(p.id)+'\')" style="padding:4px 9px;font-size:11px" title="Editar">&#9998;</button>'
             +'<button class="btn bd" onclick="event.stopPropagation();numbersDeleteProforma(\''+esc(p.id)+'\')" style="padding:4px 9px;font-size:11px" title="Eliminar">&#128465;</button>'
           +'</div></td>'
@@ -21770,6 +22099,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
     window._nbpfNotifId=prePopulate&&prePopulate.fromNotificationId||null;
     document.getElementById('nbpf-modal-title').textContent='Nueva Proforma';
     document.getElementById('nbpf-delete-btn').style.display='none';
+    // v9.91: nasconde bottoni PDF/upload (visibili solo in editing)
+    var _pdfBtn=document.getElementById('nbpf-pdf-btn');var _upBtn=document.getElementById('nbpf-up-exp-btn');
+    if(_pdfBtn)_pdfBtn.style.display='none';
+    if(_upBtn)_upBtn.style.display='none';
+    var _expSec=document.getElementById('nbpf-exp-section');
+    if(_expSec)_expSec.style.display='none';
     document.getElementById('nbpf-number').value='';
     // Popola dropdown empresas
     var sel=document.getElementById('nbpf-company');
@@ -22092,6 +22427,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
     window._nbpfItems=JSON.parse(JSON.stringify(pf.items||[]));
     document.getElementById('nbpf-modal-title').textContent='Editar Proforma '+pf.number;
     document.getElementById('nbpf-delete-btn').style.display='';
+    // v9.91: mostra bottoni PDF + upload
+    var pdfBtn=document.getElementById('nbpf-pdf-btn');
+    var upBtn=document.getElementById('nbpf-up-exp-btn');
+    if(pdfBtn)pdfBtn.style.display='';
+    // Mostra "A SharePoint" solo se SharePoint configurato e c'è un expediente
+    var hasExp=pf.expedienteId||(typeof window.nxExpFindByProforma==='function'&&window.nxExpFindByProforma(pf.id));
+    if(upBtn)upBtn.style.display=(hasExp&&window.nxSpConfig&&window.nxSpConfig.siteId)?'':'none';
+    // v9.91: render sezione expediente + drag&drop
+    if(typeof nbpfRenderExpedienteSection==='function')nbpfRenderExpedienteSection(pf);
     document.getElementById('nbpf-number').value=pf.number||'';
     var sel=document.getElementById('nbpf-company');
     sel.innerHTML='<option value="">-- Selecciona --</option>'
@@ -22357,7 +22701,199 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // ========================================================================
   // END F2 + F3
   // ========================================================================
-  
+
+  // v9.91: Genera PDF della proforma salvata + auto-upload in expediente
+  window.nxProformaGeneratePDF=function(proformaId,opts){
+    opts=opts||{};
+    var p=(window.nxProformas||[]).find(function(x){return x.id===proformaId;});
+    if(!p){alert('Proforma no encontrada');return;}
+    var company=nxCompanies.find(function(c){return c.id===p.companyId;});
+    if(!company){alert('Empresa de la proforma no encontrada');return;}
+    var tpl=(window.nxDocTemplates||[]).find(function(t){return t.companyId===company.id&&t.docType==='proforma';});
+    if(!tpl){
+      alert('No hay template Proforma configurado para '+company.name+'.\n\nVe a Nexo Numbers > Configuraci\u00f3n > Templates.');
+      return;
+    }
+    function doPdf(){
+      var data={
+        company:company,
+        docType:'proforma',
+        docNumber:p.number,
+        docDate:p.date||(p.createdAt?new Date(p.createdAt).toLocaleDateString('es-ES'):''),
+        client:p.client||{},
+        items:p.items||[],
+        subtotal:p.subtotal||0,
+        vatRate:p.vatRate||0,
+        vatAmount:p.vatAmount||0,
+        total:p.total||0,
+        paymentTerms:p.paymentTerms||'',
+        incoterm:p.incoterm||'',
+        notes:p.notes||''
+      };
+      var html=nbtplRenderHTML(tpl,data);
+      var wrapper=document.createElement('div');
+      wrapper.style.cssText='position:fixed;top:-99999px;left:0;width:794px;background:#fff;padding:40px;font-family:Arial,sans-serif;color:#333;font-size:12px';
+      wrapper.innerHTML=html;
+      document.body.appendChild(wrapper);
+      var fname='Proforma_'+(p.number||'').replace(/[\\/]/g,'-')+'_'+((p.client&&p.client.name)||'cliente').replace(/[^a-z0-9]/gi,'_')+'.pdf';
+      var pdfPromise=window.html2pdf().from(wrapper).set({
+        margin:[10,10,10,10],
+        filename:fname,
+        image:{type:'jpeg',quality:.95},
+        html2canvas:{scale:2,useCORS:true},
+        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+      });
+      // Mode: save to disk OR get blob for upload
+      if(opts.uploadToExpediente){
+        pdfPromise.outputPdf('blob').then(function(blob){
+          document.body.removeChild(wrapper);
+          // Trova expediente collegato
+          var exp=p.expedienteId?(window.nxExpedientes||[]).find(function(e){return e.id===p.expedienteId;}):null;
+          if(!exp&&typeof window.nxExpFindByProforma==='function')exp=window.nxExpFindByProforma(p.id);
+          if(!exp){
+            alert('No hay expediente asociado a esta proforma. Crea uno primero (bot\u00f3n \ud83d\udcc1+).');
+            return;
+          }
+          // Auto-upload (no popup, va direttamente in CLIENTE)
+          if(typeof showToast==='function')showToast('Subiendo PDF al expediente...',2000);
+          nxExpUploadDoc(exp.id,'CLIENTE',fname,blob,function(ok,data){
+            if(ok){
+              if(typeof showToast==='function')showToast('\u2713 PDF subido a CLIENTE/'+fname,5000);
+              if(opts.cb)opts.cb(true,data);
+            }else{
+              if(typeof showToast==='function')showToast('\u26a0\ufe0f Error subiendo: '+data,5000);
+              if(opts.cb)opts.cb(false,data);
+            }
+          });
+        });
+      }else{
+        pdfPromise.save().then(function(){
+          document.body.removeChild(wrapper);
+          if(typeof showToast==='function')showToast('\u2713 PDF descargado: '+fname);
+          if(opts.cb)opts.cb(true,null);
+        });
+      }
+    }
+    if(window.html2pdf){doPdf();}
+    else{
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      s.onload=doPdf;
+      s.onerror=function(){alert('Error cargando librer\u00eda PDF.');};
+      document.head.appendChild(s);
+    }
+  };
+
+  // v9.91: Render sezione expediente nel modal proforma in editing
+  window.nbpfRenderExpedienteSection=function(pf){
+    var sec=document.getElementById('nbpf-exp-section');
+    var info=document.getElementById('nbpf-exp-info');
+    var status=document.getElementById('nbpf-exp-status');
+    var docsList=document.getElementById('nbpf-docs-list');
+    if(!sec||!info||!status)return;
+    // Trova expediente
+    var exp=pf.expedienteId?(window.nxExpedientes||[]).find(function(e){return e.id===pf.expedienteId;}):null;
+    if(!exp&&typeof window.nxExpFindByProforma==='function')exp=window.nxExpFindByProforma(pf.id);
+    if(!window.nxSpConfig||!window.nxSpConfig.siteId){
+      sec.style.display='none';
+      return;
+    }
+    sec.style.display='block';
+    if(exp){
+      status.innerHTML='<span style="background:rgba(22,163,74,.15);color:#16a34a;padding:3px 9px;border-radius:5px;font-weight:700">&#10003; Vinculado</span>';
+      info.innerHTML='<strong>'+esc(exp.fullName)+'</strong> &middot; '+esc(exp.companyCode)
+        +'<br><a href="'+esc(exp.webUrl)+'" target="_blank" style="color:var(--acc);font-size:11px;text-decoration:none">&#128279; Abrir en SharePoint</a>'
+        +'<button class="btn bs" onclick="nxProformaGeneratePDF(\''+esc(pf.id)+'\',{uploadToExpediente:true})" style="margin-left:10px;padding:4px 9px;font-size:10px">&#128228; Generar y subir PDF</button>';
+      // Lista documenti
+      var docs=exp.documents||[];
+      if(docs.length===0){
+        docsList.innerHTML='<div style="font-size:11px;color:var(--t4);text-align:center;padding:8px">Sin documentos todav\u00eda</div>';
+      }else{
+        var byFolder={};
+        docs.forEach(function(d){
+          var f=d.subfolder||'CLIENTE';
+          if(!byFolder[f])byFolder[f]=[];
+          byFolder[f].push(d);
+        });
+        var html='<div style="font-size:11px;font-weight:700;color:var(--t2);margin-bottom:6px">&#128196; Documentos cargados ('+docs.length+')</div>';
+        Object.keys(byFolder).forEach(function(f){
+          html+='<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:var(--t3);margin-bottom:3px">'+esc(f)+' ('+byFolder[f].length+')</div>';
+          byFolder[f].forEach(function(d){
+            var sz=d.sizeBytes?(' \u00b7 '+(d.sizeBytes/1024).toFixed(1)+' KB'):'';
+            html+='<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;background:var(--bg2);border-radius:4px;margin-bottom:2px">'
+              +'<span>&#128196;</span>'
+              +'<a href="'+esc(d.webUrl)+'" target="_blank" style="flex:1;color:var(--t1);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</a>'
+              +'<span style="color:var(--t4);font-size:9px">'+sz+'</span>'
+            +'</div>';
+          });
+          html+='</div>';
+        });
+        docsList.innerHTML=html;
+      }
+    }else{
+      status.innerHTML='<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:3px 9px;border-radius:5px;font-weight:700">&#9888;&#65039; Sin expediente</span>';
+      info.innerHTML='<button class="btn bp" onclick="nxProformaCreateExpediente(\''+esc(pf.id)+'\')" style="font-size:11px">&#128193;+ Crear expediente ahora</button>';
+      docsList.innerHTML='';
+    }
+    // Setup dropzone
+    var dz=document.getElementById('nbpf-dropzone');
+    var fi=document.getElementById('nbpf-file-input');
+    if(dz&&fi){
+      dz.onclick=function(){fi.click();};
+      fi.onchange=function(){
+        var files=Array.from(fi.files||[]);
+        if(!files.length)return;
+        files.forEach(function(f){nbpfHandleDroppedFile(f,pf);});
+        fi.value='';
+      };
+      dz.ondragover=function(e){e.preventDefault();dz.style.borderColor='var(--acc)';dz.style.background='rgba(37,99,235,.05)';};
+      dz.ondragleave=function(){dz.style.borderColor='';dz.style.background='';};
+      dz.ondrop=function(e){
+        e.preventDefault();
+        dz.style.borderColor='';dz.style.background='';
+        var files=Array.from(e.dataTransfer.files||[]);
+        files.forEach(function(f){nbpfHandleDroppedFile(f,pf);});
+      };
+    }
+  };
+
+  // Quando un file viene rilasciato sul dropzone della proforma
+  window.nbpfHandleDroppedFile=function(file,pf){
+    nxDocSmartUpload(file,file.name,{
+      proformaId:pf.id,
+      clientId:(pf.client&&pf.client.id)||null
+    });
+  };
+
+  // v9.91: Genera PDF della proforma in editing
+  window.nbpfDownloadPDF=function(){
+    var pfId=window._nbpfEditingId;
+    if(!pfId){alert('Guarda primero la proforma.');return;}
+    if(typeof nxProformaGeneratePDF!=='function'){alert('Funci\u00f3n PDF no disponible.');return;}
+    nxProformaGeneratePDF(pfId,{uploadToExpediente:false});
+  };
+
+  // v9.91: Genera PDF + upload diretto in CLIENTE/ del expediente
+  window.nbpfUploadToExpediente=function(){
+    var pfId=window._nbpfEditingId;
+    if(!pfId){alert('Guarda primero la proforma.');return;}
+    var p=(window.nxProformas||[]).find(function(x){return x.id===pfId;});
+    if(!p){alert('Proforma no encontrada');return;}
+    var exp=p.expedienteId?(window.nxExpedientes||[]).find(function(e){return e.id===p.expedienteId;}):null;
+    if(!exp&&typeof window.nxExpFindByProforma==='function')exp=window.nxExpFindByProforma(p.id);
+    if(!exp){alert('No hay expediente asociado. Cr\u00e9alo primero desde la lista de Proformas (bot\u00f3n \ud83d\udcc1+).');return;}
+    if(!confirm('\u00bfGenerar PDF y subirlo a:\n\n'+exp.fullName+' / CLIENTE/'))return;
+    nxProformaGeneratePDF(pfId,{uploadToExpediente:true,cb:function(ok,data){
+      if(ok&&data&&data.webUrl){
+        // Refresh la lista proforme per aggiornare contatori documenti
+        if(typeof numbersRenderProformas==='function')numbersRenderProformas();
+      }
+    }});
+  };
+
+  // v9.91: Helper esterni per chiamata da card Proforma row buttons
+  window.nxProformaUploadDoc=window.nxProformaUploadDoc;  // già definito in modulo expedientes
+
   // F5 placeholder: accept/reject notifiche
   window.numbersAcceptNotif=function(notifId){
     var ntf=(nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
