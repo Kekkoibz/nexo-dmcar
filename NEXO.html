@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.77 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS Bugfix critici: 1) FIX persistenza cliente nel dialog vendita: ad ogni apertura dell'overlay, il campo "ssc-client-search" + clientId state vengono resettati a meno che lo Stock specifico abbia già un clientId salvato (auto-popolazione legittima per quello stock). Prima: il campo restava da vendita precedente; 2) FIX calcolo margine: parser robusto per Compra/Vendita che riconosce qualsiasi formato (10.000 € / 10000 / "10.000,00 EUR" / "10500"), ricalcolo immediato del margine quando si aggiorna prezzo vendita o compra in stock, sync automatico verso eventuali notifiche pendenti. Helper nxParsePrice() centralizzato. -->
+<!-- NEXO v9.78 — DMCAR GROUP CRM | 2026-05-02 | NEXO + STOCK VIVO BUGFIX MULTI: 1) Email importer Stock: parser più robusto per "Color:" multilinea (linea separata) - estrae correttamente "12 x Metalic" come 12 unità + colore Metalic invece di "varias". Pattern "N x COLOR" detection migliorata. Fallback "Unknown" se colori non specificati. Estrazione "Minimum order N units" per minOrder; 2) FIX seller orfano in stato libre: dopo "Liberar" da quick-action, soldBy/clientId/clientName vengono cancellati (prima rimanevano residui visivi sotto Asignado). Anche Estado Comercial dropdown: cambio a "libre" cancella seller; 3) FIX margine non calcolato: ricalcolo cross-row in render Stock Vivo usando nxParsePrice (era affetto dal bug v9.77 ma in alcuni casi i campi sell/buy avevano whitespace/formati misti); 4) Bottone "Contatta Fornitore" su ogni riga Stock: apre mailto: precompilato con dettagli veicolo + lista campi mancanti (VIN, colori esatti, foto, ecc); 5) Default colore "Unknown" quando importatore non riesce a detectare colore. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5901,8 +5901,21 @@ function renderStkTbl(){
     // P.Venta (auto-popolato al Generar Word)
     var sellDisp=item.sell&&item.sell!=='--'?esc(item.sell):'<span style="color:var(--t4);font-size:10px">--</span>';
     html+='<td style="text-align:right;white-space:nowrap;font-weight:600;color:'+(item.sell?'var(--green)':'var(--t4)')+'">'+sellDisp+'</td>';
-    // Margen (calcolato auto)
-    var marginDisp=item.marginAmount?'<span style="color:var(--green);font-weight:700">+'+esc(String(item.marginAmount).replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'))+' \u20ac</span>':'<span style="color:var(--t4);font-size:10px">--</span>';
+    // v9.78: Margen calcolato LIVE dal parser robusto (era staticamente legato a marginAmount)
+    var liveBuy=window.nxParsePrice?window.nxParsePrice(item.buy):0;
+    var liveSell=window.nxParsePrice?window.nxParsePrice(item.sell):0;
+    var liveMargin=(liveSell>0&&liveBuy>0)?(liveSell-liveBuy):0;
+    var marginDisp;
+    if(liveMargin!==0){
+      var mColor=liveMargin>0?'var(--green)':'var(--red)';
+      var mSign=liveMargin>0?'+':'';
+      marginDisp='<span style="color:'+mColor+';font-weight:700">'+mSign+liveMargin.toLocaleString('es-ES')+' \u20ac</span>';
+    }else if(item.marginAmount){
+      // Fallback: legacy marginAmount campo statico
+      marginDisp='<span style="color:var(--green);font-weight:700">+'+esc(String(item.marginAmount).replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'))+' \u20ac</span>';
+    }else{
+      marginDisp='<span style="color:var(--t4);font-size:10px">--</span>';
+    }
     html+='<td style="text-align:right;white-space:nowrap">'+marginDisp+'</td>';
     html+='<td style="font-size:11px;white-space:nowrap">'+pickupDisp+'</td>';
     // Status: editable inline. Click on the tag to toggle the dropdown.
@@ -5945,6 +5958,8 @@ function renderStkTbl(){
       html+='<button class="btn bs stk-keep-btn" data-id="'+item.id+'" title="Mantener: cliente sigue interesado, resetea timer" style="padding:2px 7px;font-size:10px;background:#10b981;color:#fff;border:none">&#10003;</button>';
       html+='<button class="btn bd stk-release-btn" data-id="'+item.id+'" title="Liberar: vuelve a Libre" style="padding:2px 7px;font-size:10px">&#10006;</button>';
     }
+    // v9.78: Bottone Contatta Fornitore
+    html+='<button class="btn bs stk-mail-btn" data-id="'+item.id+'" title="Contactar al proveedor por email" style="padding:2px 7px;font-size:10px;background:#3b82f6;color:#fff;border:none">&#9993;&#65039;</button>';
     html+='<button class="btn bs edit-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">&#9998;</button>';
     html+='<button class="btn bd del-btn" data-id="'+item.id+'" style="padding:2px 7px;font-size:10px">x</button>';
     html+='</div></td>';
@@ -6129,8 +6144,16 @@ function renderStkTbl(){
         }
       }
       // Default: cambio diretto (libre)
+      // v9.78: se diventa libre, pulizia completa stato vendita
       stock[idx].commercialStatus=newCs;
       stock[idx].commercialUpdatedAt=new Date().toISOString();
+      if(newCs==='libre'){
+        stock[idx].assignedTo='';
+        stock[idx].soldBy='';
+        stock[idx].clientId='';
+        stock[idx].clientName='';
+        stock[idx].soldAt='';
+      }
       SS('stock',stock);
       this.classList.remove('t-stk','t-1s','t-2s','t-ped','cs-libre','cs-neg','cs-res','cs-ven');
       this.classList.add(stkCommercialStatusClass(newCs));
@@ -6165,6 +6188,14 @@ function renderStkTbl(){
       e.stopPropagation();
       var id=this.getAttribute('data-id');
       stkReleaseFromNegotiation(id);
+    });
+  });
+  // v9.78: Contattare fornitore via email precompilata
+  tbody.querySelectorAll('.stk-mail-btn').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      stkContactSupplier(id);
     });
   });
 
@@ -6350,15 +6381,80 @@ window.stkKeepInNegotiation=stkKeepInNegotiation;
 function stkReleaseFromNegotiation(id){
   var idx=stock.findIndex(function(s){return String(s.id)===String(id);});
   if(idx<0)return;
-  if(!confirm('Liberar este veh\u00edculo?\n\n'+stock[idx].brand+' '+stock[idx].model+'\n\nVolver\u00e1 a estado "Libre" y se quitar\u00e1 el asignado.'))return;
+  if(!confirm('Liberar este veh\u00edculo?\n\n'+stock[idx].brand+' '+stock[idx].model+'\n\nVolver\u00e1 a estado "Libre" y se quitar\u00e1 toda la informaci\u00f3n de venta (cliente, vendedor, asignado).'))return;
+  // v9.78: pulizia COMPLETA stato vendita
   stock[idx].commercialStatus='libre';
   stock[idx].assignedTo='';
+  stock[idx].soldBy='';
+  stock[idx].clientId='';
+  stock[idx].clientName='';
+  stock[idx].soldAt='';
   stock[idx].commercialUpdatedAt=new Date().toISOString();
   SS('stock',stock);
-  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo liberado');
+  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo liberado (asignado + vendedor + cliente borrados)');
   fStk();
 }
 window.stkReleaseFromNegotiation=stkReleaseFromNegotiation;
+
+// v9.78: Contattare fornitore via email precompilata (mailto)
+function stkContactSupplier(id){
+  var s=stock.find(function(x){return String(x.id)===String(id);});
+  if(!s){alert('Veh\u00edculo no encontrado.');return;}
+  // Estrai email del fornitore da diverse fonti
+  var supplierEmail=s.providerEmail||s.supplierEmail||(s.provider&&s.provider.email)||'';
+  // Se non c'è email diretta, prova a estrarre dal nome provider via providers list
+  if(!supplierEmail&&typeof providers!=='undefined'&&Array.isArray(providers)&&s.provider){
+    var pname=String(s.provider).toLowerCase().trim();
+    var prov=providers.find(function(p){return p&&p.name&&p.name.toLowerCase().trim()===pname;});
+    if(prov)supplierEmail=prov.email||'';
+  }
+  // Costruisci subject + body
+  var modelStr=(s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:'');
+  var qty=s.uds||(s.vehicles&&s.vehicles.length)||1;
+  var subject='Solicitud informaci\u00f3n adicional - '+modelStr+(s.internalId?' ('+s.internalId+')':'');
+  // Identifica campi mancanti
+  var missing=[];
+  var hasVin=s.vehicles&&s.vehicles.some(function(v){return v.vin;});
+  if(!hasVin)missing.push('- N\u00fameros VIN/chasis de cada veh\u00edculo');
+  if(!s.colors||s.colors.toLowerCase()==='unknown'||s.colors.toLowerCase()==='varias')missing.push('- Colores espec\u00edficos por unidad');
+  if(!s.kms&&!(s.vehicles&&s.vehicles.some(function(v){return v.kms;})))missing.push('- Kilometraje exacto');
+  if(!s.reg&&!(s.vehicles&&s.vehicles.some(function(v){return v.reg;})))missing.push('- Fecha primera matriculaci\u00f3n');
+  if(!s.damage&&!(s.vehicles&&s.vehicles.some(function(v){return v.damage;})))missing.push('- Estado / da\u00f1os reportados');
+  if(!s.equipment)missing.push('- Equipamiento detallado');
+  var body='Hola,\n\n';
+  body+='Le contacto en relaci\u00f3n al lote:\n\n';
+  body+='Veh\u00edculo: '+modelStr+'\n';
+  if(s.internalId)body+='ID Interno: '+s.internalId+'\n';
+  body+='Cantidad: '+qty+' unidad'+(qty!==1?'es':'')+'\n';
+  if(s.year)body+='A\u00f1o: '+s.year+'\n';
+  if(s.buy)body+='Precio acordado: '+s.buy+'\n';
+  body+='\n';
+  if(missing.length>0){
+    body+='Para finalizar el proceso comercial necesitamos la siguiente informaci\u00f3n:\n\n';
+    body+=missing.join('\n')+'\n\n';
+  }else{
+    body+='Necesitamos confirmar/actualizar la siguiente informaci\u00f3n:\n\n';
+    body+='- Disponibilidad actual\n- Fecha estimada de entrega\n- Documentaci\u00f3n necesaria\n\n';
+  }
+  body+='Quedamos a la espera de su respuesta.\n\n';
+  body+='Saludos cordiales,\nDMCAR GROUP';
+  // Apri client email
+  var mailto='mailto:'+encodeURIComponent(supplierEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  // Limita lunghezza URL (alcuni client hanno limite ~2000 caratteri)
+  if(mailto.length>2000){
+    body=body.substring(0,1500)+'\n\n[Mensaje truncado por longitud]';
+    mailto='mailto:'+encodeURIComponent(supplierEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  }
+  if(!supplierEmail){
+    if(confirm('No hay email del proveedor registrado para este lote.\n\n\u00bfAbrir cliente de email con destinatario vac\u00edo? (Tendr\u00e1s que escribir el email del proveedor manualmente)'))
+      window.open(mailto,'_blank');
+    return;
+  }
+  // Apri
+  window.location.href=mailto;
+  if(typeof showToast==='function')showToast('\u2713 Email precompilado abierto');
+}
+window.stkContactSupplier=stkContactSupplier;
 
 // Aggiorna datalist con nomi unici già usati (per autocomplete)
 function stkRefreshAssignedDatalist(){
@@ -12587,16 +12683,22 @@ function provStockExtractCarsFromMail(mailData){
       +'Combina informaci\u00f3n del cuerpo del email Y de los anexos.\n\n'
       +'Cuerpo del email:\n"""\n'+(mailData.body||'').slice(0,30000)+'\n"""\n\n'
       +'Devuelve SOLO un array JSON v\u00e1lido (sin markdown, sin texto extra). IMPORTANTE: si hay N unidades de la misma versi\u00f3n con kms/colores/da\u00f1os/precios distintos, devuelve N entradas separadas, una por unidad fisica. Cada veh\u00edculo:\n'
-      +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"05/2024","kms":"15000","colores":"Negro Mythos","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28.500 \u20ac","pais":"Espa\u00f1a","vin":""}\n\n'
+      +'{"marca":"AUDI","modelo":"A3","version":"35TFSI S-Line 150CV","primer":"05/2024","kms":"15000","colores":"Negro Mythos","danos":"0 \u20ac","equipamiento":"Cruise Control - Matrix LED","precio":"28.500 \u20ac","pais":"Espa\u00f1a","vin":"","minOrder":""}\n\n'
       +'Reglas:\n'
       +'- "primer" es la fecha 1\u00aa matriculaci\u00f3n (formato MM/YYYY) o "Km 0" o "Al pagamento" (nuevo).\n'
       +'- "kms" solo n\u00famero, sin "km".\n'
       +'- "precio" formato "X.XXX \u20ac". IMPORTANTE: si el provider menciona UN solo precio para todas las unidades, replica el mismo precio en cada entrada. Si los precios son distintos por unidad, asigna a cada unidad su precio individual. Si no hay precio mencionado, deja "".\n'
-      +'- "colores" un solo color por unidad (ej "Negro Mythos"), no lista.\n'
+      +'- "colores" un solo color por unidad (ej "Negro Mythos"), no lista. ATENCI\u00d3N FORMATO IMPORTANTE: '
+      +'si el email contiene "Color:" en una l\u00ednea y luego en l\u00ednea siguiente "12 x Metalic" significa **12 unidades** de color "Metalic". '
+      +'Genera 12 entradas separadas con colores="Metalic". Si dice "12 x Color X + 5 x Color Y" genera 17 entradas (12 con X, 5 con Y). '
+      +'Si el proveedor escribe que **a\u00fan no sabe los colores exactos** (ej: "Next week I can say exact colours" / "colors TBD" / "to be defined") '
+      +'pero confirma cantidad (ej: "12 unidades Metalic"), genera 12 entradas con colores="Unknown". '
+      +'Si NO hay informaci\u00f3n de color en absoluto, usa colores="Unknown".\n'
+      +'- "minOrder" si el email menciona "Minimum order N units" / "M\u00ednimo N unidades" / "Pedido m\u00ednimo N" extrae el n\u00famero (ej: "7"). Solo n\u00famero sin texto. Si no se menciona, deja "".\n'
       +'- Si hay m\u00faltiples unidades de la misma versi\u00f3n con datos distintos (kms/colores/da\u00f1os/precios), s\u00ed haz una entrada para cada unidad.\n'
       +'- Si hay m\u00faltiples versiones del mismo modelo, listalas como entradas separadas.\n'
       +'- "vin" si est\u00e1 presente, si no dejarlo vac\u00edo "".\n'
-      +'- Si una info no est\u00e1 disponible, deja el campo vac\u00edo "".\n'
+      +'- Si una info no est\u00e1 disponible, deja el campo vac\u00edo "" excepto colores que va a "Unknown".\n'
       +'- Si el email no contiene veh\u00edculos para vender, devuelve array vac\u00edo: [].\n'
       +'\nRESPONDE SOLO EL ARRAY JSON, NADA M\u00c1S.';
     content.push({type:'text',text:prompt});
