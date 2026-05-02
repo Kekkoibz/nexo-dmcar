@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<!-- NEXO v9.98 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable UX & VIN handling: 1) Sticky block fondo bianco solido (no trasparente) con shadow leggera; 2) Rinominato "N° EXP" → "N.Exp"; 3) Datalist autocomplete sui filtri Cliente/Proveedor/Vendedor/N.Exp - popolati dinamicamente da nxBuildVistaRecords (setDl helper); 4) Word fallback alert: prima del parsing .doc/.docx mostra confirm con avviso "no ottimale" + raccomandazione PDF/Excel/CSV; 5) VIN regex robusto unificato \b[A-HJ-NPR-Z0-9]{17}\b (esclude I/O/Q) - nuova funzione window.NX_VIN_REGEX + nxExtractVins(text); 6) nxAIAnalyzeDoc esteso: gestisce Word via mammoth + Excel via XLSX + CSV/TXT diretto + immagini con solo filename + PDF; alert su file vuoto/scansionato; 7) Dialog "VIN no reconocido" con 3 opzioni: Asignar manualmente (selettore expediente + subcartella), Guardar como N/A temporal (selettore impresa → __TEMP), Cancelar. KPI label "REAL FEES" mantenuto coerente. -->
+<!-- NEXO v9.99 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable polish: 1) Sub-tab navigation Nexo Numbers anche sticky (z-index:55, top:0, bg bianco) per evitare gap visivo trasparente quando si scorre - lo sticky block scende a top:46px; 2) Dedup proveedor: nxNormalizeSupplierName rimuove suffissi società (S.A/SL/GMBH/etc) + virgole/punti; nxCanonicalSupplier sceglie nome canonico (più lungo); applicato in nxBuildVistaRecords - 3 varianti SUPERWAGEN ora collassano in 1 filtro autocomplete; 3) Font Inter + Inter feature-settings 'cv02 cv03 cv04 cv11' + antialiased + letter-spacing -0.005em per look moderno; 4) Cliente fantasma fix: nxBuildVistaRecords priorità expediente.clientName > proforma.clientName > invoice > stock.clientName, NULL se non c'è nessun doc attivo (no più "Lenny" zombie); 5) Expedientes orfani fix: nxExpedientesBackfillClient recupera clientName/sellerName da proforme/stock collegati al primo render Vista; 6) Auto-cleanup stock dopo cancel proforma: nxStockCleanupOrphans pulisce clientName/salePrice/commercialStatus se non ci sono più proforme/facturas/expedientes. Console helpers: nxStockCleanupOrphans(), nxExpedientesBackfillClient({dryRun:true}). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>NEXO — DMCAR GROUP</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Firebase SDK v10 compat (ES5 compatible) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
@@ -24,7 +24,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:'Inter','DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;font-feature-settings:'cv02','cv03','cv04','cv11';letter-spacing:-0.005em}
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 /* LAYOUT */
@@ -999,7 +999,7 @@ En que te puedo ayudar hoy?</div></div>
       </div>
 
       <!-- SUB-TAB NAVIGATION -->
-      <div class="fc g4 mb14" style="border-bottom:1px solid var(--border);overflow-x:auto;flex-wrap:nowrap;padding-bottom:0">
+      <div id="nb-tab-nav" class="fc g4 mb14" style="position:sticky;top:0;z-index:55;background:#ffffff;border-bottom:1px solid var(--border);overflow-x:auto;flex-wrap:nowrap;padding:6px 0 0 0;margin:0 -12px;padding-left:12px;padding-right:12px">
         <button id="nb-tab-dashboard" class="btn bg" onclick="numbersGo('dashboard')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff;white-space:nowrap">&#128202; Dashboard</button>
         <button id="nb-tab-vista" class="btn bg" onclick="numbersGo('vista')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128270; Vista Contable</button>
         <button id="nb-tab-proformas" class="btn bg" onclick="numbersGo('proformas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128203; Proformas <span id="nb-tab-cnt-pf" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
@@ -1011,8 +1011,8 @@ En que te puedo ayudar hoy?</div></div>
 
       <!-- VISTA CONTABLE SUB-VIEW (v9.92) -->
       <div id="nb-sub-vista" class="nb-sub" style="display:none">
-        <!-- v9.96/9.98: BLOCCO STICKY (sub-tabs + filtri + KPI) - fondo bianco solido + autocomplete -->
-        <div id="nbv-sticky-block" style="position:sticky;top:0;z-index:50;background:#ffffff;padding:10px 12px 14px 12px;margin:-6px -12px 0 -12px;border-bottom:2px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.04)">
+        <!-- v9.96/v9.98/v9.99: BLOCCO STICKY (sub-tabs + filtri + KPI) - fondo bianco solido + autocomplete + sotto al nav -->
+        <div id="nbv-sticky-block" style="position:sticky;top:46px;z-index:50;background:#ffffff;padding:10px 12px 14px 12px;margin:-6px -12px 0 -12px;border-bottom:2px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.04)">
           <!-- Sub-tabs interni -->
           <div class="fc g6 mb12" style="flex-wrap:wrap">
             <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
@@ -22729,9 +22729,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!confirm('Eliminar esta proforma?\n\nEsta acci\u00f3n no se puede deshacer.'))return;
     nxProformas=nxProformas.filter(function(p){return p.id!==pfId;});
     SS('nxProformas',nxProformas);
+    // v9.99: cleanup stock orfani dopo cancel
+    var cleanup=nxStockCleanupOrphans({dryRun:false});
     numbersUpdateBadges();
     numbersRenderProformas();
-    if(typeof showToast==='function')showToast('\u2713 Proforma eliminada');
+    if(typeof numbersRenderVista==='function')numbersRenderVista();
+    if(typeof showToast==='function')showToast('\u2713 Proforma eliminada'+(cleanup.fixed>0?' \u00b7 '+cleanup.fixed+' stock liberados':''));
   };
   
   window.nbpfDelete=function(){
@@ -22739,10 +22742,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!confirm('Eliminar esta proforma?'))return;
     nxProformas=nxProformas.filter(function(p){return p.id!==window._nbpfEditingId;});
     SS('nxProformas',nxProformas);
+    var cleanup=nxStockCleanupOrphans({dryRun:false});
     closeM('m-nb-proforma');
     numbersUpdateBadges();
     numbersRenderProformas();
-    if(typeof showToast==='function')showToast('\u2713 Proforma eliminada');
+    if(typeof numbersRenderVista==='function')numbersRenderVista();
+    if(typeof showToast==='function')showToast('\u2713 Proforma eliminada'+(cleanup.fixed>0?' \u00b7 '+cleanup.fixed+' stock liberados':''));
   };
   
   // Genera numero progressivo
@@ -23177,7 +23182,122 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
 
   // Costruisce vista unificata: ogni vehicle (espandendo lots) con dati documentali
+  // v9.99: Normalizza nome supplier per deduplicazione
+  // "SUPERWAGEN", "SUPERWAGEN, S.A", "SUPERWAGEN S.A.", "Superwagen sa" → "SUPERWAGEN SA"
+  window.nxNormalizeSupplierName=function(name){
+    if(!name)return '';
+    var s=String(name).toUpperCase().trim();
+    // Rimuovi suffissi società comuni (con o senza spazi/punti/virgole)
+    s=s.replace(/[,\.]/g,' ');
+    s=s.replace(/\s+/g,' ').trim();
+    // Toglie suffix legali ricorrenti per il match
+    var suffixes=[' S A ',' SA ',' SL ',' SRL ',' GMBH ',' LTD ',' SPA ',' SPZOO ',' SP Z O O ',' SP ZOO ',' SP\\. Z O\\.O\\. ',' AG ',' BV ',' KG ',' OHG ',' PLC ',' INC ',' CORP ',' LLC ',' SARL ',' SAS ',' SCRL ',' COOP '];
+    var test=' '+s+' ';
+    suffixes.forEach(function(sf){test=test.replace(new RegExp(sf,'g'),' ');});
+    return test.replace(/\s+/g,' ').trim();
+  };
+  // Trova canonical name (primo trovato per chiave normalizzata)
+  window.nxCanonicalSupplier=function(name){
+    if(!window._nxSupplierCanon){
+      window._nxSupplierCanon={};
+      // Pre-popola da providers + stock
+      var allNames=[];
+      (window.providers||[]).forEach(function(p){if(p.name)allNames.push(p.name);});
+      (window.stock||[]).forEach(function(s){if(s.supplier)allNames.push(s.supplier);});
+      allNames.forEach(function(nm){
+        var norm=nxNormalizeSupplierName(nm);
+        if(!norm)return;
+        // Tieni il nome più "lungo" come canonical (di solito è quello completo)
+        if(!window._nxSupplierCanon[norm]||String(nm).length>String(window._nxSupplierCanon[norm]).length){
+          window._nxSupplierCanon[norm]=String(nm).trim();
+        }
+      });
+    }
+    var k=nxNormalizeSupplierName(name);
+    return window._nxSupplierCanon[k]||name;
+  };
+  // Reset cache (chiamato quando si aggiunge un provider)
+  window.nxResetSupplierCanon=function(){window._nxSupplierCanon=null;};
+
+  // v9.99: Cleanup stock orfani - rimuove clientName/soldBy/salePrice se non ci sono più proforme/facturas/expedientes
+  // Da chiamare manualmente o automaticamente quando si cancellano proforme
+  window.nxStockCleanupOrphans=function(opts){
+    opts=opts||{};
+    var dryRun=!!opts.dryRun;
+    var fixed=0;var details=[];
+    (window.stock||[]).forEach(function(s){
+      var hasPf=(window.nxProformas||[]).some(function(p){return (p.items||[]).some(function(it){return String(it.stockId)===String(s.id);});});
+      var hasInv=(window.nxInvoices||[]).some(function(f){return (f.items||[]).some(function(it){return String(it.stockId)===String(s.id);});});
+      var hasExp=(window.nxExpedientes||[]).some(function(e){return e.vehicleIds&&e.vehicleIds.indexOf(s.id)>=0;});
+      // Se NON ha più nessun documento attivo MA ha ancora dati cliente, è orfano
+      if(!hasPf&&!hasInv&&!hasExp){
+        if(s.clientName||s.clientId||s.salePrice||s.commercialStatus==='vendido'||s.commercialStatus==='reservado'){
+          details.push({
+            id:s.id,internalId:s.internalId,vin:s.vin,
+            clientName:s.clientName,salePrice:s.salePrice,commercialStatus:s.commercialStatus
+          });
+          if(!dryRun){
+            s.clientName='';s.clientId='';s.salePrice='';s.soldBy='';s.soldAt='';
+            s.commercialStatus='libre';
+            // Pulisci anche stati su lots
+            if(s.vehicles)s.vehicles.forEach(function(v){
+              v.clientName='';v.clientId='';v.salePrice='';v.commercialStatus='libre';
+            });
+          }
+          fixed++;
+        }
+      }
+    });
+    if(!dryRun&&fixed>0)SS('stock',stock);
+    console.log('[nxStockCleanupOrphans] '+(dryRun?'[DRY-RUN] ':'')+fixed+' stock orfani'+(dryRun?' rilevati':' puliti'));
+    if(details.length)console.table(details);
+    return {fixed:fixed,details:details};
+  };
+
+  // v9.99: Backfill clientName/sellerName su expedientes mancanti recuperando da proforme/stock collegati
+  window.nxExpedientesBackfillClient=function(opts){
+    opts=opts||{};
+    var dryRun=!!opts.dryRun;
+    var fixed=0;var details=[];
+    (window.nxExpedientes||[]).forEach(function(e){
+      var needsClient=!e.clientName;
+      var needsSeller=!e.sellerName;
+      if(!needsClient&&!needsSeller)return;
+      // Cerca proforma collegata
+      var pf=null;
+      if(e.proformaIds&&e.proformaIds.length){
+        pf=(window.nxProformas||[]).find(function(p){return e.proformaIds.indexOf(p.id)>=0;});
+      }
+      if(!pf){
+        // Cerca da stock collegati: any proforma che ha questo stock id
+        for(var i=0;i<(e.vehicleIds||[]).length;i++){
+          var sid=e.vehicleIds[i];
+          pf=(window.nxProformas||[]).find(function(p){return (p.items||[]).some(function(it){return String(it.stockId)===String(sid);});});
+          if(pf)break;
+        }
+      }
+      if(!pf)return;
+      var newClient=needsClient?(pf.clientName||pf.clientLegalName||''):e.clientName;
+      var newSeller=needsSeller?(pf.sellerName||''):e.sellerName;
+      details.push({fullName:e.fullName,oldClient:e.clientName,newClient:newClient,oldSeller:e.sellerName,newSeller:newSeller});
+      if(!dryRun){
+        if(needsClient&&newClient)e.clientName=newClient;
+        if(needsSeller&&newSeller)e.sellerName=newSeller;
+        if(needsClient&&!e.clientId&&pf.clientId)e.clientId=pf.clientId;
+        e.updatedAt=new Date().toISOString();
+      }
+      fixed++;
+    });
+    if(!dryRun&&fixed>0)SS('nxExpedientes',window.nxExpedientes);
+    console.log('[nxExpedientesBackfillClient] '+(dryRun?'[DRY-RUN] ':'')+fixed+' expedientes aggiornati');
+    if(details.length)console.table(details);
+    return {fixed:fixed,details:details};
+  };
+
   window.nxBuildVistaRecords=function(){
+    // v9.99: backfill automatico expedientes senza cliente
+    nxExpedientesBackfillClient({dryRun:false});
+    nxResetSupplierCanon(); // ricalcola canonical
     var records=[];
     (stock||[]).forEach(function(s){
       // Helper: trova proforma+factura per stock id
@@ -23195,6 +23315,21 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var commercialStatus=String(s.commercialStatus||'libre').toLowerCase();
       var isVendido=(commercialStatus==='vendido');
       var isReservado=(commercialStatus==='reservado'||commercialStatus==='en_negociacion');
+      // v9.99: Risoluzione clientName cross-source con priorità expediente > proforma > invoice > stock
+      // Se NON c'è proforma/invoice/expediente attivo → cliente NON deve essere mostrato
+      var hasActiveDoc=(proformas.length>0||invoices.length>0||creditNotes.length>0||!!exp);
+      var resolvedClientName='';
+      var resolvedClientId='';
+      if(exp&&exp.clientName){resolvedClientName=exp.clientName;resolvedClientId=exp.clientId||'';}
+      else if(proformas.length){var pf=proformas[0];resolvedClientName=pf.clientName||pf.clientLegalName||'';resolvedClientId=pf.clientId||'';}
+      else if(invoices.length){var inv=invoices[0];resolvedClientName=inv.clientName||inv.clientLegalName||'';resolvedClientId=inv.clientId||'';}
+      else if(hasActiveDoc&&s.clientName){resolvedClientName=s.clientName;resolvedClientId=s.clientId||'';}
+      // Anche soldBy: priorità expediente > proforma > invoice > stock
+      var resolvedSoldBy='';
+      if(exp&&exp.sellerName)resolvedSoldBy=exp.sellerName;
+      else if(proformas.length&&proformas[0].sellerName)resolvedSoldBy=proformas[0].sellerName;
+      else if(invoices.length&&invoices[0].sellerName)resolvedSoldBy=invoices[0].sellerName;
+      else if(hasActiveDoc)resolvedSoldBy=s.soldBy||s.assignedTo||'';
       // Stato pago: derivato da fatture
       var totalInv=invoices.reduce(function(a,f){return a+(f.total||0);},0);
       var totalPaid=invoices.reduce(function(a,f){return a+(f.paid||0);},0);
@@ -23217,15 +23352,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
             color:v.color||'',
             brand:s.brand||'',
             model:s.model||'',
-            supplier:s.supplier||'',
+            supplier:nxCanonicalSupplier(s.supplier||''),
+            supplierRaw:s.supplier||'',
             providerEmail:s.providerEmail||'',
             commercialStatus:commercialStatus,
             isVendido:isVendido,
             isReservado:isReservado,
             isLibre:!isVendido&&!isReservado,
-            clientName:s.clientName||'',
-            clientId:s.clientId||'',
-            soldBy:s.soldBy||s.assignedTo||'',
+            clientName:resolvedClientName,
+            clientId:resolvedClientId,
+            soldBy:resolvedSoldBy,
             companyId:(proformas[0]&&proformas[0].companyId)||(invoices[0]&&invoices[0].companyId)||'',
             margin:margin?(margin/(s.vehicles.length||1)):null,
             salePrice:sale,
@@ -23250,15 +23386,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
           color:s.colors||'',
           brand:s.brand||'',
           model:s.model||'',
-          supplier:s.supplier||'',
+          supplier:nxCanonicalSupplier(s.supplier||''),
+          supplierRaw:s.supplier||'',
           providerEmail:s.providerEmail||'',
           commercialStatus:commercialStatus,
           isVendido:isVendido,
           isReservado:isReservado,
           isLibre:!isVendido&&!isReservado,
-          clientName:s.clientName||'',
-          clientId:s.clientId||'',
-          soldBy:s.soldBy||s.assignedTo||'',
+          clientName:resolvedClientName,
+          clientId:resolvedClientId,
+          soldBy:resolvedSoldBy,
           companyId:(proformas[0]&&proformas[0].companyId)||(invoices[0]&&invoices[0].companyId)||'',
           margin:margin,
           salePrice:sale,
