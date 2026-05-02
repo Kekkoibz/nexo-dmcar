@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.58 — DMCAR GROUP CRM | 2026-05-02 | Stock Vivo upgrade: 1) NUOVA colonna "Estado comercial" (libre/en_negociacion/reservado/vendido) separata da Status (disponibilità); 2) Campo "Asignado a" (free-text con auto-complete dei nomi già usati, prep futuro user system); 3) Campo "Ownership" (propio/live_trading) con 2 TAB di navigazione: 🌐 Trading e 📦 En propiedad; 4) Auto-update Hot kanban → veicoli a "en_negociacion" + assignedTo; auto Won → "vendido"; 5) Sistema alert 24h: badge sidebar conteggio stale + banner header + bottoni quick-action "✓ Mantener" / "✗ Liberar" per ogni riga stale. -->
+<!-- NEXO v9.59 — DMCAR GROUP CRM | 2026-05-02 | Stock Vivo: bulk "Cambiar tipo" ora funziona ANCHE per veicoli singoli (selezionati nel detail row con veh-sel-chk), non solo per lotti. Quando una singola unità viene marcata come "propio", viene "scorporata" dal lotto: nuovo stock entry creato come singolo lotto in propiedad, con units=1, ereditando dati dal lotto madre. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5603,21 +5603,109 @@ function stkRefreshAssignedDatalist(){
 window.stkRefreshAssignedDatalist=stkRefreshAssignedDatalist;
 
 // Bulk: cambia ownership dei selezionati
+// v9.59: gestisce ANCHE stkVehSel (unità singole nei detail row)
+// Per le unità singole: scorpora dal lotto madre creando nuovo stock entry singolo
 function stkBulkSetOwnership(){
-  if(!stkSel.size){alert('Selecciona veh\u00edculos primero.');return;}
-  var choice=prompt('Cambiar tipo de stock para '+stkSel.size+' veh\u00edculo'+(stkSel.size!==1?'s':'')+':\n\n  1. Trading (no en propiedad)\n  2. En propiedad\n\nEscribe 1 o 2:');
+  var lotCount=stkSel.size;
+  var vehCount=(typeof stkVehSel!=='undefined'&&stkVehSel)?stkVehSel.size:0;
+  var totalCount=lotCount+vehCount;
+  if(totalCount===0){
+    alert('Selecciona veh\u00edculos primero.\n\n\u2022 Marca el checkbox del LOTE para cambiar todo el grupo\n\u2022 Marca el checkbox de UN VIN espec\u00edfico para cambiar solo esa unidad');
+    return;
+  }
+  var summary='';
+  if(lotCount>0)summary+='\u2022 '+lotCount+' lote'+(lotCount!==1?'s':'')+' completo'+(lotCount!==1?'s':'')+'\n';
+  if(vehCount>0)summary+='\u2022 '+vehCount+' VIN individual'+(vehCount!==1?'es':'')+' (se separar\u00e1n del lote)\n';
+  var choice=prompt('Cambiar tipo de stock:\n\n'+summary+'\n  1. Trading (no en propiedad)\n  2. En propiedad\n\nEscribe 1 o 2:');
   if(!choice)return;
   var newOw=choice==='2'?'propio':'live_trading';
-  var changed=0;
+  var lotChanged=0,vehSplit=0;
+  // === 1. Cambia ownership dei lotti interi selezionati ===
   stock.forEach(function(s){
     if(stkSel.has(s.id)){
       s.ownership=newOw;
-      changed++;
+      lotChanged++;
     }
   });
+  // === 2. Scorpora le unità singole selezionate ===
+  // stkVehSel formato: 'stockId::vehicleIndex'
+  if(typeof stkVehSel!=='undefined'&&stkVehSel&&stkVehSel.size>0){
+    var groups={}; // raggruppa per stockId
+    stkVehSel.forEach(function(key){
+      var parts=key.split('::');
+      var sid=parts[0];
+      var vi=parseInt(parts[1],10);
+      if(!groups[sid])groups[sid]=[];
+      groups[sid].push(vi);
+    });
+    Object.keys(groups).forEach(function(sid){
+      var idx=stock.findIndex(function(s){return String(s.id)===String(sid);});
+      if(idx<0)return;
+      var parent=stock[idx];
+      if(!parent.vehicles||!parent.vehicles.length)return;
+      // Se TUTTE le unità del lotto sono selezionate, basta cambiare ownership al lotto
+      if(groups[sid].length===parent.vehicles.length){
+        parent.ownership=newOw;
+        vehSplit+=groups[sid].length;
+        return;
+      }
+      // Altrimenti scorpora le selezionate in nuovi entry singoli
+      // Sort indices DESC per rimuoverle dall'array senza shift
+      var indices=groups[sid].sort(function(a,b){return b-a;});
+      indices.forEach(function(vi){
+        if(!parent.vehicles[vi])return;
+        var v=parent.vehicles[vi];
+        // Crea nuovo stock entry singolo che eredita dal padre
+        var newEntry={
+          id:'s'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+          internalId:(parent.internalId||'DMCAR-NEW')+'-S'+(vi+1),
+          date:parent.date||new Date().toISOString().split('T')[0],
+          supplier:parent.supplier||'',
+          brand:parent.brand||'',
+          model:parent.model||'',
+          version:parent.version||'',
+          reg:v.reg||parent.reg||'',
+          units:'1',
+          kms:v.kms||parent.kms||'',
+          colors:v.color||parent.colors||'',
+          damage:v.damage||parent.damage||'',
+          equip:parent.equip||'',
+          buy:v.buy||parent.buy||'',
+          sell:v.sell||parent.sell||'',
+          marginAmount:v.marginAmount||parent.marginAmount||'',
+          pickup:parent.pickup||'',
+          status:parent.status||'Stock',
+          notes:'(Separado de '+(parent.internalId||sid)+')'+(parent.notes&&parent.notes!=='--'?' '+parent.notes:''),
+          ownership:newOw,
+          commercialStatus:'libre',
+          commercialUpdatedAt:new Date().toISOString(),
+          assignedTo:'',
+          // Riferimento al lotto madre (per tracciabilità)
+          splitFromLotId:parent.id,
+          splitFromVin:v.vin||'',
+          // Dati VIN come "vehicles" array di 1 (per consistency con il resto del CRM)
+          vehicles:[Object.assign({},v)]
+        };
+        stock.push(newEntry);
+        // Rimuovi dalla lista vehicles del padre
+        parent.vehicles.splice(vi,1);
+        vehSplit++;
+      });
+      // Aggiorna units del padre se ha campo numerico
+      if(parent.units&&!isNaN(parseInt(parent.units,10))){
+        var newUnits=parent.vehicles.length;
+        parent.units=String(newUnits>0?newUnits:1);
+      }
+    });
+  }
   SS('stock',stock);
   stkSel.clear();
-  if(typeof showToast==='function')showToast('\u2713 '+changed+' veh\u00edculos cambiados a '+(newOw==='propio'?'En propiedad':'Trading'));
+  if(typeof stkVehSel!=='undefined'&&stkVehSel)stkVehSel.clear();
+  var msg='\u2713 ';
+  if(lotChanged>0)msg+=lotChanged+' lote'+(lotChanged!==1?'s':'')+', ';
+  if(vehSplit>0)msg+=vehSplit+' VIN '+(vehSplit!==1?'separados':'separado')+', ';
+  msg+='\u2192 '+(newOw==='propio'?'En propiedad':'Trading');
+  if(typeof showToast==='function')showToast(msg);
   fStk();
 }
 window.stkBulkSetOwnership=stkBulkSetOwnership;
