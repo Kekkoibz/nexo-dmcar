@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.44 — DMCAR GROUP CRM | 2026-05-02 | Worker v2 con double opt-out (GET conferma + POST esegue) e i18n 5 lingue (es/it/en/fr/de). NEXO passa &lang=xx nel link basato su contact.country (mkCountryToLang); fallback Accept-Language nel Worker. Pagina conferma anti-bot scanner (Outlook Defender prefetch). -->
+<!-- NEXO v9.45 — DMCAR GROUP CRM | 2026-05-02 | Envío masivo REAL: campSendNow con throttling 30/min, modal progreso (pausa/reanudar/cancelar), retry automático max 3 tentativos con exponential backoff, vars sustituidas por contacto ({{nombre}}, {{empresa}}, etc.), unsub link HMAC + lang per-contacto via mkCountryToLang, view-online individual via KV save, auto-move a "Enviadas" tras finalizar, persistencia _campEditing.recipients en localStorage para resumir tras crash -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2217,6 +2217,81 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- CAMPAÑA: CONFIRMACIÓN DE ENVÍO MASIVO -->
+<div class="ovl" id="m-camp-confirm-send">
+  <div class="modal" style="max-width:560px">
+    <div class="fbet mb14"><div class="mt">&#128640; Confirmaci&oacute;n de env&iacute;o</div><button class="btn bg" onclick="closeM('m-camp-confirm-send')" style="padding:5px 10px">X</button></div>
+    <div id="camp-confirm-summary" style="background:var(--bg3);border-radius:8px;padding:14px;font-size:13px;line-height:1.7"></div>
+    <div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;padding:10px;margin-top:12px;font-size:11px;color:#78350f;line-height:1.5">
+      <b>&#9888;&#65039; Antes de enviar:</b><br>
+      &bull; Verifica que has hecho un test con &laquo;&#128231; Test a m&iacute;&raquo;<br>
+      &bull; Confirma que el contenido y la firma se ven bien<br>
+      &bull; Una vez iniciado el env&iacute;o solo puedes pausarlo/cancelarlo
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="camp-confirm-tested" style="width:16px;height:16px;cursor:pointer">
+      <label for="camp-confirm-tested" style="font-size:12px;color:var(--t2);cursor:pointer;margin:0">He verificado el contenido con un env&iacute;o de prueba</label>
+    </div>
+    <div class="fc g8" style="margin-top:16px">
+      <button class="btn bg" onclick="closeM('m-camp-confirm-send')" style="flex:1">Cancelar</button>
+      <button class="btn bp" id="camp-confirm-send-btn" onclick="campConfirmSendStart()" style="flex:2;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none">&#9889; Iniciar env&iacute;o masivo</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAMPAÑA: PROGRESO ENVÍO MASIVO -->
+<div class="ovl" id="m-camp-progress">
+  <div class="modal" style="max-width:600px">
+    <div class="fbet mb14">
+      <div class="mt"><span id="camp-prog-icon">&#9203;</span> <span id="camp-prog-title">Enviando campa&ntilde;a...</span></div>
+      <button class="btn bg" id="camp-prog-close-btn" onclick="campProgressClose()" style="padding:5px 10px;display:none">X</button>
+    </div>
+    <!-- Progress bar -->
+    <div style="background:var(--bg3);border-radius:8px;padding:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
+        <span><b id="camp-prog-sent">0</b> / <span id="camp-prog-total">0</span> enviados</span>
+        <span id="camp-prog-pct" style="font-weight:600;color:var(--acc)">0%</span>
+      </div>
+      <div style="background:var(--bg2);border-radius:8px;height:14px;overflow:hidden">
+        <div id="camp-prog-bar" style="background:linear-gradient(90deg,#16a34a,#22c55e);height:100%;width:0%;transition:width .3s ease;border-radius:8px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-top:10px;flex-wrap:wrap;gap:8px">
+        <span>&#9989; Enviados: <b id="camp-prog-ok" style="color:#16a34a">0</b></span>
+        <span>&#10060; Fallidos: <b id="camp-prog-fail" style="color:#dc2626">0</b></span>
+        <span>&#128260; Reintentos: <b id="camp-prog-retry" style="color:#f59e0b">0</b></span>
+        <span>&#9203; Restante: <b id="camp-prog-eta">--</b></span>
+      </div>
+    </div>
+    <!-- Last sent -->
+    <div style="margin-top:12px;background:var(--bg2);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--t3);min-height:32px;display:flex;align-items:center;font-family:monospace" id="camp-prog-last">Iniciando...</div>
+    <!-- Failed list (collapsed) -->
+    <details id="camp-prog-fail-details" style="margin-top:10px;display:none">
+      <summary style="font-size:11px;color:#dc2626;cursor:pointer;font-weight:600">&#10060; Ver fallidos (<span id="camp-prog-fail-cnt">0</span>)</summary>
+      <div id="camp-prog-fail-list" style="max-height:180px;overflow-y:auto;background:#fef2f2;border-radius:6px;padding:8px;margin-top:6px;font-size:10px;font-family:monospace;line-height:1.5"></div>
+    </details>
+    <!-- Controls -->
+    <div class="fc g8" id="camp-prog-controls" style="margin-top:14px">
+      <button class="btn bs" id="camp-prog-pause-btn" onclick="campSendPause()" style="flex:1">&#9208;&#65039; Pausa</button>
+      <button class="btn bp" id="camp-prog-resume-btn" onclick="campSendResume()" style="flex:1;display:none">&#9654;&#65039; Reanudar</button>
+      <button class="btn bd" id="camp-prog-cancel-btn" onclick="campSendCancel()" style="flex:1">&#9209;&#65039; Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAMPAÑA: RESUMEN FINAL -->
+<div class="ovl" id="m-camp-final">
+  <div class="modal" style="max-width:520px">
+    <div class="fbet mb14"><div class="mt"><span id="camp-final-icon">&#9989;</span> <span id="camp-final-title">Campa&ntilde;a enviada</span></div><button class="btn bg" onclick="closeM('m-camp-final')" style="padding:5px 10px">X</button></div>
+    <div id="camp-final-stats" style="background:var(--bg3);border-radius:8px;padding:16px;font-size:13px;line-height:1.8"></div>
+    <div id="camp-final-msg" style="margin-top:12px;font-size:12px;color:var(--t2);line-height:1.5"></div>
+    <div class="fc g8" style="margin-top:16px">
+      <button class="btn bs" id="camp-final-export-btn" onclick="campExportFailedCSV()" style="flex:1;display:none">&#11123; Exportar fallidos CSV</button>
+      <button class="btn bp" onclick="closeM('m-camp-final');closeM('m-camp-edit');if(typeof campRender==='function')campRender();" style="flex:2">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // Global error handler - shows errors visually on mobile
 window.onerror = function(msg, src, line, col, err) {
@@ -13778,9 +13853,497 @@ function campSendTest(){
     });
 }
 
+// ===========================================================================
+// ENVÍO MASIVO REAL (v9.45)
+// ===========================================================================
+// Estado del envío en curso. Singleton (1 envío por vez).
+// Persistido en _campEditing.recipients per resumir tras crash del browser.
+var _campSendCtl={
+  active:false,
+  paused:false,
+  cancelled:false,
+  campaignId:null,
+  recipients:[],     // [{contactId, email, status, sentAt, emailId, error, attempts, lang}]
+  startedAt:null,
+  rateMs:2000,       // 30 email/min = 1 ogni 2000ms
+  retriesMax:3,
+  stats:{ok:0,fail:0,retry:0,total:0,startTs:null}
+};
+window._campSendCtl=_campSendCtl;
+
+// Punto di entrata principale: pulsante "Enviar ahora"
 function campSendNow(){
-  alert('\ud83d\udea7 Env\u00edo masivo en desarrollo \u2014 v9.20.\n\nCompleto:\n\u2022 Throttling configurable (10-30/min)\n\u2022 Tracking aperturas\n\u2022 Adjuntos\n\u2022 Stats finales\n\nPor ahora puedes:\n\u2022 \ud83d\udce7 Test a m\u00ed (verificar render)\n\u2022 \ud83d\udcbe Guardar borrador');
+  // Validazioni base
+  if(!_campEditing||!_campEditing.tplId){alert('Selecciona un template.');return;}
+  var t=mkTemplates.find(function(x){return x.id===_campEditing.tplId;});
+  if(!t){alert('Template no encontrado.');return;}
+  if(!t.defaultFirmaId&&!_campEditing.firmaId){
+    alert('\u26a0\ufe0f El template no tiene firma asociada.');return;
+  }
+  if(!_campEditing.subject||!_campEditing.subject.trim()){alert('Escribe un asunto.');return;}
+  if(!_campEditing.listId){alert('Selecciona una lista de destinatarios.');return;}
+  // Microsoft Graph
+  if(typeof NX_MS==='undefined'||!NX_MS.ready){
+    alert('\u26a0\ufe0f Microsoft Graph no est\u00e1 conectado.\n\nVe a Configuraci\u00f3n y conecta info@dmcargroup.com.');
+    return;
+  }
+  // Calcola destinatari finali
+  var recipientIds=campGetFinalRecipients();
+  if(recipientIds.length===0){
+    alert('\u26a0\ufe0f No hay destinatarios v\u00e1lidos.\n\n\u2022 Verifica la lista\n\u2022 Excluye no contiene a todos\n\u2022 Hay subscribers (no unsub/bounced)');
+    return;
+  }
+  // Avviso campos faltantes (equip/foto/sell)
+  var problems=campCheckMissingData();
+  if(problems.length>0){
+    if(!campShowMissingWarning(problems))return;
+  }
+  // Worker Mail configurato? avvisa ma non bloccante
+  var workerOk=mkWorkerConfigured();
+  // Mostra modal di conferma con summary
+  campShowConfirmModal(recipientIds,workerOk);
 }
+
+// Modal di conferma con summary dei dati invio
+function campShowConfirmModal(recipientIds,workerOk){
+  var lst=mkLists.find(function(l){return l.id===_campEditing.listId;});
+  var listName=lst?lst.name:'(sin nombre)';
+  var carCount=Array.isArray(_campEditing.selectedCarIds)?_campEditing.selectedCarIds.length:0;
+  var rateMs=2000; // 30/min
+  var totalMs=recipientIds.length*rateMs;
+  var totalMin=Math.ceil(totalMs/60000);
+  var endDate=new Date(Date.now()+totalMs);
+  var endTime=endDate.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+
+  // Lingua: numero stimato per lingua (in base a country dei destinatari)
+  var langStats={};
+  recipientIds.forEach(function(cid){
+    var c=mkContacts.find(function(x){return x.id===cid;});
+    if(!c)return;
+    var lang=mkCountryToLang(c.country)||'auto';
+    langStats[lang]=(langStats[lang]||0)+1;
+  });
+  var langStr=Object.keys(langStats).map(function(k){return k+':'+langStats[k];}).join(' &middot; ');
+
+  var html='';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Lista</span><span><b>'+esc(listName)+'</b></span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Asunto</span><span style="font-style:italic;font-size:11px">'+esc((_campEditing.subject||'').substring(0,50))+(((_campEditing.subject||'').length>50)?'\u2026':'')+'</span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Destinatarios</span><span><b style="font-size:18px;color:#16a34a">'+recipientIds.length+'</b></span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Coches incluidos</span><span><b>'+carCount+'</b></span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Velocidad</span><span><b>30 email/min</b></span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Tiempo estimado</span><span><b>~'+totalMin+' min</b> (fin: '+endTime+')</span></div>';
+  if(langStr){
+    html+='<div style="display:flex;justify-content:space-between;padding-top:4px"><span style="color:var(--t3)">Idiomas</span><span style="font-size:11px;font-family:monospace">'+langStr+'</span></div>';
+  }
+  if(!workerOk){
+    html+='<div style="margin-top:10px;padding:8px;background:#fee2e2;border-radius:6px;font-size:11px;color:#991b1b"><b>\u26a0\ufe0f Worker Mail NO configurado:</b> Los links Unsubscribe / View Online ser\u00e1n placeholder. Configura en Configuraci\u00f3n &gt; Worker Mail.</div>';
+  }
+
+  n('camp-confirm-summary').innerHTML=html;
+  // Reset checkbox
+  var cb=n('camp-confirm-tested');if(cb)cb.checked=false;
+  openM('m-camp-confirm-send');
+}
+
+// Inizia l'invio dopo conferma modale
+function campConfirmSendStart(){
+  var cb=n('camp-confirm-tested');
+  if(cb&&!cb.checked){
+    if(!confirm('\u26a0\ufe0f No has marcado que has hecho un test previo.\n\n\u00bfEnviar igualmente?'))return;
+  }
+  closeM('m-camp-confirm-send');
+
+  // Setup state
+  var recipientIds=campGetFinalRecipients();
+  var recipients=recipientIds.map(function(cid){
+    var c=mkContacts.find(function(x){return x.id===cid;});
+    return {
+      contactId:cid,
+      email:c?c.email:'',
+      firstName:c?(c.firstName||''):'',
+      companyName:c?(c.companyName||''):'',
+      country:c?(c.country||''):'',
+      lang:mkCountryToLang(c?c.country:'')||'',
+      status:'pending',
+      attempts:0,
+      sentAt:null,
+      emailId:null,
+      error:null
+    };
+  }).filter(function(r){return r.email&&mkValidEmail(r.email);});
+
+  if(recipients.length===0){
+    alert('No hay destinatarios v\u00e1lidos.');return;
+  }
+
+  // Trova/crea record campaña
+  var campId=_campEditing.id;
+  if(!campId){
+    campId='cmp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+    _campEditing.id=campId;
+  }
+  var camp=mkCampaigns.find(function(c){return c.id===campId;});
+  if(!camp){
+    camp={
+      id:campId,
+      name:_campEditing.name||'Sin nombre',
+      subject:_campEditing.subject||'',
+      tplId:_campEditing.tplId,
+      firmaId:_campEditing.firmaId,
+      listId:_campEditing.listId,
+      selectedCarIds:_campEditing.selectedCarIds||[],
+      margin:_campEditing.margin||'+500 EUR',
+      offerId:_campEditing.offerId,
+      createdAt:new Date().toISOString(),
+      status:'sending',
+      sentAt:null,
+      recipients:recipients
+    };
+    mkCampaigns.push(camp);
+  }else{
+    camp.status='sending';
+    camp.recipients=recipients;
+    camp.sentAt=null;
+  }
+  SS('mkCampaigns',mkCampaigns);
+
+  // Setup control
+  _campSendCtl.active=true;
+  _campSendCtl.paused=false;
+  _campSendCtl.cancelled=false;
+  _campSendCtl.campaignId=campId;
+  _campSendCtl.recipients=recipients;
+  _campSendCtl.startedAt=Date.now();
+  _campSendCtl.rateMs=2000;
+  _campSendCtl.retriesMax=3;
+  _campSendCtl.stats={ok:0,fail:0,retry:0,total:recipients.length,startTs:Date.now()};
+
+  // Open progress modal
+  campProgressOpen();
+  // Start loop
+  campSendLoop();
+}
+
+// Apre il modal di progresso e inizializza UI
+function campProgressOpen(){
+  openM('m-camp-progress');
+  n('camp-prog-total').textContent=_campSendCtl.stats.total;
+  n('camp-prog-sent').textContent='0';
+  n('camp-prog-pct').textContent='0%';
+  n('camp-prog-bar').style.width='0%';
+  n('camp-prog-ok').textContent='0';
+  n('camp-prog-fail').textContent='0';
+  n('camp-prog-retry').textContent='0';
+  n('camp-prog-eta').textContent='--';
+  n('camp-prog-last').textContent='Iniciando...';
+  n('camp-prog-fail-list').innerHTML='';
+  n('camp-prog-fail-details').style.display='none';
+  n('camp-prog-pause-btn').style.display='';
+  n('camp-prog-resume-btn').style.display='none';
+  n('camp-prog-cancel-btn').style.display='';
+  n('camp-prog-close-btn').style.display='none';
+  n('camp-prog-icon').innerHTML='&#9203;';
+  n('camp-prog-title').textContent='Enviando campa\u00f1a...';
+}
+
+// Aggiorna UI progress
+function campProgressUpdate(lastInfo){
+  var s=_campSendCtl.stats;
+  var done=s.ok+s.fail;
+  var pct=s.total>0?Math.round(done/s.total*100):0;
+  n('camp-prog-sent').textContent=done;
+  n('camp-prog-pct').textContent=pct+'%';
+  n('camp-prog-bar').style.width=pct+'%';
+  n('camp-prog-ok').textContent=s.ok;
+  n('camp-prog-fail').textContent=s.fail;
+  n('camp-prog-retry').textContent=s.retry;
+  // ETA
+  if(done>0&&done<s.total){
+    var elapsed=Date.now()-s.startTs;
+    var remaining=Math.round((elapsed/done)*(s.total-done));
+    var rmin=Math.floor(remaining/60000);
+    var rsec=Math.floor((remaining%60000)/1000);
+    n('camp-prog-eta').textContent=rmin+'m '+rsec+'s';
+  }else if(done>=s.total){
+    n('camp-prog-eta').textContent='\u2713 fin';
+  }
+  if(lastInfo)n('camp-prog-last').textContent=lastInfo;
+  // Failed list
+  var fails=_campSendCtl.recipients.filter(function(r){return r.status==='failed';});
+  if(fails.length>0){
+    n('camp-prog-fail-cnt').textContent=fails.length;
+    n('camp-prog-fail-details').style.display='';
+    n('camp-prog-fail-list').innerHTML=fails.map(function(r){
+      return '<div>'+esc(r.email)+' \u2014 <span style="color:#dc2626">'+esc(r.error||'?')+'</span></div>';
+    }).join('');
+  }
+}
+
+// Loop principale di invio
+function campSendLoop(){
+  if(_campSendCtl.cancelled){
+    campSendFinalize('cancelled');
+    return;
+  }
+  if(_campSendCtl.paused){
+    // Polling quando in pausa
+    setTimeout(campSendLoop,500);
+    return;
+  }
+  // Trova prossimo "pending" o quello in retry da provare
+  var idx=-1;
+  for(var i=0;i<_campSendCtl.recipients.length;i++){
+    var r=_campSendCtl.recipients[i];
+    if(r.status==='pending'||(r.status==='retry'&&Date.now()>=(r.nextRetryAt||0))){
+      idx=i;break;
+    }
+  }
+  if(idx<0){
+    // Niente da fare al momento. Controlla se ci sono retry futuri
+    var pendingRetries=_campSendCtl.recipients.filter(function(r){return r.status==='retry';});
+    if(pendingRetries.length>0){
+      // Aspetta il prossimo retry
+      var minWait=Math.min.apply(null,pendingRetries.map(function(r){return Math.max(0,(r.nextRetryAt||0)-Date.now());}));
+      setTimeout(campSendLoop,Math.min(minWait,2000));
+      return;
+    }
+    // Tutto finito
+    campSendFinalize('done');
+    return;
+  }
+  // Invia
+  var rec=_campSendCtl.recipients[idx];
+  rec.status='sending';
+  rec.attempts=(rec.attempts||0)+1;
+  campProgressUpdate('Enviando: '+rec.email+(rec.attempts>1?' (intento '+rec.attempts+')':''));
+
+  campSendOneEmail(rec).then(function(){
+    rec.status='sent';
+    rec.sentAt=new Date().toISOString();
+    rec.error=null;
+    _campSendCtl.stats.ok++;
+    persistCampaignState();
+    campProgressUpdate('\u2713 Enviado: '+rec.email);
+    // Aspetta rateMs prima del prossimo
+    setTimeout(campSendLoop,_campSendCtl.rateMs);
+  }).catch(function(e){
+    var errMsg=(e&&e.message)?e.message:String(e);
+    rec.error=errMsg;
+    if(rec.attempts>=_campSendCtl.retriesMax){
+      // Fallito definitivamente
+      rec.status='failed';
+      _campSendCtl.stats.fail++;
+      campProgressUpdate('\u2717 Fallido: '+rec.email+' \u2014 '+errMsg);
+    }else{
+      // Retry con backoff esponenziale: 5s, 15s, 45s
+      var backoffMs=[5000,15000,45000][rec.attempts-1]||45000;
+      rec.status='retry';
+      rec.nextRetryAt=Date.now()+backoffMs;
+      _campSendCtl.stats.retry++;
+      campProgressUpdate('\u26a0\ufe0f Reintentando '+rec.email+' en '+(backoffMs/1000)+'s ('+errMsg+')');
+    }
+    persistCampaignState();
+    setTimeout(campSendLoop,_campSendCtl.rateMs);
+  });
+}
+
+// Costruisce e invia 1 email
+// Ritorna Promise che resolve se sent, reject se fallito
+function campSendOneEmail(rec){
+  var workerOk=mkWorkerConfigured();
+  var emailId=mkGenEmailId();
+  rec.emailId=emailId;
+  // Variabili per sostituzione
+  var vars={
+    nombre:rec.firstName||'',
+    empresa:rec.companyName||'',
+    pais:rec.country||'',
+    email:rec.email
+  };
+  // Genera unsub link async (con HMAC + lang)
+  return Promise.resolve(workerOk?mkBuildUnsubLink(rec.email,rec.lang):(mkWorkerUrl()+'/unsub?e='+encodeURIComponent(rec.email)+'&t=NOT_CONFIGURED'+(rec.lang?'&lang='+rec.lang:'')))
+    .then(function(unsubLink){
+      vars.unsubscribe_url=unsubLink;
+      vars.view_online_url=mkBuildViewOnlineLink(emailId)+(rec.lang?'&lang='+rec.lang:'');
+      // Build HTML completo
+      return campBuildHTMLAsync(vars);
+    })
+    .then(function(html){
+      if(!html)throw new Error('HTML vac\u00edo');
+      var subject=_campEditing.subject||_campEditing.name||'Oferta';
+      // Sostituisce vars anche nel subject
+      subject=subject.replace(/\{\{nombre\}\}/g,vars.nombre)
+                     .replace(/\{\{empresa\}\}/g,vars.empresa)
+                     .replace(/\{\{pais\}\}/g,vars.pais);
+      // Strip emoji decorativi (anti-spam B2B)
+      html=campStripEmojis(html);
+      subject=campStripEmojis(subject).trim();
+      // Save email su KV (per view online) — non bloccante in caso di errore
+      var savePromise=workerOk
+        ?mkSaveEmailToWorker(emailId,html,subject).catch(function(e){
+          console.warn('[campSend] Save email fall\u00f3 ('+rec.email+'):',e);
+          return null;
+        })
+        :Promise.resolve(null);
+      return savePromise.then(function(){
+        return {html:html,subject:subject};
+      });
+    })
+    .then(function(payload){
+      // Invio via Microsoft Graph (Promise wrapper)
+      return new Promise(function(resolve,reject){
+        try{
+          NX_MS.sendEmail(rec.email,payload.subject,payload.html,function(ok,err){
+            if(ok)resolve();
+            else reject(new Error(err||'Microsoft Graph error'));
+          });
+        }catch(e){
+          reject(e);
+        }
+      });
+    });
+}
+
+// Persiste stato campagna a localStorage (per recovery in caso di crash)
+function persistCampaignState(){
+  var camp=mkCampaigns.find(function(c){return c.id===_campSendCtl.campaignId;});
+  if(camp){
+    camp.recipients=_campSendCtl.recipients;
+    SS('mkCampaigns',mkCampaigns);
+  }
+}
+
+// === Controlli ===
+function campSendPause(){
+  _campSendCtl.paused=true;
+  n('camp-prog-pause-btn').style.display='none';
+  n('camp-prog-resume-btn').style.display='';
+  n('camp-prog-icon').innerHTML='&#9208;&#65039;';
+  n('camp-prog-title').textContent='En pausa...';
+  if(typeof showToast==='function')showToast('\u23f8 Env\u00edo en pausa');
+}
+function campSendResume(){
+  _campSendCtl.paused=false;
+  n('camp-prog-pause-btn').style.display='';
+  n('camp-prog-resume-btn').style.display='none';
+  n('camp-prog-icon').innerHTML='&#9203;';
+  n('camp-prog-title').textContent='Enviando campa\u00f1a...';
+  if(typeof showToast==='function')showToast('\u25b6\ufe0f Reanudando env\u00edo');
+}
+function campSendCancel(){
+  if(!confirm('\u26a0\ufe0f \u00bfCancelar el env\u00edo?\n\nLos enviados se mantienen, los pendientes quedan sin enviar.\nLa campa\u00f1a quedar\u00e1 marcada como "pausada" y podr\u00e1s retomarla luego.'))return;
+  _campSendCtl.cancelled=true;
+}
+function campProgressClose(){
+  closeM('m-camp-progress');
+}
+
+// Fine invio: aggiorna stato campagna, mostra modal finale
+function campSendFinalize(reason){
+  _campSendCtl.active=false;
+  var s=_campSendCtl.stats;
+  var camp=mkCampaigns.find(function(c){return c.id===_campSendCtl.campaignId;});
+  if(camp){
+    camp.recipients=_campSendCtl.recipients;
+    if(reason==='done'){
+      camp.status='sent';
+      camp.sentAt=new Date().toISOString();
+    }else if(reason==='cancelled'){
+      camp.status='paused';
+    }
+    SS('mkCampaigns',mkCampaigns);
+  }
+  // Update UI
+  n('camp-prog-pause-btn').style.display='none';
+  n('camp-prog-resume-btn').style.display='none';
+  n('camp-prog-cancel-btn').style.display='none';
+  n('camp-prog-close-btn').style.display='';
+  n('camp-prog-icon').innerHTML=reason==='done'?'&#9989;':'&#9209;&#65039;';
+  n('camp-prog-title').textContent=reason==='done'?'\u00a1Env\u00edo completado!':'Env\u00edo cancelado';
+  // Mostra modal finale dopo 600ms
+  setTimeout(function(){
+    closeM('m-camp-progress');
+    campShowFinalModal(reason);
+  },600);
+}
+
+// Modal finale con stats
+function campShowFinalModal(reason){
+  var s=_campSendCtl.stats;
+  var elapsedMs=Date.now()-s.startTs;
+  var min=Math.floor(elapsedMs/60000);
+  var sec=Math.floor((elapsedMs%60000)/1000);
+  var fails=_campSendCtl.recipients.filter(function(r){return r.status==='failed';});
+  var pending=_campSendCtl.recipients.filter(function(r){return r.status==='pending'||r.status==='retry'||r.status==='sending';});
+
+  n('camp-final-icon').innerHTML=reason==='done'?'&#9989;':(reason==='cancelled'?'&#9209;&#65039;':'&#10071;');
+  n('camp-final-title').textContent=reason==='done'?'Campa\u00f1a enviada':'Env\u00edo cancelado';
+
+  var html='';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:var(--t3)">Total destinatarios</span><span><b>'+s.total+'</b></span></div>';
+  html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:#16a34a">\u2713 Enviados</span><span><b style="color:#16a34a">'+s.ok+'</b></span></div>';
+  if(s.fail>0){
+    html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:#dc2626">\u2717 Fallidos definitivos</span><span><b style="color:#dc2626">'+s.fail+'</b></span></div>';
+  }
+  if(pending.length>0){
+    html+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px"><span style="color:#f59e0b">\u23f8 Pendientes</span><span><b style="color:#f59e0b">'+pending.length+'</b></span></div>';
+  }
+  html+='<div style="display:flex;justify-content:space-between;padding-top:4px"><span style="color:var(--t3)">Tiempo total</span><span><b>'+min+'m '+sec+'s</b></span></div>';
+  n('camp-final-stats').innerHTML=html;
+
+  var msg='';
+  if(reason==='done'){
+    msg='La campa\u00f1a se ha movido autom\u00e1ticamente a la pesta\u00f1a <b>"Enviadas"</b>.';
+    if(s.fail>0){
+      msg+='<br><br>\u26a0\ufe0f Hay '+s.fail+' email(s) que han fallado tras '+_campSendCtl.retriesMax+' intentos. Puedes exportarlos en CSV para revisar manualmente.';
+    }
+  }else if(reason==='cancelled'){
+    msg='La campa\u00f1a ha sido pausada. Quedan '+pending.length+' destinatarios sin enviar. Puedes retomarla desde la pesta\u00f1a <b>"Borradores"</b> (estado: paused).';
+  }
+  n('camp-final-msg').innerHTML=msg;
+
+  // Pulsante export fallidos
+  n('camp-final-export-btn').style.display=fails.length>0?'':'none';
+
+  openM('m-camp-final');
+  if(typeof campRender==='function')campRender();
+}
+
+// Esporta CSV con i fallidi
+function campExportFailedCSV(){
+  var fails=_campSendCtl.recipients.filter(function(r){return r.status==='failed';});
+  if(fails.length===0){alert('No hay fallidos.');return;}
+  var headers=['Email','First Name','Company','Country','Attempts','Last Error'];
+  var rows=fails.map(function(r){
+    return [r.email,r.firstName||'',r.companyName||'',r.country||'',r.attempts||0,r.error||''];
+  });
+  var csv=headers.join(',')+'\n'+rows.map(function(row){
+    return row.map(function(v){
+      v=String(v||'').replace(/"/g,'""');
+      return '"'+v+'"';
+    }).join(',');
+  }).join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='nexo_failed_'+(_campSendCtl.campaignId||'camp')+'_'+Date.now()+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if(typeof showToast==='function')showToast('\u2713 CSV exportado: '+fails.length+' fallidos');
+}
+
+// Espone globalmente
+window.campSendNow=campSendNow;
+window.campShowConfirmModal=campShowConfirmModal;
+window.campConfirmSendStart=campConfirmSendStart;
+window.campSendPause=campSendPause;
+window.campSendResume=campSendResume;
+window.campSendCancel=campSendCancel;
+window.campProgressClose=campProgressClose;
+window.campExportFailedCSV=campExportFailedCSV;
+
+// === END ENVIO MASIVO ===
 
 // === HOOKS DE ACCESO ===
 
