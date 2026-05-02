@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.74 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F5 COMPLETO: 1) Modal popup obbligatorio cambio stato Stock Vivo (Reservado/En negociación/Vendido) con autocomplete cliente da B2B + bottone "+ Nuevo cliente"; 2) Sync bidirezionale Stock↔Kanban: stato comercial + cliente (clientId/clientName) salvato su entrambi i sistemi; 3) Auto-create card Kanban Won quando Vendido (con vehicleIds + clientName + margin); 4) Visual: card Won mostra info veicolo+cliente+margine; 5) Sistema notifiche Nexo Numbers: badge sidebar rosso, lista in Dashboard, popup all'apertura CRM se nuove notifiche; 6) Modal notifica con dettagli + 3 bottoni (Sí auto-genera / No / Editar pre-popolato); 7) Email automatica al contabile (Microsoft Graph, configurabile in empresa); 8) Auto-popolamento proforma da Won con dati cliente+veicoli+margine. CHIUDE LOOP COMPLETO Sales→Contabilità. -->
+<!-- NEXO v9.75 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS Bugfix + Pro: 1) FIX email contabile non inviata: usa Cloudflare Worker /send-email (NX_API_BASE) come per email cliente, gestione async corretta + log dettagliato + toast feedback successo/errore; 2) Coerenza lingua: rimosso "Gracias por su confianza" hardcoded da default config (ora usa nxT('thanks') tradotto IT/ES/EN), aggiunti termini i18n mancanti (thanks, sender_info, sale_notification, etc.); 3) IVA dinamica per paese: nuova funzione nxGetVatRateForCountry() con tabella EU completa (ES 21%, IT 22%, FR 20%, DE 19%, ecc.), auto-applicazione su selezione cliente in proforma + flag intra-EU/nacional/extra-EU automatico, eliminato termine "extra-EU"; 4) Venditore assegnato: nuovo campo nel popup Stock cambio stato (default = utente loggato), salvato su stock + passato a notifica + visibile su Nexo Numbers ("Francesco ha venduto..."). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1771,7 +1771,8 @@ En que te puedo ayudar hoy?</div></div>
           </div>
           <div>
             <label style="font-size:10px">Footer (centro p&aacute;gina, debajo de tabla)</label>
-            <input type="text" id="nbtpl-footer" placeholder="Gracias por su confianza" oninput="nbtplUpdate()" style="font-size:11px">
+            <input type="text" id="nbtpl-footer" placeholder="(opcional - se traduce autom\u00e1ticamente seg\u00fan idioma)" oninput="nbtplUpdate()" style="font-size:11px">
+            <div style="font-size:10px;color:var(--t4);margin-top:3px">Si lo dejas vac\u00edo, se mostrar&aacute; "Gracias por su confianza" / "Grazie per la fiducia" / "Thank you for your trust" seg&uacute;n idioma documento.</div>
           </div>
         </div>
 
@@ -1865,6 +1866,11 @@ En que te puedo ayudar hoy?</div></div>
       <button class="btn bg" onclick="sscCancel()" style="padding:5px 10px">X</button>
     </div>
     <div id="ssc-info-box" style="background:var(--bg3);padding:10px 12px;border-radius:7px;margin-bottom:14px;font-size:11px;color:var(--t3);line-height:1.6"></div>
+    <div class="card" style="padding:12px;background:var(--bg2);margin-bottom:12px">
+      <label>Vendedor *</label>
+      <input type="text" id="ssc-seller" placeholder="Nombre del vendedor" style="font-size:12px">
+      <div style="font-size:10px;color:var(--t4);margin-top:3px">Quien ha cerrado la venta. Aparecer&aacute; en la notificaci&oacute;n al contabile y en Nexo Numbers.</div>
+    </div>
     <div class="card" style="padding:12px;background:var(--bg2);margin-bottom:12px">
       <label>Cliente *</label>
       <input type="text" id="ssc-client-search" placeholder="Empieza a escribir nombre, empresa o VAT..." autocomplete="off" oninput="sscSearchClient()" list="ssc-client-datalist">
@@ -1988,7 +1994,7 @@ En que te puedo ayudar hoy?</div></div>
         <input type="text" id="nbpf-client-addr" placeholder="Calle, n&uacute;mero, ciudad, CP">
       </div>
       <div class="g2">
-        <div><label>Pa&iacute;s</label><input type="text" id="nbpf-client-country" placeholder="ES, IT, FR..."></div>
+        <div><label>Pa&iacute;s</label><input type="text" id="nbpf-client-country" placeholder="ES, IT, FR..." onblur="if(typeof nbpfAutoVat==='function')nbpfAutoVat(true)"></div>
         <div><label>Email</label><input type="email" id="nbpf-client-email"></div>
       </div>
     </div>
@@ -2010,20 +2016,25 @@ En que te puedo ayudar hoy?</div></div>
 
     <!-- IVA + TOTALI -->
     <div class="card" style="padding:12px;margin-bottom:12px;background:var(--bg3)">
-      <div class="ct" style="margin-bottom:8px">&#128181; IVA y totales</div>
+      <div class="fbet mb8">
+        <div class="ct" style="margin:0">&#128181; IVA y totales</div>
+        <button class="btn bs" onclick="nbpfAutoVat()" style="font-size:10px;padding:4px 9px" title="Aplica autom\u00e1ticamente IVA seg\u00fan pa\u00eds del cliente">&#9889; Auto IVA</button>
+      </div>
       <div class="g2 mb8">
         <div>
-          <label>R&eacute;gimen IVA</label>
+          <label>R&eacute;gimen fiscal</label>
           <select id="nbpf-vat-mode" onchange="nbpfRecalc()">
-            <option value="standard">Con IVA</option>
-            <option value="export">0% Export (extra-EU)</option>
-            <option value="reverse">Reverse Charge intra-UE (B2B)</option>
+            <option value="standard">Con IVA (operaci&oacute;n nacional)</option>
+            <option value="reverse">Inversi&oacute;n del sujeto pasivo (intra-UE B2B)</option>
+            <option value="export">Operaci&oacute;n no sujeta (fuera UE)</option>
             <option value="exempt">Exento (motivo espec&iacute;fico)</option>
           </select>
+          <div id="nbpf-vat-detect" style="font-size:10px;color:var(--t4);margin-top:3px"></div>
         </div>
         <div>
           <label>Aliquota IVA (%)</label>
           <input type="number" id="nbpf-vat-rate" value="21" min="0" max="30" step="0.5" oninput="nbpfRecalc()">
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">Auto: ES 21% &middot; IT 22% &middot; FR 20% &middot; DE 19%...</div>
         </div>
       </div>
       <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:8px">
@@ -5909,11 +5920,15 @@ function renderStkTbl(){
       html+='<option value="'+esc(opt.v)+'"'+(isSel?' selected':'')+'>'+esc(opt.l)+'</option>';
     });
     html+='</select></td>';
-    // v9.58: Asignado (free-text)
+    // v9.58: Asignado (free-text) - v9.75: mostra soldBy se vendido
     var assignedDisp=item.assignedTo||'';
+    var soldByBadge='';
+    if(item.commercialStatus==='vendido'&&item.soldBy){
+      soldByBadge='<div style="font-size:9px;color:#16a34a;font-weight:600;margin-top:2px" title="Vendedor"><span>&#127942; '+esc(item.soldBy)+'</span></div>';
+    }
     var isStale=stkIsStale(item);
     var staleIcon=isStale?'<span title="Sin actualizar &gt;24h" style="color:#f59e0b;font-weight:700">&#9888;&#65039; </span>':'';
-    html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)"></td>';
+    html+='<td style="font-size:10px;white-space:nowrap;'+(isStale?'background:rgba(245,158,11,.08)':'')+'">'+staleIcon+'<input type="text" class="assigned-inp" data-id="'+item.id+'" value="'+esc(assignedDisp)+'" placeholder="-" list="stk-assigned-list" style="background:transparent;border:none;width:90px;font-size:10px;color:var(--t1)">'+soldByBadge+'</td>';
     // Notas
     html+='<td style="min-width:80px"><button class="btn bg note-btn" data-id="'+item.id+'" style="font-size:10px;padding:3px 8px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
       (noteDisp?'&#128221; '+esc(noteDisp):'&#128221; Nota')+'</button></td>';
@@ -6655,6 +6670,14 @@ window.stkOpenSaleClientModal=function(stockId,newCs,oldCs,onConfirm,onCancel){
   }
   if(s.sell)vehicleInfo+='<br>Precio venta: <strong>'+esc(String(s.sell))+'</strong>';
   document.getElementById('ssc-info-box').innerHTML=vehicleInfo;
+  // v9.75: Pre-popola venditore (con utente loggato + assignedTo + cache last)
+  var sellerInp=document.getElementById('ssc-seller');
+  if(sellerInp){
+    var defaultSeller=s.assignedTo||window._sscLastSeller||(typeof currentUserName!=='undefined'?currentUserName:'')||'';
+    if(typeof currentUser!=='undefined'&&currentUser&&currentUser.displayName)defaultSeller=defaultSeller||currentUser.displayName;
+    if(typeof currentUser!=='undefined'&&currentUser&&currentUser.email&&!defaultSeller)defaultSeller=currentUser.email.split('@')[0];
+    sellerInp.value=s.soldBy||defaultSeller;
+  }
   // Reset form
   document.getElementById('ssc-client-search').value=existingClientName;
   document.getElementById('ssc-confirm-btn').disabled=!existingClientId;
@@ -6773,6 +6796,11 @@ window.sscCancel=function(){
 window.sscConfirm=function(){
   var st=window._sscState;
   if(!st.clientId){alert('Selecciona o crea un cliente.');return;}
+  // v9.75: validazione venditore
+  var sellerInp=document.getElementById('ssc-seller');
+  var sellerName=(sellerInp&&sellerInp.value.trim())||'';
+  if(!sellerName){alert('A\u00f1ade el nombre del vendedor.');if(sellerInp)sellerInp.focus();return;}
+  window._sscLastSeller=sellerName; // cache per il prossimo
   var idx=stock.findIndex(function(s){return String(s.id)===String(st.stockId);});
   if(idx<0)return;
   var c=(typeof contacts!=='undefined'&&Array.isArray(contacts))?contacts:[];
@@ -6783,23 +6811,25 @@ window.sscConfirm=function(){
   stock[idx].commercialUpdatedAt=new Date().toISOString();
   stock[idx].clientId=client.id;
   stock[idx].clientName=client.name||client.company||'';
+  stock[idx].soldBy=sellerName;
+  stock[idx].assignedTo=stock[idx].assignedTo||sellerName;
   if(st.newCs==='vendido')stock[idx].soldAt=new Date().toISOString();
   SS('stock',stock);
   // Sync con Kanban: cerca card esistente o crea nuova
-  nxSyncStockToKanban(st.stockId,st.newCs,client);
+  nxSyncStockToKanban(st.stockId,st.newCs,client,sellerName);
   closeM('m-stk-sale-client');
-  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo \u2192 '+st.newCs+' \u00b7 Cliente: '+(client.name||client.company));
+  if(typeof showToast==='function')showToast('\u2713 Veh\u00edculo \u2192 '+st.newCs+' \u00b7 Cliente: '+(client.name||client.company)+' \u00b7 Vendedor: '+sellerName);
   // Se è VENDIDO, mostra popup "Inviare a contabilità?"
   if(st.newCs==='vendido'){
     setTimeout(function(){
-      window.salesAskSendToAccounting(st.stockId,client);
+      window.salesAskSendToAccounting(st.stockId,client,sellerName);
     },300);
   }
   if(st.onConfirm)st.onConfirm();
 };
 
-// Sync Stock → Kanban (cerca card o crea, aggiorna tag, salva clientId)
-window.nxSyncStockToKanban=function(stockId,newCs,client){
+// Sync Stock → Kanban (cerca card o crea, aggiorna tag, salva clientId + seller)
+window.nxSyncStockToKanban=function(stockId,newCs,client,sellerName){
   if(typeof contacts==='undefined'||!Array.isArray(contacts))return;
   // Mappa stato → tag kanban
   var newTag=null;
@@ -6813,6 +6843,11 @@ window.nxSyncStockToKanban=function(stockId,newCs,client){
   // Verifica se ha già vehicleIds collegati al stock
   if(!c.vehicleIds)c.vehicleIds=[];
   if(c.vehicleIds.indexOf(stockId)<0)c.vehicleIds.push(stockId);
+  // v9.75: Salva venditore assegnato
+  if(sellerName){
+    c.assignedTo=sellerName;
+    c.soldBy=sellerName;
+  }
   // Aggiorna tag se cambia (oldTag → newTag)
   var oldTag=c.tag;
   c.tag=newTag;
@@ -6833,14 +6868,17 @@ window.nxSyncStockToKanban=function(stockId,newCs,client){
 };
 
 // Lato Sales: chiede se inviare a Contabilidad
-window.salesAskSendToAccounting=function(stockId,client){
+window.salesAskSendToAccounting=function(stockId,client,sellerName){
   var s=stock.find(function(x){return String(x.id)===String(stockId);});
   if(!s)return;
   var sellPrice=parseFloat(String(s.sell||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
   var buyPrice=parseFloat(String(s.buy||'').replace(/[^\d.,]/g,'').replace(/,/g,'.'))||0;
   var margin=sellPrice-buyPrice;
   var marginColor=margin>0?'#16a34a':margin<0?'#dc2626':'#6b7280';
+  // v9.75: usa seller dal popup, fallback a stock.soldBy o assignedTo
+  var seller=sellerName||s.soldBy||s.assignedTo||'';
   var summary='<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px">';
+  if(seller)summary+='<div style="color:var(--t3);font-weight:600">Vendedor:</div><div><strong>'+esc(seller)+'</strong></div>';
   summary+='<div style="color:var(--t3);font-weight:600">Veh\u00edculo:</div><div><strong>'+esc((s.brand||'')+' '+(s.model||'')+' '+(s.version||''))+'</strong>'+(s.internalId?' &middot; '+esc(s.internalId):'')+'</div>';
   if(s.vehicles&&s.vehicles.length){
     var vinList=s.vehicles.map(function(v){return v.vin||'?';}).filter(function(v){return v!=='?';});
@@ -6852,7 +6890,7 @@ window.salesAskSendToAccounting=function(stockId,client){
   if(margin)summary+='<div style="color:var(--t3);font-weight:600">Margen:</div><div style="font-family:monospace;color:'+marginColor+';font-weight:700">'+(margin>0?'+':'')+margin.toLocaleString('es-ES')+' \u20ac</div>';
   summary+='</div>';
   document.getElementById('ssa-summary').innerHTML=summary;
-  window._ssaPending={stockId:stockId,clientId:client.id,sellPrice:sellPrice,buyPrice:buyPrice,margin:margin};
+  window._ssaPending={stockId:stockId,clientId:client.id,sellPrice:sellPrice,buyPrice:buyPrice,margin:margin,sellerName:seller};
   openM('m-sales-send-accounting');
 };
 
@@ -6871,7 +6909,7 @@ window.nxNumbersCreateNotification=function(payload){
   var s=stock.find(function(x){return String(x.id)===String(payload.stockId);});
   var c=(typeof contacts!=='undefined'?contacts:[]).find(function(x){return String(x.id)===String(payload.clientId);});
   if(!s||!c)return;
-  var sender=(typeof currentUserName!=='undefined'&&currentUserName)?currentUserName:'Sales';
+  var sender=payload.sellerName||(typeof currentUserName!=='undefined'&&currentUserName)||s.soldBy||s.assignedTo||'Sales';
   var notif={
     id:'nbnf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     type:'sale',
@@ -6904,30 +6942,50 @@ window.nxNumbersCreateNotification=function(payload){
 window.nxNumbersSendEmailToAccountant=function(notif){
   // Trova un'empresa con email contabile configurata (priorità: la prima)
   var company=(nxCompanies||[]).find(function(c){return c.accountantEmail&&c.accountantEmail.indexOf('@')>0;});
-  if(!company)return;
+  if(!company){
+    console.log('[F5 email] Nessuna empresa con accountantEmail configurato. Email skippata.');
+    return;
+  }
+  if(typeof window.NX_MS==='undefined'||!window.NX_MS||typeof window.NX_MS.sendEmail!=='function'){
+    console.warn('[F5 email] Microsoft Graph (NX_MS) non disponibile. Email non inviata. Configura Microsoft 365 in Settings.');
+    if(typeof showToast==='function')showToast('\u26a0\ufe0f Email contabile NO inviata: Microsoft 365 non configurato',5000);
+    return;
+  }
   var subject='[Nexo] Nueva venta para procesar: '+notif.vehicleSummary;
-  var body='<h3>Nueva venta registrada</h3>'
-    +'<p><strong>'+esc(notif.senderName)+'</strong> ha cerrado una venta:</p>'
-    +'<ul>'
-      +'<li>Veh\u00edculo: <strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' ('+esc(notif.internalId)+')':'')+'</li>'
-      +(notif.vins.length?'<li>VIN: <code>'+esc(notif.vins.join(', '))+'</code></li>':'')
-      +'<li>Cliente: <strong>'+esc(notif.clientName)+'</strong>'+(notif.clientVat?' ('+esc(notif.clientVat)+')':'')+'</li>'
-      +(notif.sellPrice?'<li>Precio venta: <strong>'+notif.sellPrice.toLocaleString('es-ES')+' \u20ac</strong></li>':'')
-      +(notif.margin?'<li>Margen: <strong>'+(notif.margin>0?'+':'')+notif.margin.toLocaleString('es-ES')+' \u20ac</strong></li>':'')
-    +'</ul>'
-    +'<p>Accede a NEXO para generar la proforma:</p>'
-    +'<p><a href="'+window.location.origin+window.location.pathname+'?v=974#numbers" style="background:#16a34a;color:#fff;padding:10px 20px;text-decoration:none;border-radius:5px">Generar proforma &rarr;</a></p>'
-    +'<hr><p style="font-size:11px;color:#888">NEXO CRM \u00b7 DMCAR GROUP</p>';
-  // Use Microsoft Graph if available
-  if(typeof window.NX_MS!=='undefined'&&window.NX_MS&&typeof window.NX_MS.sendMail==='function'){
-    try{
-      window.NX_MS.sendMail({to:company.accountantEmail,subject:subject,html:body}).catch(function(err){
-        console.warn('[F5] Email error:',err);
-      });
-      console.log('[F5] Email sent to accountant:',company.accountantEmail);
-    }catch(e){console.warn('[F5] Email send error:',e);}
-  }else{
-    console.log('[F5] Microsoft Graph not available, email skipped. Notification stored only.');
+  var marginColor=notif.margin>0?'#16a34a':notif.margin<0?'#dc2626':'#6b7280';
+  var body='<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#222;max-width:600px;margin:auto;padding:20px;background:#f9fafb">'
+    +'<div style="background:#fff;border-radius:8px;padding:24px;border-top:5px solid #1e3a5f">'
+      +'<h2 style="margin:0 0 16px;color:#1e3a5f">&#128276; Nueva venta para procesar</h2>'
+      +'<p style="font-size:14px;line-height:1.6"><strong>'+esc(notif.senderName||'Sales')+'</strong> ha cerrado una venta:</p>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:13px;margin:14px 0">'
+        +'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600;width:140px">Vendedor</td><td style="padding:6px 10px;background:#f9fafb"><strong>'+esc(notif.senderName||'?')+'</strong></td></tr>'
+        +'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Veh\u00edculo</td><td style="padding:6px 10px;background:#f9fafb"><strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' &middot; '+esc(notif.internalId):'')+'</td></tr>'
+        +(notif.vins&&notif.vins.length?'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">VIN</td><td style="padding:6px 10px;background:#f9fafb;font-family:monospace;font-size:11px">'+esc(notif.vins.join(', '))+'</td></tr>':'')
+        +'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Cliente</td><td style="padding:6px 10px;background:#f9fafb"><strong>'+esc(notif.clientName||'')+'</strong>'+(notif.clientVat?' (VAT: '+esc(notif.clientVat)+')':'')+'</td></tr>'
+        +(notif.clientEmail?'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Email cliente</td><td style="padding:6px 10px;background:#f9fafb">'+esc(notif.clientEmail)+'</td></tr>':'')
+        +(notif.buyPrice?'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Compra</td><td style="padding:6px 10px;background:#f9fafb;font-family:monospace">'+notif.buyPrice.toLocaleString('es-ES')+' \u20ac</td></tr>':'')
+        +(notif.sellPrice?'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Venta</td><td style="padding:6px 10px;background:#f9fafb;font-family:monospace;font-weight:700">'+notif.sellPrice.toLocaleString('es-ES')+' \u20ac</td></tr>':'')
+        +(notif.margin?'<tr><td style="padding:6px 10px;background:#f3f4f6;font-weight:600">Margen</td><td style="padding:6px 10px;background:#f9fafb;font-family:monospace;color:'+marginColor+';font-weight:700">'+(notif.margin>0?'+':'')+notif.margin.toLocaleString('es-ES')+' \u20ac</td></tr>':'')
+      +'</table>'
+      +'<p style="font-size:14px;margin:18px 0">Accede a NEXO para generar la proforma:</p>'
+      +'<p style="text-align:center;margin:20px 0"><a href="'+window.location.origin+window.location.pathname+'?v=975#numbers" style="background:#16a34a;color:#fff;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:700;display:inline-block">Generar proforma &rarr;</a></p>'
+      +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">'
+      +'<p style="font-size:11px;color:#888;text-align:center;margin:0">NEXO CRM &middot; '+esc(company.name||'DMCAR GROUP')+'</p>'
+    +'</div></body></html>';
+  console.log('[F5 email] Inviando notifica a:',company.accountantEmail);
+  try{
+    NX_MS.sendEmail(company.accountantEmail,subject,body,function(ok,err){
+      if(ok){
+        console.log('[F5 email] \u2713 Email inviata a',company.accountantEmail);
+        if(typeof showToast==='function')showToast('\u2713 Email enviada al contabile: '+company.accountantEmail,4000);
+      }else{
+        console.warn('[F5 email] \u2717 Errore invio:',err);
+        if(typeof showToast==='function')showToast('\u26a0\ufe0f Email contabile error: '+(err||'falla\u00ed'),5000);
+      }
+    });
+  }catch(e){
+    console.error('[F5 email] Exception:',e);
+    if(typeof showToast==='function')showToast('\u26a0\ufe0f Email contabile exception: '+e.message,5000);
   }
 };
 
@@ -6939,10 +6997,11 @@ window.numbersOpenNotification=function(notifId){
   document.getElementById('nbn-modal-title').textContent='Notificaci\u00f3n de venta';
   var marginColor=notif.margin>0?'#16a34a':notif.margin<0?'#dc2626':'#6b7280';
   var content='<div style="background:var(--bg3);padding:14px;border-radius:7px;margin-bottom:12px">'
-    +'<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Recibida de: <strong>'+esc(notif.senderName)+'</strong> &middot; '+new Date(notif.createdAt).toLocaleString('es-ES')+'</div>'
-    +'<div style="font-size:13px;line-height:1.7">'
-      +'<div><strong>'+esc(notif.senderName)+'</strong> ha cerrado una venta:</div>'
+    +'<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Recibida: '+new Date(notif.createdAt).toLocaleString('es-ES')+'</div>'
+    +'<div style="font-size:14px;line-height:1.7">'
+      +'<div style="background:rgba(22,163,74,.12);padding:8px 12px;border-radius:6px;margin-bottom:10px;border-left:3px solid #16a34a"><strong style="color:#15803d">&#127942; '+esc(notif.senderName||'?')+'</strong> ha cerrado una venta:</div>'
       +'<div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:5px 14px">'
+        +'<div style="color:var(--t3);font-weight:600">Vendedor:</div><div><strong style="color:#16a34a">'+esc(notif.senderName||'?')+'</strong></div>'
         +'<div style="color:var(--t3);font-weight:600">Veh\u00edculo:</div><div><strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' &middot; '+esc(notif.internalId):'')+'</div>'
         +(notif.vins.length?'<div style="color:var(--t3);font-weight:600">VIN:</div><div style="font-family:monospace;font-size:10px">'+esc(notif.vins.join(', '))+'</div>':'')
         +'<div style="color:var(--t3);font-weight:600">Cliente:</div><div><strong>'+esc(notif.clientName)+'</strong>'+(notif.clientVat?' (VAT: '+esc(notif.clientVat)+')':'')+'</div>'
@@ -19487,7 +19546,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
             return '<div style="padding:12px;background:var(--bg3);border-radius:7px;margin-bottom:8px;cursor:pointer;border-left:4px solid #f59e0b" onclick="numbersOpenNotification(\''+esc(ntf.id)+'\')">'
               +'<div class="fbet">'
                 +'<div style="flex:1">'
-                  +'<div style="font-size:11px;color:var(--t3);font-weight:600">&#128276; '+esc(ntf.senderName||'Sales')+' &middot; '+esc(when)+'</div>'
+                  +'<div style="font-size:11px;color:var(--t3);font-weight:600">&#127942; Vendido por <strong style="color:#16a34a">'+esc(ntf.senderName||'?')+'</strong> &middot; '+esc(when)+'</div>'
                   +'<div style="font-weight:700;font-size:13px;color:var(--t1);margin-top:3px">'+esc(ntf.vehicleSummary)+(ntf.internalId?' &middot; '+esc(ntf.internalId):'')+'</div>'
                   +'<div style="font-size:11px;color:var(--t2);margin-top:2px">Cliente: <strong>'+esc(ntf.clientName)+'</strong>'+(ntf.clientVat?' (VAT: '+esc(ntf.clientVat)+')':'')+'</div>'
                   +(ntf.margin?'<div style="font-size:11px;margin-top:3px">Margen: <span style="color:'+marginColor+';font-weight:700;font-family:monospace">'+(ntf.margin>0?'+':'')+ntf.margin.toLocaleString('es-ES')+' \u20ac</span></div>':'')
@@ -19857,8 +19916,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       unit:'unidad',units:'unidades',unit_short:'Un.',subtotal:'Subtotal',vat:'IVA',
       bank_details:'Datos bancarios',iban:'IBAN',swift:'SWIFT',bank_name:'Banco',
       legal_notes:'Notas legales',payment_terms:'Condiciones de pago',
-      vat_mode_standard:'Con IVA',vat_mode_export:'Exportaci\u00f3n (0% IVA)',vat_mode_reverse:'Reverse Charge intra-UE',vat_mode_exempt:'Exento',
-      reg:'1\u00aa Mat.',kms:'Kms',damage:'Da\u00f1os',color:'Color'
+      vat_mode_standard:'Con IVA',vat_mode_export:'Operaci\u00f3n no sujeta',vat_mode_reverse:'Inversi\u00f3n del sujeto pasivo (intra-UE)',vat_mode_exempt:'Exento',
+      reg:'1\u00aa Mat.',kms:'Kms',damage:'Da\u00f1os',color:'Color',
+      thanks:'Gracias por su confianza',sale_notification:'Nueva venta para procesar',
+      sender_info:'Vendido por',vat_country_auto:'IVA autom\u00e1tico seg\u00fan pa\u00eds'
     },
     IT:{
       proforma:'FATTURA PROFORMA',invoice:'FATTURA',credit:'NOTA DI CREDITO',
@@ -19868,8 +19929,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       unit:'unit\u00e0',units:'unit\u00e0',unit_short:'Un.',subtotal:'Imponibile',vat:'IVA',
       bank_details:'Dati bancari',iban:'IBAN',swift:'SWIFT',bank_name:'Banca',
       legal_notes:'Note legali',payment_terms:'Condizioni di pagamento',
-      vat_mode_standard:'Con IVA',vat_mode_export:'Esportazione (0% IVA)',vat_mode_reverse:'Inversione contabile UE',vat_mode_exempt:'Esente',
-      reg:'1\u00b0 Imm.',kms:'Km',damage:'Danni',color:'Colore'
+      vat_mode_standard:'Con IVA',vat_mode_export:'Operazione non imponibile',vat_mode_reverse:'Inversione contabile (intra-UE)',vat_mode_exempt:'Esente',
+      reg:'1\u00b0 Imm.',kms:'Km',damage:'Danni',color:'Colore',
+      thanks:'Grazie per la fiducia',sale_notification:'Nuova vendita da elaborare',
+      sender_info:'Venduto da',vat_country_auto:'IVA automatica per paese'
     },
     EN:{
       proforma:'PROFORMA INVOICE',invoice:'INVOICE',credit:'CREDIT NOTE',
@@ -19879,8 +19942,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       unit:'unit',units:'units',unit_short:'Qty',subtotal:'Subtotal',vat:'VAT',
       bank_details:'Bank details',iban:'IBAN',swift:'SWIFT',bank_name:'Bank',
       legal_notes:'Legal notes',payment_terms:'Payment terms',
-      vat_mode_standard:'With VAT',vat_mode_export:'Export (0% VAT)',vat_mode_reverse:'Reverse charge intra-EU',vat_mode_exempt:'Exempt',
-      reg:'1st Reg.',kms:'Kms',damage:'Damage',color:'Color'
+      vat_mode_standard:'With VAT',vat_mode_export:'Non-taxable operation',vat_mode_reverse:'Reverse charge (intra-EU)',vat_mode_exempt:'Exempt',
+      reg:'1st Reg.',kms:'Kms',damage:'Damage',color:'Color',
+      thanks:'Thank you for your trust',sale_notification:'New sale to process',
+      sender_info:'Sold by',vat_country_auto:'Automatic country-based VAT'
     }
   };
   
@@ -19888,6 +19953,41 @@ document.querySelectorAll('.ovl').forEach(function(el){
   window.nxT=function(key,lang){
     var dict=window.NX_I18N[lang||'ES']||window.NX_I18N.ES;
     return dict[key]||key;
+  };
+  
+  // v9.75: Tabella IVA standard per paese EU + Resto mondo
+  // Fonte: aliquote IVA standard 2025 (escluse aliquote ridotte)
+  window.NX_VAT_BY_COUNTRY={
+    // EU 27
+    'AT':20,'BE':21,'BG':20,'HR':25,'CY':19,'CZ':21,'DK':25,'EE':22,
+    'FI':25.5,'FR':20,'DE':19,'GR':24,'HU':27,'IE':23,'IT':22,'LV':21,
+    'LT':21,'LU':17,'MT':18,'NL':21,'PL':23,'PT':23,'RO':19,'SK':23,
+    'SI':22,'ES':21,'SE':25,
+    // Spazio Economico Europeo / vicini
+    'GB':20,'CH':8.1,'NO':25,'IS':24
+  };
+  // Lista paesi UE (per detect intra-EU vs extra-EU)
+  window.NX_EU_COUNTRIES=['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE'];
+  
+  // Helper: ottieni aliquota IVA per paese cliente (default 21% se sconosciuto)
+  window.nxGetVatRateForCountry=function(country){
+    if(!country)return null;
+    var c=String(country||'').trim().toUpperCase().slice(0,2);
+    return window.NX_VAT_BY_COUNTRY[c]||null;
+  };
+  
+  // Helper: determina tipo operazione fiscale automaticamente
+  // Riceve: pa\u00edsCliente, pa\u00edsEmpresa
+  // Ritorna: 'nacional' | 'intraEU' | 'extraEU'
+  window.nxClassifyOperation=function(clientCountry,companyCountry){
+    var cc=String(clientCountry||'').trim().toUpperCase().slice(0,2);
+    var oc=String(companyCountry||'').trim().toUpperCase().slice(0,2);
+    if(!cc)return 'nacional';
+    if(cc===oc)return 'nacional';
+    var ccEU=window.NX_EU_COUNTRIES.indexOf(cc)>=0;
+    var ocEU=window.NX_EU_COUNTRIES.indexOf(oc)>=0;
+    if(ccEU&&ocEU)return 'intraEU';
+    return 'extraEU';
   };
   
   // v9.68: Format prezzo in formato europeo "16.600,00 EUR"
@@ -19959,7 +20059,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       notesBold:false,
       notesBg:'#f9fafb',
       notesBorder:'#9ca3af',
-      footer:'Gracias por su confianza',
+      footer:'',
       // v9.71: Banner footer note legali
       bannerEnabled:false,
       bannerText:bannerText[type]||'',
@@ -20193,8 +20293,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }else if(cfg.legalNotes){
       html+='<div style="background:'+notesBg+';border-left:3px solid '+notesBorder+';padding:12px 16px;border-radius:4px;'+notesStyle+';margin-bottom:20px">'+esc(cfg.legalNotes).replace(/\n/g,'<br>')+'</div>';
     }
-    // FOOTER (centro pagina)
-    if(cfg.footer)html+='<div style="text-align:center;padding-top:20px;border-top:1px solid #e5e5e5;font-size:11px;color:#888;font-style:italic">'+esc(cfg.footer)+'</div>';
+    // FOOTER (centro pagina) - v9.75: usa i18n se vuoto
+    var footerText=cfg.footer||t('thanks',lang);
+    if(footerText)html+='<div style="text-align:center;padding-top:20px;border-top:1px solid #e5e5e5;font-size:11px;color:#888;font-style:italic">'+esc(footerText)+'</div>';
     // v9.71: BANNER FOOTER NOTE LEGALI (fondo documento)
     if(cfg.bannerEnabled&&cfg.bannerText){
       html+='<div style="margin-top:20px;background:'+(cfg.bannerBg||'#f3f4f6')+';color:'+(cfg.bannerColor||'#374151')+';padding:14px 18px;border-radius:5px;font-size:10px;line-height:1.6;text-align:center;border:1px solid rgba(0,0,0,.06)">'+esc(cfg.bannerText).replace(/\n/g,'<br>')+'</div>';
@@ -20478,7 +20579,46 @@ document.querySelectorAll('.ovl').forEach(function(el){
       document.getElementById('nbpf-client-addr').value=match.address||match.notes||'';
       document.getElementById('nbpf-client-country').value=match.country||'';
       document.getElementById('nbpf-client-email').value=match.email||'';
+      // v9.75: Auto-applica IVA basata su paese cliente
+      setTimeout(function(){if(typeof nbpfAutoVat==='function')nbpfAutoVat(true);},100);
     }
+  };
+  
+  // v9.75: Auto IVA per paese cliente (rispetto a paese empresa)
+  window.nbpfAutoVat=function(silent){
+    var clientCountry=(document.getElementById('nbpf-client-country').value||'').trim().toUpperCase().slice(0,2);
+    var companyId=document.getElementById('nbpf-company').value;
+    var company=(nxCompanies||[]).find(function(c){return c.id===companyId;});
+    var companyCountry=(company&&company.address&&company.address.country)||'';
+    var detectEl=document.getElementById('nbpf-vat-detect');
+    if(!clientCountry){
+      if(detectEl)detectEl.textContent='Aade el pa\u00eds del cliente para auto-detectar el r\u00e9gimen.';
+      return;
+    }
+    var op=window.nxClassifyOperation(clientCountry,companyCountry);
+    var modeSel=document.getElementById('nbpf-vat-mode');
+    var rateInp=document.getElementById('nbpf-vat-rate');
+    var info='';
+    if(op==='nacional'){
+      // Stesso paese empresa-cliente: con IVA paese empresa
+      modeSel.value='standard';
+      var rate=window.nxGetVatRateForCountry(companyCountry)||21;
+      rateInp.value=rate;
+      info='\u26a1 Detectado: operaci\u00f3n nacional ('+companyCountry+') \u2192 IVA '+rate+'% aplicado';
+    }else if(op==='intraEU'){
+      // Intra-UE B2B: Reverse charge (0% IVA)
+      modeSel.value='reverse';
+      rateInp.value=0;
+      info='\u26a1 Detectado: '+clientCountry+' (intra-UE) \u2192 Inversi\u00f3n del sujeto pasivo (0% IVA)';
+    }else{
+      // Extra-UE: operazione non sujeta (0% IVA)
+      modeSel.value='export';
+      rateInp.value=0;
+      info='\u26a1 Detectado: '+clientCountry+' (fuera UE) \u2192 Operaci\u00f3n no sujeta (0% IVA)';
+    }
+    if(detectEl)detectEl.textContent=info;
+    nbpfRecalc();
+    if(!silent&&typeof showToast==='function')showToast('\u2713 IVA aplicado autom\u00e1ticamente',2500);
   };
   
   // Aggiungi item da Stock Vivo (modal di selezione)
