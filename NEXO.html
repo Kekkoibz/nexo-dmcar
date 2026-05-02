@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.47 — DMCAR GROUP CRM | 2026-05-02 | Modal "Editar contactos" upgrade: multi-select con checkbox per riga + select all, bulk action "Mover seleccionados a..." (apre modal con dropdown lista destino), "Quitar seleccionados" bulk, counter live, persistenza pending changes -->
+<!-- NEXO v9.48 — DMCAR GROUP CRM | 2026-05-02 | Fix bug liste: 1) modal "Editar contactos" forza reset view+selection, mostra chip "en N listas" in vista Todos per evitare confusione su quale lista appartiene il contatto; 2) blocca creazione liste con nome duplicato (case-insensitive trim) sia in mkSaveList che durante import; 3) messaggio duplicato contatto migliorato (mostra nome+empresa+email del contatto esistente, conferma esplicita per actualizar) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -10492,10 +10492,18 @@ function mkSaveContact(){
   var email=mkNormEmail(n('mke-email').value);
   if(!email||!mkValidEmail(email)){alert('Email no v\u00e1lida.');return;}
   var editId=n('m-mk-edit').getAttribute('data-edit-id');
-  // Verifica duplicati su email (escluso se editing)
+  // v9.48: messaggio duplicato pi\u00f9 chiaro
   var dup=mkFindByEmail(email);
   if(dup&&(!editId||String(dup.id)!==String(editId))){
-    if(!confirm('Ya existe un contacto con email "'+email+'". \u00bfActualizar el existente?'))return;
+    var dupInfo='\u26a0\ufe0f Ya existe un contacto con el email "'+email+'":\n\n';
+    dupInfo+='\u2022 Nombre: '+(dup.firstName||'(sin nombre)')+'\n';
+    dupInfo+='\u2022 Empresa: '+(dup.companyName||'(sin empresa)')+'\n';
+    dupInfo+='\u2022 Pa\u00eds: '+(dup.country||'(sin pa\u00eds)')+'\n';
+    dupInfo+='\u2022 Tipo: '+(dup.customerType||'(sin tipo)')+'\n';
+    dupInfo+='\u2022 Estado: '+(dup.status||'subscribed')+'\n\n';
+    dupInfo+='\u00bfActualizar el contacto existente con los datos de este formulario?\n';
+    dupInfo+='(Cancelar para abortar el guardado)';
+    if(!confirm(dupInfo))return;
     editId=dup.id;
   }
   var interestStr=n('mke-interest').value.trim();
@@ -10789,6 +10797,7 @@ function mkOpenListMembersEditor(listId){
     alert('Esta lista es din\u00e1mica (legacy). Para editar miembros manualmente, conv\u00edertela primero a est\u00e1tica.');
     return;
   }
+  // v9.48: FORZA reset completo dello state - garantisce che view='inList' e niente leftover
   _mkListMembersState={
     listId:listId,
     view:'inList',
@@ -10801,6 +10810,7 @@ function mkOpenListMembersEditor(listId){
   n('mkme-search').value='';
   // Reset select all
   var sa=n('mkme-select-all');if(sa)sa.checked=false;
+  // v9.48: forza aggiornamento bottoni view (può essere rimasto su 'all' da apertura precedente)
   mkListMembersUpdateButtons();
   mkListMembersUpdateBulkBar();
   mkListMembersRender();
@@ -10864,6 +10874,18 @@ function mkListMembersRender(){
     if(st.toRemove[cid])return false;
     return !!listIds[cid];
   }
+  // v9.48: helper per trovare le ALTRE liste static dove appare il contatto (oltre quella corrente)
+  function getOtherListsForContact(cid){
+    var others=[];
+    mkLists.forEach(function(l){
+      if(l.id===st.listId)return;
+      if(l.type!=='static')return;
+      if(Array.isArray(l.contactIds)&&l.contactIds.indexOf(cid)>=0){
+        others.push(l);
+      }
+    });
+    return others;
+  }
   var filtered=mkListMembersGetFiltered();
   // Summary
   var totalIn=Object.keys(listIds).filter(function(id){return !st.toRemove[id];}).length+Object.keys(st.toAdd).length;
@@ -10873,11 +10895,17 @@ function mkListMembersRender(){
   if(changesAdd||changesRem){
     summaryHtml+=' &middot; <span style="color:#16a34a">+'+changesAdd+'</span> / <span style="color:#dc2626">-'+changesRem+'</span> pendientes';
   }
+  // v9.48: avviso visivo se siamo in vista "all" per evitare confusione
+  if(st.view==='all'){
+    summaryHtml+='<br><span style="font-size:10px;color:#92400e;font-weight:600">\u26a0\ufe0f Vista: TODOS los contactos del CRM (no s\u00f3lo los de esta lista)</span>';
+  }
   n('mkme-summary').innerHTML=summaryHtml;
   n('mkme-changes-cnt').textContent=changesAdd+changesRem;
   // List
   if(filtered.length===0){
-    n('mkme-list').innerHTML='<div style="color:var(--t4);font-size:11px;text-align:center;padding:20px">No hay contactos que coincidan</div>';
+    n('mkme-list').innerHTML='<div style="color:var(--t4);font-size:11px;text-align:center;padding:20px">'
+      +(st.view==='inList'?'La lista est\u00e1 vac\u00eda. Cambia a "Todos los contactos" para a\u00f1adir contactos.':'No hay contactos que coincidan con la b\u00fasqueda.')
+      +'</div>';
     mkListMembersUpdateBulkBar();
     return;
   }
@@ -10889,11 +10917,24 @@ function mkListMembersRender(){
     if(st.toAdd[c.id])changedClass='border-left:3px solid #16a34a;';
     else if(st.toRemove[c.id])changedClass='border-left:3px solid #dc2626;';
     var isSel=!!st.selected[c.id];
+    // v9.48: in vista 'all' mostra chip delle ALTRE liste dove appare già il contatto
+    var otherListsHtml='';
+    if(st.view==='all'&&!inList){
+      var others=getOtherListsForContact(c.id);
+      if(others.length>0){
+        var chips=others.slice(0,3).map(function(l){
+          return '<span style="background:rgba(245,158,11,.15);color:#92400e;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;margin-right:3px">\ud83d\udcc4 '+esc(l.name)+'</span>';
+        }).join('');
+        if(others.length>3)chips+='<span style="color:var(--t4);font-size:9px">+'+(others.length-3)+'</span>';
+        otherListsHtml='<div style="margin-top:2px">'+chips+'</div>';
+      }
+    }
     return '<div style="display:flex;align-items:center;padding:6px 8px;background:var(--bg2);border-radius:6px;margin-bottom:4px;'+changedClass+'">'
       +'<input type="checkbox" class="mkme-row-cb" data-cid="'+esc(c.id)+'" '+(isSel?'checked':'')+' onchange="mkListMembersToggleSel(\''+esc(c.id)+'\',this.checked)" style="width:14px;height:14px;cursor:pointer;margin-right:8px;flex-shrink:0">'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:12px;font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.firstName||'(sin nombre)')+(c.companyName?' &middot; <span style="font-weight:400;color:var(--t3)">'+esc(c.companyName)+'</span>':'')+'</div>'
         +'<div style="font-size:10px;color:var(--t4);font-family:monospace">'+esc(c.email||'')+'</div>'
+        +otherListsHtml
       +'</div>'
       +'<button class="'+btnCls+'" onclick="mkListMembersToggleContact(\''+esc(c.id)+'\')" style="font-size:10px;padding:3px 8px;margin-left:8px;flex-shrink:0">'+btnLbl+'</button>'
     +'</div>';
@@ -11312,18 +11353,30 @@ function mkImportConfirm(){
     if(!newName){
       listMsg='<br>\u26a0\ufe0f No se cre\u00f3 lista: nombre vac\u00edo.';
     }else{
-      var newList={
-        id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-        name:newName,
-        desc:'Creada al importar el '+new Date().toLocaleDateString('es-ES')+' ('+allTouchedIds.length+' contactos)',
-        type:'static',
-        contactIds:allTouchedIds,
-        createdAt:new Date().toISOString()
-      };
-      mkLists.push(newList);
-      mkListsCounter++;
-      SS('mkLists',mkLists);SS('mkListsCounter',mkListsCounter);
-      listMsg='<br>\u2705 Nueva lista <strong>"'+esc(newName)+'"</strong> creada con '+allTouchedIds.length+' contactos.';
+      // v9.48: check duplicato nome lista (case-insensitive)
+      var newNameLower=newName.toLowerCase();
+      var dupExisting=mkLists.find(function(l){return (l.name||'').trim().toLowerCase()===newNameLower;});
+      if(dupExisting){
+        // Auto-merge: aggiunge i contatti alla lista esistente invece di crearne una duplicata
+        if(!Array.isArray(dupExisting.contactIds))dupExisting.contactIds=[];
+        var addedM=0;
+        allTouchedIds.forEach(function(id){if(dupExisting.contactIds.indexOf(id)<0){dupExisting.contactIds.push(id);addedM++;}});
+        SS('mkLists',mkLists);
+        listMsg='<br>\u26a0\ufe0f Ya exist\u00eda una lista llamada <strong>"'+esc(dupExisting.name)+'"</strong> \u2014 a\u00f1adidos <strong>'+addedM+'</strong> contactos a la existente (no se cre\u00f3 duplicado).';
+      }else{
+        var newList={
+          id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+          name:newName,
+          desc:'Creada al importar el '+new Date().toLocaleDateString('es-ES')+' ('+allTouchedIds.length+' contactos)',
+          type:'static',
+          contactIds:allTouchedIds,
+          createdAt:new Date().toISOString()
+        };
+        mkLists.push(newList);
+        mkListsCounter++;
+        SS('mkLists',mkLists);SS('mkListsCounter',mkListsCounter);
+        listMsg='<br>\u2705 Nueva lista <strong>"'+esc(newName)+'"</strong> creada con '+allTouchedIds.length+' contactos.';
+      }
     }
   }else if(listAction==='existing'&&allTouchedIds.length>0){
     var existingId=n('mk-list-existing-sel').value;
@@ -11563,6 +11616,18 @@ function mkCurrentFilters(){
 function mkSaveList(){
   var name=n('mkl-name').value.trim();
   if(!name){alert('Pon un nombre.');return;}
+  // v9.48: blocca creazione liste con nome duplicato (case-insensitive trim)
+  var editId=n('m-mk-list').getAttribute&&n('m-mk-list').getAttribute('data-edit-id');
+  var nameLower=name.toLowerCase();
+  var dupList=mkLists.find(function(l){
+    if(editId&&l.id===editId)return false; // skip self se editing
+    return (l.name||'').trim().toLowerCase()===nameLower;
+  });
+  if(dupList){
+    alert('\u26a0\ufe0f Ya existe una lista con el nombre "'+dupList.name+'".\n\nElige otro nombre o edita la lista existente.');
+    n('mkl-name').focus();
+    return;
+  }
   // v9.46: tipo sempre 'static' (no più dinamiche per nuove liste)
   var typeEl=n('mkl-type-hidden');
   var type=typeEl?(typeEl.value||'static'):'static';
@@ -16218,6 +16283,40 @@ document.querySelectorAll('.ovl').forEach(function(el){
       SS('nx5_norm_v935',true);
     }
   },2700);
+  // v9.48: one-shot dedup delle liste con stesso nome (case-insensitive trim).
+  // Si fonde in una sola lista la più vecchia, mergiando i contactIds. Solo prima volta.
+  setTimeout(function(){
+    if(LS('nx5_dedup_v948',false))return;
+    if(!Array.isArray(mkLists)||mkLists.length<2){SS('nx5_dedup_v948',true);return;}
+    var byName={};
+    var merged=0;
+    var toRemove=[];
+    mkLists.forEach(function(l){
+      var key=(l.name||'').trim().toLowerCase();
+      if(!key)return;
+      if(!byName[key]){
+        byName[key]=l;
+      }else{
+        // Duplicato: merge contactIds nella più vecchia
+        var keep=byName[key];
+        if(!Array.isArray(keep.contactIds))keep.contactIds=[];
+        if(Array.isArray(l.contactIds)){
+          l.contactIds.forEach(function(id){
+            if(keep.contactIds.indexOf(id)<0)keep.contactIds.push(id);
+          });
+        }
+        toRemove.push(l.id);
+        merged++;
+      }
+    });
+    if(merged>0){
+      mkLists=mkLists.filter(function(l){return toRemove.indexOf(l.id)<0;});
+      SS('mkLists',mkLists);
+      console.log('[v9.48] Listas duplicadas mergiadas: '+merged+' eliminadas.');
+      if(typeof renderMarketing==='function')renderMarketing();
+    }
+    SS('nx5_dedup_v948',true);
+  },2900);
 })();
 
 </script>
