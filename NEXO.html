@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.64 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F0: Setup modulo fatturazione. Sidebar entry "🧾 Nexo Numbers" sotto "Negocio". 6 sub-tab: Dashboard, Proformas, Facturas, Pagos, Reporting, Configuración. DB schema in localStorage: nxCompanies (società emittenti), nxProformas, nxInvoices, nxDocTemplates, nxEmailTemplates, nxPayments, nxNumbersNotifications. Counter sequenziali per società. View skeleton vuote pronte per F1+. Funzioni base: numbersGo(subTab), numbersRender(). -->
+<!-- NEXO v9.65 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F1: CRUD Empresas. Modal m-nb-company con form completo: dati impresa (nombre/VAT/domicilio/CAP/ciudad/país) + sezione Bancos multi-record (nome/IBAN/SWIFT con add/remove dinamico) + sezione Templates (proforma/factura, dropdown selezione + placeholder per F3 editor). Lista empresas in Configuración con cards: nome, VAT, n° banche, edit/delete buttons. Pre-fill DMCAR SRO al primo accesso (one-shot init). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1142,10 +1142,10 @@ En que te puedo ayudar hoy?</div></div>
         <div class="card">
           <div class="ct">&#128737;&#65039; Estado del m&oacute;dulo (Roadmap)</div>
           <div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:8px">
-            <div><span style="color:#16a34a">\u2713 F0</span> Setup + DB schema (esta versi&oacute;n)</div>
-            <div><span style="color:var(--t4)">\u25cb F1</span> CRUD Empresas (siguiente)</div>
-            <div><span style="color:var(--t4)">\u25cb F2</span> Proformas manual</div>
-            <div><span style="color:var(--t4)">\u25cb F3</span> Templates editor</div>
+            <div><span style="color:#16a34a">\u2713 F0</span> Setup + DB schema</div>
+            <div><span style="color:#16a34a">\u2713 F1</span> CRUD Empresas (esta versi&oacute;n)</div>
+            <div><span style="color:var(--t4)">\u25cb F2</span> Proformas manual (siguiente)</div>
+            <div><span style="color:var(--t4)">\u25cb F3</span> Templates editor HTML</div>
             <div><span style="color:var(--t4)">\u25cb F4</span> Generador PDF</div>
             <div><span style="color:var(--t4)">\u25cb F5</span> Trigger Won \u2192 Notificaci&oacute;n</div>
             <div><span style="color:var(--t4)">\u25cb F6</span> Env&iacute;o email autom&aacute;tico</div>
@@ -1548,7 +1548,115 @@ En que te puedo ayudar hoy?</div></div>
   </div>
 </div>
 
-<!-- LEAD: PEGAR FORMULARIO -->
+<!-- v9.65: NEXO NUMBERS F1 - CRUD EMPRESA -->
+<div class="ovl" id="m-nb-company">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <div class="fbet mb14">
+      <div class="mt"><span id="nbc-modal-title">Nueva Empresa Emisora</span></div>
+      <button class="btn bg" onclick="closeM('m-nb-company')" style="padding:5px 10px">X</button>
+    </div>
+
+    <!-- DATOS EMPRESA -->
+    <div class="card" style="padding:14px;margin-bottom:14px;background:var(--bg3)">
+      <div class="ct" style="margin-bottom:10px">&#127970; Datos de la empresa</div>
+      <div class="g2 mb10">
+        <div><label>Nombre empresa *</label><input type="text" id="nbc-name" placeholder="Ej: DMCAR GROUP SRO"></div>
+        <div><label>N&uacute;mero VAT *</label><input type="text" id="nbc-vat" placeholder="Ej: CZ21830851" style="font-family:monospace"></div>
+      </div>
+      <div class="mb10">
+        <label>Domicilio fiscal (calle + n&uacute;mero) *</label>
+        <input type="text" id="nbc-street" placeholder="Ej: \u0160t\u011bp\u00e1nsk\u00e1 1742/27">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label>CP / ZIP *</label><input type="text" id="nbc-zip" placeholder="11000"></div>
+        <div><label>Ciudad *</label><input type="text" id="nbc-city" placeholder="PRAHA 1"></div>
+        <div><label>Pa&iacute;s *</label>
+          <select id="nbc-country">
+            <option value="">--</option>
+            <option value="CZ">Rep&uacute;blica Checa (CZ)</option>
+            <option value="ES">Espa&ntilde;a (ES)</option>
+            <option value="BG">Bulgaria (BG)</option>
+            <option value="IT">Italia (IT)</option>
+            <option value="DE">Alemania (DE)</option>
+            <option value="FR">Francia (FR)</option>
+            <option value="PT">Portugal (PT)</option>
+            <option value="NL">Pa&iacute;ses Bajos (NL)</option>
+            <option value="BE">B&eacute;lgica (BE)</option>
+            <option value="AT">Austria (AT)</option>
+            <option value="PL">Polonia (PL)</option>
+            <option value="HU">Hungr&iacute;a (HU)</option>
+            <option value="RO">Ruman&iacute;a (RO)</option>
+          </select>
+        </div>
+      </div>
+      <div class="g2">
+        <div><label>Email contacto</label><input type="email" id="nbc-email" placeholder="admin@empresa.com"></div>
+        <div><label>Tel&eacute;fono</label><input type="text" id="nbc-phone" placeholder="+420..."></div>
+      </div>
+    </div>
+
+    <!-- BANCOS (multi-record) -->
+    <div class="card" style="padding:14px;margin-bottom:14px;background:var(--bg3)">
+      <div class="fbet mb10">
+        <div class="ct" style="margin:0">&#127974; Bancos</div>
+        <button class="btn bp" onclick="nbcAddBank()" style="font-size:11px;padding:5px 12px">+ Banca</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Puede registrar varias cuentas bancarias para la misma empresa (\u00fatil para clientes en distintos pa\u00edses).</div>
+      <div id="nbc-banks-list">
+        <div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin bancos a\u00fan. Click "+ Banca" para a\u00f1adir.</div>
+      </div>
+    </div>
+
+    <!-- TEMPLATES -->
+    <div class="card" style="padding:14px;margin-bottom:14px;background:var(--bg3)">
+      <div class="fbet mb10">
+        <div class="ct" style="margin:0">&#128196; Configuraci&oacute;n Templates</div>
+        <button class="btn bs" onclick="alert('F3 pendiente: editor HTML completo con variables {{client.name}}, {{items}}, etc.\\n\\nPor ahora puedes seleccionar una plantilla por defecto.')" style="font-size:11px;padding:5px 12px">+ Editar plantilla</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas usadas al generar documentos de esta empresa.</div>
+      <div class="g2">
+        <div>
+          <label>Template Proforma</label>
+          <select id="nbc-tpl-proforma">
+            <option value="default">Plantilla por defecto</option>
+            <option value="minimal">Plantilla minimal</option>
+            <option value="detailed">Plantilla detallada (con desglose IVA)</option>
+          </select>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">F3 pendiente: custom HTML</div>
+        </div>
+        <div>
+          <label>Template Factura</label>
+          <select id="nbc-tpl-invoice">
+            <option value="default">Plantilla por defecto</option>
+            <option value="minimal">Plantilla minimal</option>
+            <option value="detailed">Plantilla detallada (con desglose IVA)</option>
+          </select>
+          <div style="font-size:10px;color:var(--t4);margin-top:3px">F3 pendiente: custom HTML</div>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Numerador documentos</label>
+        <div class="g2">
+          <div>
+            <input type="text" id="nbc-prefix-pf" placeholder="PRO" style="font-family:monospace" maxlength="6">
+            <div style="font-size:10px;color:var(--t4);margin-top:3px">Prefijo Proforma (ej: PRO/2026/0001)</div>
+          </div>
+          <div>
+            <input type="text" id="nbc-prefix-inv" placeholder="INV" style="font-family:monospace" maxlength="6">
+            <div style="font-size:10px;color:var(--t4);margin-top:3px">Prefijo Factura (ej: INV/2026/0001)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTION BUTTONS -->
+    <div class="fc g8" style="justify-content:flex-end">
+      <button class="btn bg" onclick="closeM('m-nb-company')">Cancelar</button>
+      <button class="btn bd" id="nbc-delete-btn" onclick="nbcDelete()" style="display:none">&#128465; Eliminar</button>
+      <button class="btn bp" onclick="nbcSave()">&#128190; Guardar empresa</button>
+    </div>
+  </div>
+</div>
 <div class="ovl" id="m-lead-paste">
   <div class="modal">
     <div class="fbet mb14"><div class="mt">Pegar formulario</div><button class="btn bg" onclick="closeM('m-lead-paste')" style="padding:5px 10px">X</button></div>
@@ -18475,27 +18583,226 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(companies.length===0){
       listEl.innerHTML='<div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">'
         +'<div style="margin-bottom:8px">No hay empresas configuradas todav\u00eda.</div>'
-        +'<div style="font-size:11px">Pendiente F1 \u2014 CRUD empresas (DMCAR SRO, INNOQUEST, IMPEX, MERCEDES SOLUTION).</div>'
+        +'<div style="font-size:11px">Click "+ Nueva empresa" para a\u00f1adir la primera.</div>'
         +'</div>';
       return;
     }
-    // F1: render lista companies
+    // Render lista companies con card per ognuna
     listEl.innerHTML=companies.map(function(c){
-      return '<div style="padding:10px;background:var(--bg3);border-radius:7px;margin-bottom:6px">'
-        +'<div style="font-weight:600;font-size:13px">'+esc(c.name||'')+'</div>'
-        +'<div style="font-size:11px;color:var(--t3);margin-top:2px">VAT: '+esc(c.vatNumber||'?')+' \u00b7 '+esc((c.address&&c.address.country)||'')+'</div>'
+      var nBanks=(c.banks||[]).length;
+      return '<div style="padding:12px;background:var(--bg3);border-radius:7px;margin-bottom:8px;cursor:pointer" onclick="numbersEditCompany(\''+esc(c.id)+'\')">'
+        +'<div class="fbet">'
+          +'<div style="flex:1">'
+            +'<div style="font-weight:700;font-size:13px;color:var(--t1)">'+esc(c.name||'Sin nombre')+'</div>'
+            +'<div style="font-size:11px;color:var(--t3);margin-top:3px;font-family:monospace">VAT: '+esc(c.vatNumber||'?')+'</div>'
+            +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc(((c.address&&c.address.street)||'')+(c.address&&c.address.city?', '+c.address.city:'')+(c.address&&c.address.country?' ('+c.address.country+')':''))+'</div>'
+            +'<div class="fc g6" style="margin-top:6px;flex-wrap:wrap">'
+              +(nBanks>0?'<span style="font-size:10px;background:rgba(16,185,129,.15);color:#065f46;padding:2px 7px;border-radius:5px">\ud83c\udfe6 '+nBanks+' banco'+(nBanks!==1?'s':'')+'</span>':'<span style="font-size:10px;color:var(--t4)">Sin bancos</span>')
+              +(c.proformaPrefix?'<span style="font-size:10px;background:rgba(37,99,235,.15);color:#1e40af;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.proformaPrefix)+'/&hellip;</span>':'')
+              +(c.invoicePrefix?'<span style="font-size:10px;background:rgba(124,58,237,.15);color:#5b21b6;padding:2px 7px;border-radius:5px;font-family:monospace">'+esc(c.invoicePrefix)+'/&hellip;</span>':'')
+            +'</div>'
+          +'</div>'
+          +'<div class="fc g4">'
+            +'<button class="btn bs" onclick="event.stopPropagation();numbersEditCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px">&#9998;</button>'
+            +'<button class="btn bd" onclick="event.stopPropagation();numbersDeleteCompany(\''+esc(c.id)+'\')" style="padding:5px 9px;font-size:11px">&#128465;</button>'
+          +'</div>'
+        +'</div>'
         +'</div>';
     }).join('');
   };
   
-  // F1 placeholder
+  // Buffer per i bancos durante editing (separato da nxCompanies finché non si salva)
+  window._nbcBanksBuffer=[];
+  window._nbcEditingId=null;
+  
+  // F1: NUEVA EMPRESA
   window.numbersNewCompany=function(){
-    alert('F1 pendiente: formulario CRUD empresa con todos los datos fiscales.\n\nPodemos hacerlo en la siguiente versi\u00f3n.');
+    window._nbcEditingId=null;
+    window._nbcBanksBuffer=[];
+    // Reset form
+    document.getElementById('nbc-modal-title').textContent='Nueva Empresa Emisora';
+    document.getElementById('nbc-name').value='';
+    document.getElementById('nbc-vat').value='';
+    document.getElementById('nbc-street').value='';
+    document.getElementById('nbc-zip').value='';
+    document.getElementById('nbc-city').value='';
+    document.getElementById('nbc-country').value='';
+    document.getElementById('nbc-email').value='';
+    document.getElementById('nbc-phone').value='';
+    document.getElementById('nbc-tpl-proforma').value='default';
+    document.getElementById('nbc-tpl-invoice').value='default';
+    document.getElementById('nbc-prefix-pf').value='PRO';
+    document.getElementById('nbc-prefix-inv').value='INV';
+    document.getElementById('nbc-delete-btn').style.display='none';
+    nbcRenderBanks();
+    openM('m-nb-company');
+    setTimeout(function(){document.getElementById('nbc-name').focus();},100);
+  };
+  
+  // F1: EDITAR EMPRESA
+  window.numbersEditCompany=function(companyId){
+    var c=nxCompanies.find(function(x){return x.id===companyId;});
+    if(!c){alert('Empresa no encontrada.');return;}
+    window._nbcEditingId=companyId;
+    window._nbcBanksBuffer=JSON.parse(JSON.stringify(c.banks||[]));
+    document.getElementById('nbc-modal-title').textContent='Editar Empresa: '+(c.name||'');
+    document.getElementById('nbc-name').value=c.name||'';
+    document.getElementById('nbc-vat').value=c.vatNumber||'';
+    document.getElementById('nbc-street').value=(c.address&&c.address.street)||'';
+    document.getElementById('nbc-zip').value=(c.address&&c.address.zip)||'';
+    document.getElementById('nbc-city').value=(c.address&&c.address.city)||'';
+    document.getElementById('nbc-country').value=(c.address&&c.address.country)||'';
+    document.getElementById('nbc-email').value=c.email||'';
+    document.getElementById('nbc-phone').value=c.phone||'';
+    document.getElementById('nbc-tpl-proforma').value=c.templateProforma||'default';
+    document.getElementById('nbc-tpl-invoice').value=c.templateInvoice||'default';
+    document.getElementById('nbc-prefix-pf').value=c.proformaPrefix||'PRO';
+    document.getElementById('nbc-prefix-inv').value=c.invoicePrefix||'INV';
+    document.getElementById('nbc-delete-btn').style.display='';
+    nbcRenderBanks();
+    openM('m-nb-company');
+  };
+  
+  // F1: ELIMINAR EMPRESA (dalla lista)
+  window.numbersDeleteCompany=function(companyId){
+    var c=nxCompanies.find(function(x){return x.id===companyId;});
+    if(!c)return;
+    if(!confirm('\u26a0\ufe0f Eliminar empresa "'+(c.name||'')+'"?\n\nEsto NO elimina las facturas/proformas ya creadas con esta empresa.\n\nContinuar?'))return;
+    nxCompanies=nxCompanies.filter(function(x){return x.id!==companyId;});
+    SS('nxCompanies',nxCompanies);
+    numbersRenderConfig();
+    if(typeof showToast==='function')showToast('\u2713 Empresa eliminada');
+  };
+  
+  // F1: ELIMINA EMPRESA (dal modal di edit)
+  window.nbcDelete=function(){
+    if(!window._nbcEditingId)return;
+    numbersDeleteCompany(window._nbcEditingId);
+    closeM('m-nb-company');
+  };
+  
+  // F1: AGGIUNGI BANCA al buffer
+  window.nbcAddBank=function(){
+    window._nbcBanksBuffer.push({
+      id:'bk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      name:'',
+      iban:'',
+      swift:''
+    });
+    nbcRenderBanks();
+    // Auto-focus sul nuovo input
+    setTimeout(function(){
+      var inputs=document.querySelectorAll('#nbc-banks-list input[data-field="name"]');
+      if(inputs.length)inputs[inputs.length-1].focus();
+    },50);
+  };
+  
+  // F1: RIMUOVI BANCA dal buffer
+  window.nbcRemoveBank=function(bankId){
+    window._nbcBanksBuffer=window._nbcBanksBuffer.filter(function(b){return b.id!==bankId;});
+    nbcRenderBanks();
+  };
+  
+  // F1: RENDER lista banche nel modal
+  window.nbcRenderBanks=function(){
+    var listEl=document.getElementById('nbc-banks-list');
+    if(!listEl)return;
+    if(!window._nbcBanksBuffer||window._nbcBanksBuffer.length===0){
+      listEl.innerHTML='<div style="font-size:11px;color:var(--t4);text-align:center;padding:20px;font-style:italic">Sin bancos a\u00fan. Click "+ Banca" para a\u00f1adir.</div>';
+      return;
+    }
+    listEl.innerHTML=window._nbcBanksBuffer.map(function(b,i){
+      return '<div style="padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:7px;margin-bottom:8px">'
+        +'<div class="fbet mb6">'
+          +'<div style="font-size:11px;color:var(--t3);font-weight:600">Banco #'+(i+1)+'</div>'
+          +'<button class="btn bd" onclick="nbcRemoveBank(\''+esc(b.id)+'\')" style="padding:3px 8px;font-size:10px">&#10006; Quitar</button>'
+        +'</div>'
+        +'<div class="mb6"><label style="font-size:10px">Nombre del banco</label>'
+          +'<input type="text" data-bank-id="'+esc(b.id)+'" data-field="name" value="'+esc(b.name||'')+'" placeholder="Ej: Česká spořitelna" oninput="nbcUpdateBank(\''+esc(b.id)+'\',\'name\',this.value)"></div>'
+        +'<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:8px">'
+          +'<div><label style="font-size:10px">IBAN</label>'
+            +'<input type="text" data-bank-id="'+esc(b.id)+'" data-field="iban" value="'+esc(b.iban||'')+'" placeholder="CZ65 0800 ..." style="font-family:monospace;font-size:11px" oninput="nbcUpdateBank(\''+esc(b.id)+'\',\'iban\',this.value)"></div>'
+          +'<div><label style="font-size:10px">SWIFT/BIC</label>'
+            +'<input type="text" data-bank-id="'+esc(b.id)+'" data-field="swift" value="'+esc(b.swift||'')+'" placeholder="GIBACZPX" style="font-family:monospace;font-size:11px;text-transform:uppercase" oninput="nbcUpdateBank(\''+esc(b.id)+'\',\'swift\',this.value.toUpperCase())"></div>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+  };
+  
+  // F1: UPDATE banca nel buffer (live, mentre l'utente digita)
+  window.nbcUpdateBank=function(bankId,field,value){
+    var b=window._nbcBanksBuffer.find(function(x){return x.id===bankId;});
+    if(b)b[field]=value;
+  };
+  
+  // F1: SALVA EMPRESA
+  window.nbcSave=function(){
+    var name=document.getElementById('nbc-name').value.trim();
+    var vat=document.getElementById('nbc-vat').value.trim();
+    var street=document.getElementById('nbc-street').value.trim();
+    var zip=document.getElementById('nbc-zip').value.trim();
+    var city=document.getElementById('nbc-city').value.trim();
+    var country=document.getElementById('nbc-country').value;
+    if(!name){alert('Nombre empresa es obligatorio.');document.getElementById('nbc-name').focus();return;}
+    if(!vat){alert('N\u00famero VAT es obligatorio.');document.getElementById('nbc-vat').focus();return;}
+    if(!street){alert('Domicilio fiscal es obligatorio.');document.getElementById('nbc-street').focus();return;}
+    if(!zip){alert('CP/ZIP es obligatorio.');document.getElementById('nbc-zip').focus();return;}
+    if(!city){alert('Ciudad es obligatoria.');document.getElementById('nbc-city').focus();return;}
+    if(!country){alert('Selecciona un pa\u00eds.');document.getElementById('nbc-country').focus();return;}
+    
+    // Filtra banche vuote
+    var validBanks=window._nbcBanksBuffer.filter(function(b){
+      return b.name||b.iban||b.swift;
+    });
+    
+    var record={
+      id:window._nbcEditingId||('co_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),
+      name:name,
+      vatNumber:vat,
+      address:{street:street,zip:zip,city:city,country:country},
+      email:document.getElementById('nbc-email').value.trim(),
+      phone:document.getElementById('nbc-phone').value.trim(),
+      banks:validBanks,
+      templateProforma:document.getElementById('nbc-tpl-proforma').value,
+      templateInvoice:document.getElementById('nbc-tpl-invoice').value,
+      proformaPrefix:document.getElementById('nbc-prefix-pf').value.trim()||'PRO',
+      invoicePrefix:document.getElementById('nbc-prefix-inv').value.trim()||'INV',
+      proformaCounter:1,
+      invoiceCounter:1,
+      active:true,
+      updatedAt:new Date().toISOString()
+    };
+    
+    if(window._nbcEditingId){
+      // Update existente
+      var idx=nxCompanies.findIndex(function(x){return x.id===window._nbcEditingId;});
+      if(idx>=0){
+        // Mantieni counter esistenti
+        record.proformaCounter=nxCompanies[idx].proformaCounter||1;
+        record.invoiceCounter=nxCompanies[idx].invoiceCounter||1;
+        record.createdAt=nxCompanies[idx].createdAt;
+        nxCompanies[idx]=record;
+      }
+    }else{
+      // Nuovo
+      record.createdAt=new Date().toISOString();
+      nxCompanies.push(record);
+    }
+    SS('nxCompanies',nxCompanies);
+    closeM('m-nb-company');
+    numbersRenderConfig();
+    if(typeof showToast==='function')showToast('\u2713 Empresa '+(window._nbcEditingId?'actualizada':'creada')+': '+name);
+    window._nbcEditingId=null;
+    window._nbcBanksBuffer=[];
   };
   
   // F2 placeholder
   window.numbersNewProforma=function(){
-    alert('F2 pendiente: formulario crear proforma manual.\n\nPodemos hacerlo despu\u00e9s de F1.');
+    if(nxCompanies.length===0){
+      alert('Primero debes crear al menos una empresa emisora.\n\nVe a Configuraci\u00f3n \u2192 + Nueva empresa');
+      return;
+    }
+    alert('F2 pendiente: formulario crear proforma manual.\n\nDespu\u00e9s de F1 podemos hacerlo.');
   };
   
   // F5 placeholder: accept/reject notifiche
