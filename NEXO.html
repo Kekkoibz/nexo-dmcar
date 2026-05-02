@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.86 — DMCAR GROUP CRM | 2026-05-02 | STOCK UI cleanup colonna Asignado: rendering condizionale per stato. Libre → "—" grigio (no edit). Vendido → SINGOLO nome verde + coppa 🏆 (no input duplicato). Reservado/En negociación → input editabile normale. Eliminato bug v9.75 che mostrava sia input che badge soldBy contemporaneamente (Francesco scritto 2 volte). -->
+<!-- NEXO v9.87 — DMCAR GROUP CRM | 2026-05-02 | STOCK + NEXO + UX: 1) Confirm popup quando si cambia stato da "Vendido" a qualunque altro: "Veicolo risulta venduto. Confermi il cambio?" → Sí prosegue, No annulla; 2) Notifica auto a Nexo Numbers se conferma cancellazione vendita: nuovo tipo notifica 'sale_cancelled' con riferimento veh+cliente+vendedor + check su proforme/facturas associate; 3) Auto-cancellazione documenti collegati: proforme con fromStockId vanno a status='cancelled', facturas richiedono nota di credito (UI prompt al contabile); 4) Persistenza UI dopo refresh: salva activeModule + activeSubTab + filtri Stock + scroll position in nx_uiState (sessionStorage), restore al boot. URL hash sincronizzato. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -5440,7 +5440,68 @@ function go(v){
   if(v==='numbers') renderNumbers();
   if(v==='config') renderConfig();
   if(window.innerWidth<=768) document.getElementById('sb').classList.remove('mob');
+  // v9.87: Persistenza UI - salva modulo attivo
+  try{
+    sessionStorage.setItem('nx_uiState_module',v);
+    if(window.history&&window.history.replaceState)window.history.replaceState(null,'','#'+v);
+  }catch(e){}
 }
+
+// v9.87: Restore UI dopo refresh
+window.nxRestoreUIState=function(){
+  try{
+    // 1. Hash URL ha priorità (es: #stock)
+    var hash=String(window.location.hash||'').replace(/^#/,'').trim();
+    var mod=hash||sessionStorage.getItem('nx_uiState_module')||'';
+    var validModules=['dashboard','asistente','stock','ofertas','contactos','providers','leads','marketing','campaigns','tareas','numbers','config'];
+    if(mod&&validModules.indexOf(mod)>=0){
+      // Aspetta che DOM e funzioni siano caricate
+      setTimeout(function(){
+        if(typeof go==='function')go(mod);
+        // Restore filtri Stock se modulo è stock
+        if(mod==='stock')nxRestoreStockFilters();
+        // Restore scroll
+        var scroll=parseInt(sessionStorage.getItem('nx_uiState_scroll')||'0',10);
+        if(scroll>0)setTimeout(function(){window.scrollTo(0,scroll);},150);
+      },50);
+    }
+  }catch(e){console.warn('[UI restore] failed:',e);}
+};
+
+window.nxRestoreStockFilters=function(){
+  try{
+    var f=JSON.parse(sessionStorage.getItem('nx_uiState_stockFilters')||'{}');
+    if(f.proveedor&&n('f-sup'))n('f-sup').value=f.proveedor;
+    if(f.marca&&n('f-brand'))n('f-brand').value=f.marca;
+    if(f.modelo&&n('f-mod'))n('f-mod').value=f.modelo;
+    if(f.estadoCom&&n('f-cstatus'))n('f-cstatus').value=f.estadoCom;
+    if(f.assigned&&n('f-assigned'))n('f-assigned').value=f.assigned;
+    if(f.y1&&n('f-y1'))n('f-y1').value=f.y1;
+    if(f.y2&&n('f-y2'))n('f-y2').value=f.y2;
+    if(typeof fStk==='function')fStk();
+  }catch(e){}
+};
+
+// Salva filtri Stock periodicamente (ogni cambio)
+window.nxSaveStockFilters=function(){
+  try{
+    var f={
+      proveedor:n('f-sup')?n('f-sup').value:'',
+      marca:n('f-brand')?n('f-brand').value:'',
+      modelo:n('f-mod')?n('f-mod').value:'',
+      estadoCom:n('f-cstatus')?n('f-cstatus').value:'',
+      assigned:n('f-assigned')?n('f-assigned').value:'',
+      y1:n('f-y1')?n('f-y1').value:'',
+      y2:n('f-y2')?n('f-y2').value:''
+    };
+    sessionStorage.setItem('nx_uiState_stockFilters',JSON.stringify(f));
+  }catch(e){}
+};
+
+// Salva scroll periodicamente
+window.addEventListener('scroll',function(){
+  try{sessionStorage.setItem('nx_uiState_scroll',String(window.scrollY));}catch(e){}
+});
 
 function toggleSb(){
   var sb=document.getElementById('sb');
@@ -5745,6 +5806,8 @@ function updBF(){
 }
 
 function fStk(){
+  // v9.87: salva filtri per restore dopo refresh
+  if(typeof window.nxSaveStockFilters==='function')window.nxSaveStockFilters();
   var sup=(n('f-sup').value||'').toLowerCase();
   var brand=n('f-brand').value;
   var mod=(n('f-mod').value||'').toLowerCase();
@@ -6140,18 +6203,36 @@ function renderStkTbl(){
       if(idx<0)return;
       var newCs=this.value;
       var oldCs=stock[idx].commercialStatus||'libre';
+      var selRef=this;
+      // v9.87: CONFIRM se stiamo cambiando DA vendido a qualsiasi altro stato
+      if(oldCs==='vendido'&&newCs!=='vendido'){
+        var item=stock[idx];
+        var msg='\u26a0\ufe0f El veh\u00edculo est\u00e1 actualmente VENDIDO.\n\n';
+        msg+=(item.brand||'')+' '+(item.model||'')+(item.internalId?' ('+item.internalId+')':'')+'\n';
+        if(item.clientName)msg+='Cliente: '+item.clientName+'\n';
+        if(item.soldBy)msg+='Vendedor: '+item.soldBy+'\n';
+        msg+='\n\u00bfConfirmas el cambio a "'+newCs.toUpperCase()+'"?\n\n';
+        msg+='Esto activar\u00e1:\n';
+        msg+='\u2022 Notificaci\u00f3n autom\u00e1tica a Nexo Numbers\n';
+        msg+='\u2022 Cancelaci\u00f3n proforma asociada\n';
+        msg+='\u2022 Solicitud nota de cr\u00e9dito si hay factura';
+        if(!confirm(msg)){
+          selRef.value=oldCs;
+          return;
+        }
+        // Trigger cancellazione vendita
+        if(typeof window.nxNumbersHandleSaleCancellation==='function'){
+          window.nxNumbersHandleSaleCancellation(id,oldCs,newCs);
+        }
+      }
       // v9.74: Per stati che richiedono cliente, apri popup
       if(newCs==='reservado'||newCs==='en_negociacion'||newCs==='vendido'){
-        // Salva la stato richiesto e apri popup
-        var selRef=this;
         if(typeof window.stkOpenSaleClientModal==='function'){
           window.stkOpenSaleClientModal(id,newCs,oldCs,function onConfirm(){
-            // OK: popup ha gestito già il save (incluso commercialStatus + clientId)
             selRef.classList.remove('t-stk','t-1s','t-2s','t-ped','cs-libre','cs-neg','cs-res','cs-ven');
             selRef.classList.add(stkCommercialStatusClass(newCs));
             fStk();
           },function onCancel(){
-            // Utente ha annullato: ripristina dropdown
             selRef.value=oldCs;
           });
           return;
@@ -7330,6 +7411,128 @@ window.nxNumbersSendEmailToAccountant=function(notif){
   }
 };
 
+// v9.87: Cancellazione vendita - notifica + cancel docs collegati
+window.nxNumbersHandleSaleCancellation=function(stockId,oldCs,newCs){
+  var s=stock.find(function(x){return String(x.id)===String(stockId);});
+  if(!s)return;
+  // Trova proforme/facturas associate a questo stock (campo fromStockId o sourceStockId)
+  var affectedProformas=(window.nxProformas||[]).filter(function(p){
+    return p&&(String(p.fromStockId)===String(stockId)||String(p.sourceStockId)===String(stockId)||(p.items&&p.items.some(function(it){return String(it.stockId)===String(stockId);})));
+  });
+  var affectedInvoices=(window.nxInvoices||[]).filter(function(f){
+    return f&&(String(f.fromStockId)===String(stockId)||String(f.sourceStockId)===String(stockId));
+  });
+  // Cancella proforme (status → cancelled)
+  affectedProformas.forEach(function(p){
+    p.status='cancelled';
+    p.cancelledAt=new Date().toISOString();
+    p.cancelReason='Vendita annullata (Stock '+stockId+' \u2192 '+newCs+')';
+  });
+  if(affectedProformas.length>0)SS('nxProformas',window.nxProformas);
+  // Crea notifica F5 cancel
+  if(!Array.isArray(window.nxNumbersNotifications))window.nxNumbersNotifications=[];
+  var modelStr=(s.brand||'')+' '+(s.model||'')+(s.version?' '+s.version:'');
+  var notif={
+    id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+    type:'sale_cancelled',
+    status:'pending',
+    senderName:s.soldBy||'Sales',
+    stockId:stockId,
+    clientId:s.clientId||'',
+    vehicleSummary:modelStr,
+    internalId:s.internalId||'',
+    clientName:s.clientName||'',
+    oldStatus:oldCs,
+    newStatus:newCs,
+    affectedProformas:affectedProformas.map(function(p){return {id:p.id,number:p.number};}),
+    affectedInvoices:affectedInvoices.map(function(f){return {id:f.id,number:f.number};}),
+    requiresCreditNote:affectedInvoices.length>0,
+    createdAt:new Date().toISOString()
+  };
+  window.nxNumbersNotifications.unshift(notif);
+  SS('nxNumbersNotifications',window.nxNumbersNotifications);
+  // Refresh badge sidebar se esiste
+  if(typeof renderSidebarBadges==='function'){try{renderSidebarBadges();}catch(e){}}
+  if(typeof numbersRenderDashboard==='function'){try{numbersRenderDashboard();}catch(e){}}
+  // Email contabile
+  if(typeof window.nxNumbersSendCancellationEmail==='function')window.nxNumbersSendCancellationEmail(notif);
+  // Toast feedback completo
+  var toastMsg='\u26a0\ufe0f Venta cancelada \u2192 Notificaci\u00f3n a Contabilidad';
+  if(affectedProformas.length>0)toastMsg+=' \u00b7 '+affectedProformas.length+' proforma(s) anuladas';
+  if(affectedInvoices.length>0)toastMsg+=' \u00b7 '+affectedInvoices.length+' factura(s) requieren nota de cr\u00e9dito';
+  if(typeof showToast==='function')showToast(toastMsg,6000);
+  console.log('[F5 cancel]',notif);
+};
+
+// v9.87: Email cancellazione vendita al contabile
+window.nxNumbersSendCancellationEmail=function(notif){
+  var company=(nxCompanies||[]).find(function(c){return c.accountantEmail&&c.accountantEmail.indexOf('@')>0;});
+  if(!company)return;
+  if(typeof window.NX_MS==='undefined'||!window.NX_MS||typeof window.NX_MS.sendEmail!=='function')return;
+  var subject='[Nexo] Venta CANCELADA: '+notif.vehicleSummary;
+  var body='<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#222;max-width:600px;margin:auto;padding:20px;background:#fef2f2">'
+    +'<div style="background:#fff;border-radius:8px;padding:24px;border-top:5px solid #dc2626">'
+      +'<h2 style="margin:0 0 16px;color:#dc2626">&#9888;&#65039; Venta Cancelada / Modificada</h2>'
+      +'<p style="font-size:14px;line-height:1.6">La venta del veh\u00edculo abajo indicado ha sido <strong>modificada</strong> de <strong>VENDIDO</strong> a <strong>'+esc(notif.newStatus.toUpperCase())+'</strong>.</p>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:13px;margin:14px 0">'
+        +'<tr><td style="padding:6px 10px;background:#fee2e2;font-weight:600;width:140px">Vendedor</td><td style="padding:6px 10px;background:#fef2f2"><strong>'+esc(notif.senderName||'?')+'</strong></td></tr>'
+        +'<tr><td style="padding:6px 10px;background:#fee2e2;font-weight:600">Veh\u00edculo</td><td style="padding:6px 10px;background:#fef2f2"><strong>'+esc(notif.vehicleSummary)+'</strong>'+(notif.internalId?' &middot; '+esc(notif.internalId):'')+'</td></tr>'
+        +'<tr><td style="padding:6px 10px;background:#fee2e2;font-weight:600">Cliente</td><td style="padding:6px 10px;background:#fef2f2">'+esc(notif.clientName||'?')+'</td></tr>'
+        +'<tr><td style="padding:6px 10px;background:#fee2e2;font-weight:600">Estado</td><td style="padding:6px 10px;background:#fef2f2">VENDIDO &rarr; <strong>'+esc(notif.newStatus.toUpperCase())+'</strong></td></tr>'
+      +'</table>';
+  if(notif.affectedProformas&&notif.affectedProformas.length>0){
+    body+='<h3 style="color:#dc2626;font-size:14px;margin-top:18px">&#128221; Proformas anuladas autom\u00e1ticamente:</h3><ul>';
+    notif.affectedProformas.forEach(function(p){body+='<li>'+esc(p.number||p.id)+'</li>';});
+    body+='</ul>';
+  }
+  if(notif.requiresCreditNote){
+    body+='<div style="background:#fef3c7;padding:14px;border-radius:6px;margin-top:18px;border-left:4px solid #f59e0b">'
+      +'<strong style="color:#92400e">&#9888;&#65039; ACCI\u00d3N REQUERIDA: Nota de cr\u00e9dito</strong><br>'
+      +'<span style="font-size:12px">Hay '+notif.affectedInvoices.length+' factura(s) emitidas para este veh\u00edculo. Es necesario emitir nota(s) de cr\u00e9dito:</span><ul>';
+    notif.affectedInvoices.forEach(function(f){body+='<li>'+esc(f.number||f.id)+'</li>';});
+    body+='</ul></div>';
+  }
+  body+='<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">'
+    +'<p style="font-size:11px;color:#888;text-align:center;margin:0">NEXO CRM &middot; '+esc(company.name||'DMCAR GROUP')+'</p>'
+    +'</div></body></html>';
+  try{
+    NX_MS.sendEmail(company.accountantEmail,subject,body,function(ok,err){
+      if(ok){console.log('[F5 cancel email] \u2713 enviado a',company.accountantEmail);}
+      else{console.warn('[F5 cancel email] error:',err);}
+    });
+  }catch(e){console.error('[F5 cancel email] exception:',e);}
+};
+
+// v9.87: Aprire notifica di vendita CANCELLATA (mostra azioni richieste)
+window.numbersOpenNotificationCancel=function(notifId){
+  var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+  if(!notif){alert('Notificaci\u00f3n no encontrada.');return;}
+  var msg='\u26a0\ufe0f VENTA CANCELADA\n\n';
+  msg+='Veh\u00edculo: '+notif.vehicleSummary+(notif.internalId?' ('+notif.internalId+')':'')+'\n';
+  msg+='Cliente: '+(notif.clientName||'?')+'\n';
+  msg+='Vendedor: '+(notif.senderName||'?')+'\n';
+  msg+='Estado: '+(notif.oldStatus||'').toUpperCase()+' \u2192 '+(notif.newStatus||'').toUpperCase()+'\n\n';
+  if(notif.affectedProformas&&notif.affectedProformas.length>0){
+    msg+='Proformas anuladas autom\u00e1ticamente:\n';
+    notif.affectedProformas.forEach(function(p){msg+='  - '+(p.number||p.id)+'\n';});
+    msg+='\n';
+  }
+  if(notif.requiresCreditNote){
+    msg+='\u26a0\ufe0f ACCI\u00d3N REQUERIDA: Emitir nota(s) de cr\u00e9dito para:\n';
+    (notif.affectedInvoices||[]).forEach(function(f){msg+='  - '+(f.number||f.id)+'\n';});
+    msg+='\n';
+  }
+  msg+='\u00bfConfirmar archivado de esta notificaci\u00f3n?';
+  if(confirm(msg)){
+    notif.status='processed';
+    notif.processedAt=new Date().toISOString();
+    SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
+    if(typeof renderSidebarBadges==='function')renderSidebarBadges();
+    if(typeof showToast==='function')showToast('\u2713 Notificaci\u00f3n archivada');
+  }
+};
+
 // Apertura notifica - lista
 window.numbersOpenNotification=function(notifId){
   var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
@@ -7508,6 +7711,10 @@ window.numbersAutoCheckOnLoad=function(){
 // Run all'init
 if(document.readyState==='loading'){
   document.addEventListener('DOMContentLoaded',function(){numbersAutoCheckOnLoad();});
+  // v9.87: Restore UI state dopo refresh (modulo + filtri + scroll)
+  document.addEventListener('DOMContentLoaded',function(){
+    setTimeout(function(){if(typeof nxRestoreUIState==='function')nxRestoreUIState();},150);
+  });
 }else{
   numbersAutoCheckOnLoad();
 }
@@ -19953,6 +20160,23 @@ document.querySelectorAll('.ovl').forEach(function(el){
                   +'<div style="font-size:10px;color:var(--acc);margin-top:6px;font-weight:600">&#128072; Click para gestionar</div>'
                 +'</div>'
                 +'<button class="btn bp" style="font-size:11px;padding:6px 14px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;white-space:nowrap" onclick="event.stopPropagation();numbersOpenNotification(\''+esc(ntf.id)+'\')">Procesar &rarr;</button>'
+              +'</div></div>';
+          }
+          // v9.87: Sale cancelled notification
+          if(ntf.type==='sale_cancelled'&&ntf.vehicleSummary){
+            var when2=ntf.createdAt?new Date(ntf.createdAt).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+            var docsInfo='';
+            if(ntf.affectedProformas&&ntf.affectedProformas.length>0)docsInfo+=' &middot; '+ntf.affectedProformas.length+' proforma(s) anulada(s)';
+            if(ntf.requiresCreditNote)docsInfo+=' &middot; <span style="color:#dc2626;font-weight:700">requiere nota cr\u00e9dito</span>';
+            return '<div style="padding:14px;background:rgba(220,38,38,.06);border-radius:8px;margin-bottom:8px;cursor:pointer;border-left:4px solid #dc2626;transition:all .15s" onclick="numbersOpenNotificationCancel(\''+esc(ntf.id)+'\')">'
+              +'<div class="fbet" style="align-items:flex-start">'
+                +'<div style="flex:1">'
+                  +'<div style="font-size:11px;color:#dc2626;font-weight:700">&#9888;&#65039; VENTA CANCELADA &middot; '+esc(when2)+'</div>'
+                  +'<div style="font-weight:700;font-size:13px;color:var(--t1);margin-top:4px">'+esc(ntf.vehicleSummary)+(ntf.internalId?' &middot; '+esc(ntf.internalId):'')+'</div>'
+                  +'<div style="font-size:11px;color:var(--t2);margin-top:3px">Cliente: <strong>'+esc(ntf.clientName||'?')+'</strong> &middot; Estado: <strong>'+esc(ntf.oldStatus||'').toUpperCase()+' &rarr; '+esc(ntf.newStatus||'').toUpperCase()+'</strong></div>'
+                  +(docsInfo?'<div style="font-size:11px;color:var(--t2);margin-top:3px">'+docsInfo+'</div>':'')
+                +'</div>'
+                +'<button class="btn bd" style="font-size:11px;padding:6px 14px;color:#fff;border:none;white-space:nowrap" onclick="event.stopPropagation();numbersOpenNotificationCancel(\''+esc(ntf.id)+'\')">Revisar &rarr;</button>'
               +'</div></div>';
           }
           // Fallback formato legacy (notifiche vecchie tipo Won kanban)
