@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.68 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UPGRADE: 1) Layout TABELLARE 4 colonne standard auto B2B (Nome prodotto/servizio multi-linea | Cantidad | Importe | Total) - prima colonna concatena VIN+Modello+Versione+Reg+Kms+Color+Damage in formato leggibile, righe descrittive (note pagamento, tempistiche) supportate con importo 0. 2) Sistema i18n IT/ES/EN per labels (Cliente/Subtotal/IVA/Total/Bancos/Fecha/Número). Lingua default per empresa (campo "documentLanguage") + override per documento in F2 (dropdown "Idioma del documento"). Auto-wrap, allineamento numeri a destra, formato valuta es-ES. Auto-popolamento line items da Stock Vivo (VIN/brand/model/version/reg/kms/color/damage/sell). -->
+<!-- NEXO v9.69 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UI: 1) Label VIN/1°Reg/Km/Color/Damage ora in <strong> bold (più leggibili); 2) Layout linea veicolo riorganizzato (Modello brand+model+version sulla prima riga, poi metadati su riga 2 separati da spazi multipli); 3) Sample preview template aggiornato a TOYOTA YARIS Cross Style 130km (esempio fornito da Francesco) per testing più realistico. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -19167,25 +19167,23 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!item)return '';
     // Item manuale (no VIN, no model auto) → solo description con line-break
     if(!item.vin&&!item.model&&!item.brand)return esc(item.description||'').replace(/\n/g,'<br>');
-    // Item veicolo: composizione multi-linea
-    var line1='',line2='';
-    // Linea 1: VIN MODELO VERSION 1° Reg. DATE
-    var parts1=[];
-    if(item.vin)parts1.push(esc(item.vin));
+    // Item veicolo: layout esempio (Modello a capo, poi VIN/Reg/Km/Color/Damage con label in BOLD)
+    // Esempio: TOYOTA YARIS Cross Style 130km
+    //          VIN: JTDKGAGB20A149201   1º Reg: 16/02/2025   km: 10   Color: Grey Metalic   Damage: 0€
     var modelParts=[];
     if(item.brand)modelParts.push(item.brand);
     if(item.model)modelParts.push(item.model);
     if(item.version)modelParts.push(item.version);
-    if(modelParts.length)parts1.push(esc(modelParts.join(' ')));
-    if(item.reg)parts1.push(t('reg',lang)+' '+esc(item.reg));
-    line1=parts1.join(' ');
-    // Linea 2: Kms COLORE Damage: TESTO_DANNI
+    var line1=esc(modelParts.join(' '));
+    // Linea 2: tutti i metadati con label in <strong>
     var parts2=[];
-    if(item.kms)parts2.push(t('kms',lang)+' '+esc(item.kms));
-    if(item.color)parts2.push(esc(item.color));
-    if(item.damage&&item.damage!=='--')parts2.push(t('damage',lang)+': '+esc(item.damage));
-    line2=parts2.join(' ');
-    // Linea 3 opzionale: descripcion extra (se utente l'ha aggiunta)
+    if(item.vin)parts2.push('<strong>VIN:</strong> '+esc(item.vin));
+    if(item.reg)parts2.push('<strong>'+t('reg',lang)+':</strong> '+esc(item.reg));
+    if(item.kms)parts2.push('<strong>'+t('kms',lang)+':</strong> '+esc(item.kms));
+    if(item.color)parts2.push('<strong>'+t('color',lang)+':</strong> '+esc(item.color));
+    if(item.damage&&item.damage!=='--')parts2.push('<strong>'+t('damage',lang)+':</strong> '+esc(item.damage));
+    var line2=parts2.join('&nbsp;&nbsp;&nbsp;');
+    // Linea 3 opzionale: descripcion extra
     var line3=item.description&&item.description!==(item.brand+' '+item.model+' '+item.version).trim()?esc(item.description):'';
     var html=line1;
     if(line2)html+='<br>'+line2;
@@ -19334,16 +19332,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
       docDate:new Date().toLocaleDateString('es-ES'),
       client:{name:'Cliente Ejemplo SL',vatNumber:'ES12345678X',address:'Calle Ejemplo 42, 28001 Madrid (ES)',country:'ES',email:'cliente@ejemplo.com'},
       items:[
-        {vin:'WBA7K310607P08024',brand:'BMW',model:'118i',version:'',reg:'5/3/24',kms:'33479',color:'Metal Grey',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
-        {vin:'WBA7K310207N95298',brand:'BMW',model:'118i',version:'',reg:'5/3/24',kms:'35551',color:'Black',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
-        {vin:'WBA7K310907P32155',brand:'BMW',model:'118i',version:'',reg:'10/4/24',kms:'40484',color:'Black',damage:'As damage Report',quantity:1,unitPrice:16600,total:16600},
+        {vin:'JTDKGAGB20A149201',brand:'TOYOTA',model:'YARIS Cross',version:'Style 130km',reg:'16/02/2025',kms:'10',color:'Grey Metalic',damage:'0\u20ac',quantity:1,unitPrice:24500,total:24500},
+        {vin:'JTDKGAGB20A149318',brand:'TOYOTA',model:'YARIS Cross',version:'Style 130km',reg:'18/02/2025',kms:'15',color:'Pearl White',damage:'0\u20ac',quantity:1,unitPrice:24500,total:24500},
         {description:lang==='IT'?'Il cliente si impegna a versare 500 \u20ac per veicolo a titolo di prenotazione, da pagare entro 24 ore; in caso contrario, la proforma perder\u00e0 la sua validit\u00e0.':lang==='EN'?'The client undertakes to pay \u20ac500 per vehicle as a reservation fee, payable within 24 hours; otherwise, the proforma will lose its validity.':'El cliente se compromete a abonar 500 \u20ac por veh\u00edculo en concepto de reserva, pagaderos en 24 horas; en caso contrario, la proforma perder\u00e1 su validez.',quantity:1,unitPrice:0,total:0},
         {description:lang==='IT'?'I veicoli saranno pronti per il saldo e il carico in circa 4 settimane.':lang==='EN'?'The vehicles will be ready for final payment and loading in approximately 4 weeks.':'Los veh\u00edculos estar\u00e1n listos para el pago final y la carga en aproximadamente 4 semanas.',quantity:1,unitPrice:0,total:0}
       ],
-      subtotal:49800,
+      subtotal:49000,
       vatRate:0,
       vatAmount:0,
-      total:49800
+      total:49000
     };
   }
   
