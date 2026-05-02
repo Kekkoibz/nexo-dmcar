@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.55 — DMCAR GROUP CRM | 2026-05-02 | Aggiunta colonna "Listas" nella tabella Contactos B2B (list view + card view): mostra come chip/badge le liste Marketing a cui il contatto appartiene (match per email tra contacts.email e mkContacts.email→mkLists.contactIds). Click su chip apre la lista filtrata in Marketing. Aggiornato in tempo reale a ogni renderCont. -->
+<!-- NEXO v9.56 — DMCAR GROUP CRM | 2026-05-02 | Fix colonna Listas B2B vuota: 1) DEBUG attivabile via localStorage.nx_debug_b2b_lists=1 con log dettagliati su match email; 2) MIGRATION one-shot v9.56 al boot: sincronizza in mkContacts TUTTI i contacts B2B esistenti con email valida (prima erano solo quelli passati dal routing post-9.49); 3) bottone "🔄 Sync B2B → Marketing" in Marketing toolbar per ri-sync manuale on-demand. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -719,6 +719,7 @@ En que te puedo ayudar hoy?</div></div>
           <button class="btn bs" onclick="mkDownloadTemplate()" style="font-size:12px" title="Descargar plantilla CSV vac&iacute;a"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Plantilla CSV</button>
           <button class="btn bs" onclick="mkBulkEnrich()" style="font-size:12px;background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border:none" title="Auto-rellenar pa&iacute;s y empresa de los contactos vac&iacute;os usando el dominio del email">&#10024; Enriquecer datos</button>
           <button class="btn bs" id="mk-infer-ip-btn" onclick="mkBulkInferCountryByIP()" style="font-size:12px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none" title="Inferir pa&iacute;s por IP geolocation (DNS + ipwho.is). Util para dominios .com">&#127760; Inferir pa&iacute;s (IP)</button>
+          <button class="btn bs" onclick="mkBulkSyncB2BToMarketing()" style="font-size:12px" title="Re-sincroniza todos los contactos B2B en Marketing (Direct Mail) por si la columna Listas en B2B est&aacute; vac&iacute;a">&#128257; Sync B2B</button>
           <button class="btn bs" onclick="openM('m-mk-paste')" style="font-size:12px">&#128203; Pegar</button>
           <button class="btn bs" onclick="openM('m-mk-import')" style="font-size:12px">&#128229; Importar</button>
           <button class="btn bs" onclick="mkUndoLastImport()" id="mk-undo-btn" style="font-size:12px;display:none" title="Borrar todos los contactos del &uacute;ltimo import (irrevocable)">&#8617; Anular &uacute;ltimo import</button>
@@ -3716,19 +3717,30 @@ window.mkExecuteAutoroutingForWithMatches=mkExecuteAutoroutingForWithMatches;
 // v9.55: Helper "trova le liste Marketing del contatto B2B"
 // Match per EMAIL: cerca il record mkContact con stessa email, poi le sue liste.
 // Ritorna array [{id, name, type}] o [] se contatto non sincronizzato in Marketing.
+// v9.56: aggiunto debug verboso (attivabile con localStorage 'nx_debug_b2b_lists'='1')
 function mkGetListsForB2BContact(b2bContact){
+  var DBG=false;
+  try{DBG=localStorage.getItem('nx_debug_b2b_lists')==='1';}catch(e){}
   try{
-    if(!b2bContact||!b2bContact.email)return [];
-    if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts))return [];
-    if(typeof mkLists==='undefined'||!Array.isArray(mkLists))return [];
-    var email=(typeof mkNormEmail==='function')?mkNormEmail(b2bContact.email):String(b2bContact.email).trim().toLowerCase();
+    if(!b2bContact){if(DBG)console.log('[GLB2B] no contact');return [];}
+    if(!b2bContact.email){if(DBG)console.log('[GLB2B] no email for',b2bContact.name);return [];}
+    if(typeof mkContacts==='undefined'||!Array.isArray(mkContacts)){if(DBG)console.log('[GLB2B] mkContacts not ready');return [];}
+    if(typeof mkLists==='undefined'||!Array.isArray(mkLists)){if(DBG)console.log('[GLB2B] mkLists not ready');return [];}
+    var rawEmail=b2bContact.email;
+    var email=(typeof mkNormEmail==='function')?mkNormEmail(rawEmail):String(rawEmail).trim().toLowerCase();
     if(!email)return [];
     var mk=mkContacts.find(function(c){
-      var ce=(typeof mkNormEmail==='function')?mkNormEmail(c.email||''):String(c.email||'').trim().toLowerCase();
+      if(!c||!c.email)return false;
+      var ce=(typeof mkNormEmail==='function')?mkNormEmail(c.email):String(c.email).trim().toLowerCase();
       return ce===email;
     });
-    if(!mk)return [];
-    return (typeof mkGetContactLists==='function')?mkGetContactLists(mk):[];
+    if(!mk){
+      if(DBG)console.log('[GLB2B] NO MATCH for B2B email:',email,'| mkContacts emails sample:',mkContacts.slice(0,5).map(function(c){return c.email;}));
+      return [];
+    }
+    var lists=(typeof mkGetContactLists==='function')?mkGetContactLists(mk):[];
+    if(DBG)console.log('[GLB2B] MATCH found:',b2bContact.name,'→ mk_id:',mk.id,'lists:',lists.length);
+    return lists;
   }catch(err){
     console.warn('[mkGetListsForB2BContact] error:',err);
     return [];
@@ -3772,6 +3784,39 @@ function mkOpenListFromB2B(listId){
 window.mkGetListsForB2BContact=mkGetListsForB2BContact;
 window.mkRenderListsCellForB2B=mkRenderListsCellForB2B;
 window.mkOpenListFromB2B=mkOpenListFromB2B;
+
+// v9.56: BULK SYNC B2B → Marketing
+// Sincronizza TUTTI i contacts B2B con email valida nel registro mkContacts.
+// Necessario perché contacts B2B esistenti prima di v9.49 non sono mai stati copiati in Marketing.
+// Ritorna {synced, skipped} stats.
+function mkBulkSyncB2BToMarketing(silent){
+  try{
+    if(typeof contacts==='undefined'||!Array.isArray(contacts)){
+      if(!silent)alert('contacts B2B no disponibles.');
+      return {synced:0,skipped:0};
+    }
+    var synced=0,skipped=0,already=0;
+    contacts.forEach(function(c){
+      if(!c||!c.email)return skipped++;
+      // mkSyncFromB2B fa upsert (update soft o create)
+      var mkId=mkSyncFromB2B(c,'b2b_bulk_sync');
+      if(mkId)synced++;
+      else skipped++;
+    });
+    console.log('[mkBulkSyncB2BToMarketing] synced='+synced+' skipped='+skipped);
+    if(typeof renderCont==='function')renderCont();
+    if(typeof renderMarketing==='function')renderMarketing();
+    if(!silent&&typeof showToast==='function'){
+      showToast('\u2713 Sync B2B\u2192Marketing: '+synced+' sincronizados, '+skipped+' saltados (sin email v\u00e1lida)');
+    }
+    return {synced:synced,skipped:skipped};
+  }catch(err){
+    console.error('[mkBulkSyncB2BToMarketing] FATAL:',err);
+    if(!silent)alert('Error en sync masivo:\n'+(err&&err.message||err));
+    return {synced:0,skipped:0};
+  }
+}
+window.mkBulkSyncB2BToMarketing=mkBulkSyncB2BToMarketing;
 
 // Dialog bulk (con elenco completo + Sí/Sí a todos/No)
 function mkRoutingShowBulkDialog(){
@@ -17257,6 +17302,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     SS('nx5_dedup_v948',true);
   },2900);
+  // v9.56: one-shot sync TUTTI i contacts B2B esistenti in mkContacts. Solo prima volta.
+  // Necessario perché i contacts creati prima del routing v9.49 non sono mai stati copiati in Marketing.
+  setTimeout(function(){
+    if(LS('nx5_b2b_sync_v956',false))return;
+    if(typeof mkBulkSyncB2BToMarketing==='function'){
+      var stats=mkBulkSyncB2BToMarketing(true);
+      console.log('[v9.56] B2B\u2192Marketing one-shot sync: '+stats.synced+' sincronizados, '+stats.skipped+' saltados.');
+      SS('nx5_b2b_sync_v956',true);
+    }
+  },3100);
 })();
 
 </script>
