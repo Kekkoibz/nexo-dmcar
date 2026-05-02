@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.45 — DMCAR GROUP CRM | 2026-05-02 | Envío masivo REAL: campSendNow con throttling 30/min, modal progreso (pausa/reanudar/cancelar), retry automático max 3 tentativos con exponential backoff, vars sustituidas por contacto ({{nombre}}, {{empresa}}, etc.), unsub link HMAC + lang per-contacto via mkCountryToLang, view-online individual via KV save, auto-move a "Enviadas" tras finalizar, persistencia _campEditing.recipients en localStorage para resumir tras crash -->
+<!-- NEXO v9.46 — DMCAR GROUP CRM | 2026-05-02 | Listas refactor: removed creazione din. dalla UI (esistenti restano), aggiunto bulk "Mover a lista" (only-move), modal contatto con sezione Listas multi-checkbox editabile, "Editar contactos" da card lista, auto-cleanup ghost references (contactIds inesistenti rimossi), label "X en lista / Y activos" più chiari, auto-add contatto a lista se filtro lista attivo, doppia conferma eliminazione lista. Tipo cliente e Lista totalmente separati. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -773,7 +773,7 @@ En que te puedo ayudar hoy?</div></div>
             </div>
             <div style="display:flex;align-items:flex-end;justify-content:flex-end">
               <button class="btn bs" onclick="mkClearFilters()" style="font-size:11px">&#9750; Limpiar filtros</button>
-              <button class="btn bp" onclick="mkSaveCurrentFilterAsList()" style="font-size:11px;margin-left:6px" title="Guardar los filtros actuales como lista din&aacute;mica">&#128190; Guardar como lista</button>
+              <button class="btn bp" onclick="mkSaveCurrentFilterAsList()" style="font-size:11px;margin-left:6px" title="Crear una nueva lista est&aacute;tica con los contactos actualmente filtrados">&#128190; Guardar como lista</button>
             </div>
           </div>
         </div>
@@ -817,7 +817,8 @@ En que te puedo ayudar hoy?</div></div>
             <div class="fc g8">
               <button class="btn bg" onclick="mkClrSel()" style="font-size:11px">Deseleccionar</button>
               <button class="btn bs" onclick="mkBulkSetStatus()" style="font-size:11px">Cambiar estado</button>
-              <button class="btn bs" onclick="mkBulkAddToList()" style="font-size:11px">A&ntilde;adir a lista</button>
+              <button class="btn bs" onclick="mkBulkAddToList()" style="font-size:11px">&#10133; A&ntilde;adir a lista</button>
+              <button class="btn bs" onclick="mkBulkMoveToList()" style="font-size:11px">&#128257; Mover a lista</button>
               <button class="btn bg" onclick="mkBulkSoftDelete()" style="font-size:11px" title="No elimina — solo cambia status a unsubscribed">&#128274; Unsubscribe</button>
             </div>
           </div>
@@ -1857,6 +1858,14 @@ En que te puedo ayudar hoy?</div></div>
       </div>
     </div>
     <div class="mb10"><label>Notas</label><textarea id="mke-notes" rows="3" placeholder="Observaciones, contexto..."></textarea></div>
+    <div class="mb10">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        <span>&#128221; Listas asociadas</span>
+        <span style="font-size:10px;color:var(--t4);font-weight:400">Click para a&ntilde;adir/quitar</span>
+      </label>
+      <div id="mke-lists-cont" style="background:var(--bg3);border-radius:7px;padding:10px;min-height:40px;font-size:11px"></div>
+      <div style="font-size:10px;color:var(--t4);margin-top:3px;line-height:1.4">El contacto puede estar en m&uacute;ltiples listas a la vez. El "Tipo cliente" es independiente de las listas.</div>
+    </div>
     <button class="btn bp" style="width:100%" onclick="mkSaveContact()">Guardar</button>
   </div>
 </div>
@@ -1867,17 +1876,14 @@ En que te puedo ayudar hoy?</div></div>
     <div class="fbet mb14"><div class="mt">&#128221; Nueva / Editar lista</div><button class="btn bg" onclick="closeM('m-mk-list')" style="padding:5px 10px">X</button></div>
     <div class="mb10"><label>Nombre de la lista</label><input type="text" id="mkl-name" placeholder="ej: Clientes Italia BMW"></div>
     <div class="mb10"><label>Descripci&oacute;n</label><input type="text" id="mkl-desc" placeholder="Para qu&eacute; sirve esta lista..."></div>
-    <div class="mb10">
-      <label>Tipo</label>
-      <div class="fc g12" style="font-size:12px">
-        <label><input type="radio" name="mkl-type" value="dynamic" checked> <strong>Din&aacute;mica</strong> (filtros se auto-actualizan)</label>
-        <label><input type="radio" name="mkl-type" value="static"> <strong>Est&aacute;tica</strong> (snapshot fijo)</label>
-      </div>
-    </div>
-    <div id="mkl-rules-section" class="mb10">
-      <label style="font-size:11px;color:var(--t3)">Filtros guardados (din&aacute;mica)</label>
+    <input type="hidden" id="mkl-type-hidden" value="static">
+    <div id="mkl-rules-section" class="mb10" style="display:none">
+      <label style="font-size:11px;color:var(--t3)">Filtros guardados (lista din&aacute;mica legacy)</label>
       <div id="mkl-rules-display" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:11px;color:var(--t2);min-height:40px;font-family:monospace"></div>
-      <div style="font-size:10px;color:var(--t3);margin-top:4px">Tip: Aplica los filtros que quieras desde la pesta&ntilde;a Contactos antes de guardar como lista din&aacute;mica.</div>
+      <div style="font-size:10px;color:var(--t3);margin-top:4px">&#9888;&#65039; Las listas din&aacute;micas son legacy: ya no se pueden crear nuevas, pero las existentes siguen funcionando.</div>
+    </div>
+    <div style="background:var(--bg3);border-radius:7px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--t3);line-height:1.5">
+      &#128221; Las listas son <strong>est&aacute;ticas</strong>: agrupan contactos manualmente. Puedes a&ntilde;adir, mover y quitar contactos en cualquier momento.
     </div>
     <button class="btn bp" style="width:100%" onclick="mkSaveList()">Guardar lista</button>
   </div>
@@ -1896,6 +1902,50 @@ En que te puedo ayudar hoy?</div></div>
     </div>
   </div>
 </div>
+
+<!-- MARKETING: EDITAR MIEMBROS DE UNA LISTA -->
+<div class="ovl" id="m-mk-list-members">
+  <div class="modal" style="max-width:760px">
+    <div class="fbet mb14"><div class="mt">&#128221; <span id="mkme-list-name">Editar contactos de la lista</span></div><button class="btn bg" onclick="closeM('m-mk-list-members')" style="padding:5px 10px">X</button></div>
+    <div id="mkme-summary" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:11px;color:var(--t2);margin-bottom:10px"></div>
+    <input type="text" id="mkme-search" placeholder="Buscar contactos..." oninput="mkListMembersFilter()" style="font-size:12px;margin-bottom:10px;width:100%">
+    <div class="fc g8" style="margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn bs" onclick="mkListMembersToggleView('inList')" id="mkme-view-inlist" style="font-size:11px">&#9989; En la lista</button>
+      <button class="btn bs" onclick="mkListMembersToggleView('all')" id="mkme-view-all" style="font-size:11px">&#128100; Todos los contactos</button>
+    </div>
+    <div id="mkme-list" style="max-height:50vh;overflow-y:auto;background:var(--bg3);border-radius:7px;padding:10px"></div>
+    <div class="fc g8" style="margin-top:12px">
+      <button class="btn bg" onclick="closeM('m-mk-list-members')" style="flex:1">Cerrar</button>
+      <button class="btn bp" onclick="mkListMembersSave()" style="flex:2">&#128190; Guardar cambios (<span id="mkme-changes-cnt">0</span>)</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKETING: BULK MOVE A LISTA -->
+<div class="ovl" id="m-mk-bulk-move">
+  <div class="modal" style="max-width:520px">
+    <div class="fbet mb14"><div class="mt">&#128257; Mover contactos a otra lista</div><button class="btn bg" onclick="closeM('m-mk-bulk-move')" style="padding:5px 10px">X</button></div>
+    <div id="mkbm-info" style="background:var(--bg3);border-radius:7px;padding:10px;font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.6"></div>
+    <div class="mb10">
+      <label>Lista origen (de d&oacute;nde quitar)</label>
+      <select id="mkbm-from" style="font-size:12px">
+        <option value="">-- Sin lista origen (solo a&ntilde;adir) --</option>
+      </select>
+      <div style="font-size:10px;color:var(--t4);margin-top:3px;line-height:1.4">Si dejas vac&iacute;o, los contactos se a&ntilde;aden a la destinaci&oacute;n sin quitarlos de ninguna lista (equivale a "A&ntilde;adir a lista").</div>
+    </div>
+    <div class="mb10">
+      <label>Lista destino (a&iexcl;adir aqu&iacute;)</label>
+      <select id="mkbm-to" style="font-size:12px"></select>
+    </div>
+    <div class="fc g8" style="margin-top:14px">
+      <button class="btn bg" onclick="closeM('m-mk-bulk-move')" style="flex:1">Cancelar</button>
+      <button class="btn bp" onclick="mkBulkMoveExecute()" style="flex:2">&#128257; Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKETING: CONTACTO - GESTIÓN LISTAS (sezione modal contatto) -->
+<!-- (Nessun modal separato: la sezione "Listas" è inline dentro m-mk-edit, gestita da JS) -->
 
 <!-- CAMPAÑAS: NUEVO / EDITAR VENDEDOR -->
 <div class="ovl" id="m-fir-edit">
@@ -10204,6 +10254,8 @@ function mkPopulateListFilter(){
 
 // -- FILTER + RENDER TABLE ------------------------------------------------
 function mkRender(){
+  // v9.46: cleanup ghost references prima di renderizzare (1 volta per render)
+  if(typeof mkCleanGhostListReferences==='function')mkCleanGhostListReferences();
   // Aggiorna il filtro liste prima di filtrare
   mkPopulateListFilter();
   var q=(n('f-mk-q')&&n('f-mk-q').value||'').toLowerCase().trim();
@@ -10384,6 +10436,8 @@ function mkOpenManual(){
     if(hid)hid.id='mke-country';
   }
   n('m-mk-edit').removeAttribute('data-edit-id');
+  // v9.46: render sezione liste — auto-pre-seleziona la lista filtrata corrente se presente
+  mkRenderContactLists(null);
   openM('m-mk-edit');
 }
 function mkOpenEdit(id){
@@ -10417,6 +10471,8 @@ function mkOpenEdit(id){
   n('mke-origin').value=c.origin||'manual';
   n('mke-notes').value=c.notes||'';
   n('m-mk-edit').setAttribute('data-edit-id',c.id);
+  // v9.46: render sezione liste associate (preselect listas attuali)
+  mkRenderContactLists(c.id);
   openM('m-mk-edit');
 }
 function mkSaveContact(){
@@ -10443,12 +10499,14 @@ function mkSaveContact(){
     notes:n('mke-notes').value.trim(),
     updatedAt:new Date().toISOString()
   };
+  var savedId=null;
   if(editId){
     var idx=mkContacts.findIndex(function(c){return String(c.id)===String(editId);});
     if(idx>=0){
       record.id=mkContacts[idx].id;
       record.createdAt=mkContacts[idx].createdAt;
       mkContacts[idx]=Object.assign({},mkContacts[idx],record);
+      savedId=record.id;
     }
   }else{
     record.id='mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
@@ -10457,8 +10515,13 @@ function mkSaveContact(){
     if(typeof mkAutoEnrich==='function')mkAutoEnrich(record);
     mkContacts.push(record);
     mkCntCounter++;SS('mkCntCounter',mkCntCounter);
+    savedId=record.id;
   }
   SS('mkContacts',mkContacts);
+  // v9.46: applica i cambi liste (multi-select editabile)
+  if(savedId&&typeof mkApplyContactListsAssignment==='function'){
+    mkApplyContactListsAssignment(savedId);
+  }
   closeM('m-mk-edit');
   renderMarketing();
   if(typeof showToast==='function')showToast('\u2713 Contacto guardado');
@@ -10499,18 +10562,357 @@ function mkBulkSetStatus(){
 function mkBulkAddToList(){
   if(!mkSel.size)return;
   if(!mkLists.length){alert('No hay listas creadas. Crea una desde la pesta\u00f1a Listas.');return;}
-  var optList=mkLists.map(function(l,i){return (i+1)+'. '+l.name+(l.type==='static'?' (est\u00e1tica)':' (din\u00e1mica)');}).join('\n');
+  // v9.46: solo liste static accettano add manuale
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  if(!staticLists.length){alert('No hay listas est\u00e1ticas disponibles.');return;}
+  var optList=staticLists.map(function(l,i){return (i+1)+'. '+l.name;}).join('\n');
   var idxStr=prompt('A\u00f1adir '+mkSel.size+' contactos a qu\u00e9 lista?\n\n'+optList+'\n\nEscribe el n\u00famero:');
   var idx=parseInt(idxStr,10)-1;
-  if(isNaN(idx)||idx<0||idx>=mkLists.length)return;
-  var lst=mkLists[idx];
-  if(lst.type!=='static'){alert('Solo puedes a\u00f1adir contactos manualmente a listas est\u00e1ticas. Esta es din\u00e1mica.');return;}
+  if(isNaN(idx)||idx<0||idx>=staticLists.length)return;
+  var lst=staticLists[idx];
   if(!Array.isArray(lst.contactIds))lst.contactIds=[];
   var added=0;
   mkSel.forEach(function(cid){if(lst.contactIds.indexOf(cid)<0){lst.contactIds.push(cid);added++;}});
   SS('mkLists',mkLists);
   if(typeof showToast==='function')showToast('\u2713 '+added+' contactos a\u00f1adidos a "'+lst.name+'"');
+  renderMarketing();
 }
+
+// === v9.46: BULK MOVE — sposta contatti da una lista a un'altra ===
+// Apre il modal di selezione liste origine + destino
+function mkBulkMoveToList(){
+  if(!mkSel.size){alert('No hay contactos seleccionados.');return;}
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  if(staticLists.length===0){
+    alert('No hay listas est\u00e1ticas disponibles. Crea una primero desde la pesta\u00f1a Listas.');return;
+  }
+  // Info contatti selezionati
+  var info='Vas a mover <b>'+mkSel.size+' contacto'+(mkSel.size!==1?'s':'')+'</b>.<br><br>';
+  info+='&bull; <b>Origen</b>: lista de la que se quitar\u00e1n (opcional)<br>';
+  info+='&bull; <b>Destino</b>: lista a la que se a\u00f1adir\u00e1n';
+  n('mkbm-info').innerHTML=info;
+  // Popola dropdown
+  var fromSel=n('mkbm-from');
+  var toSel=n('mkbm-to');
+  fromSel.innerHTML='<option value="">-- Sin lista origen (solo a\u00f1adir) --</option>';
+  toSel.innerHTML='';
+  staticLists.forEach(function(l){
+    fromSel.innerHTML+='<option value="'+esc(l.id)+'">'+esc(l.name)+'</option>';
+    toSel.innerHTML+='<option value="'+esc(l.id)+'">'+esc(l.name)+'</option>';
+  });
+  // Pre-seleziona "from" se l'utente ha filtrato per una lista corrente
+  var currentListId=(n('f-mk-list')&&n('f-mk-list').value)||'';
+  if(currentListId&&staticLists.some(function(l){return l.id===currentListId;})){
+    fromSel.value=currentListId;
+  }
+  openM('m-mk-bulk-move');
+}
+
+// Esegue lo spostamento
+function mkBulkMoveExecute(){
+  var fromId=n('mkbm-from').value;
+  var toId=n('mkbm-to').value;
+  if(!toId){alert('Selecciona la lista destino.');return;}
+  if(fromId&&fromId===toId){alert('Origen y destino son la misma lista.');return;}
+  var toLst=mkLists.find(function(l){return l.id===toId;});
+  if(!toLst){alert('Lista destino no encontrada.');return;}
+  if(toLst.type!=='static'){alert('La lista destino debe ser est\u00e1tica.');return;}
+  if(!Array.isArray(toLst.contactIds))toLst.contactIds=[];
+  var fromLst=fromId?mkLists.find(function(l){return l.id===fromId;}):null;
+  var added=0,removed=0,already=0;
+  mkSel.forEach(function(cid){
+    // Aggiungi al destino
+    if(toLst.contactIds.indexOf(cid)<0){toLst.contactIds.push(cid);added++;}
+    else{already++;}
+    // Rimuovi dall'origine se specificato
+    if(fromLst&&Array.isArray(fromLst.contactIds)){
+      var idx=fromLst.contactIds.indexOf(cid);
+      if(idx>=0){fromLst.contactIds.splice(idx,1);removed++;}
+    }
+  });
+  SS('mkLists',mkLists);
+  closeM('m-mk-bulk-move');
+  var msg='\u2713 ';
+  if(fromLst)msg+=removed+' quitado'+(removed!==1?'s':'')+' de "'+fromLst.name+'", ';
+  msg+=added+' a\u00f1adido'+(added!==1?'s':'')+' a "'+toLst.name+'"';
+  if(already>0)msg+=' ('+already+' ya estaban)';
+  if(typeof showToast==='function')showToast(msg);
+  renderMarketing();
+}
+
+// === v9.46: GESTIONE LISTE ASSOCIATE per il singolo contatto ===
+// Stato editing del contatto corrente (nel modal m-mk-edit)
+var _mkEditContactLists=[]; // array di list IDs
+
+function mkRenderContactLists(contactId){
+  var cont=n('mke-lists-cont');
+  if(!cont)return;
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  if(staticLists.length===0){
+    cont.innerHTML='<div style="color:var(--t4);font-size:11px;font-style:italic">No hay listas est\u00e1ticas. Crea una desde la pesta\u00f1a Listas.</div>';
+    return;
+  }
+  // Inizializza stato corrente se esiste
+  if(contactId){
+    _mkEditContactLists=staticLists.filter(function(l){
+      return Array.isArray(l.contactIds)&&l.contactIds.indexOf(contactId)>=0;
+    }).map(function(l){return l.id;});
+  }else{
+    // Nuovo contatto: nessuna lista, ma se l'utente è filtrato su una lista la pre-seleziona
+    _mkEditContactLists=[];
+    var currentListId=(n('f-mk-list')&&n('f-mk-list').value)||'';
+    if(currentListId&&staticLists.some(function(l){return l.id===currentListId;})){
+      _mkEditContactLists=[currentListId];
+    }
+  }
+  // Render
+  var html='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  staticLists.forEach(function(l){
+    var checked=_mkEditContactLists.indexOf(l.id)>=0;
+    var bg=checked?'rgba(22,163,74,.15)':'var(--bg2)';
+    var fg=checked?'#15803d':'var(--t3)';
+    var border=checked?'#16a34a':'var(--border)';
+    var icon=checked?'\u2713':'+';
+    html+='<span class="mke-list-toggle" data-list-id="'+esc(l.id)+'" style="background:'+bg+';color:'+fg+';border:1px solid '+border+';padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px">'
+      +'<span style="font-weight:700">'+icon+'</span> '+esc(mkDecorateListName(l.name))
+      +'</span>';
+  });
+  html+='</div>';
+  cont.innerHTML=html;
+  // Listener click
+  cont.querySelectorAll('.mke-list-toggle').forEach(function(el){
+    el.addEventListener('click',function(){
+      var lid=this.getAttribute('data-list-id');
+      var idx=_mkEditContactLists.indexOf(lid);
+      if(idx>=0)_mkEditContactLists.splice(idx,1);
+      else _mkEditContactLists.push(lid);
+      // Re-render solo questa sezione (passa null per non re-init lo stato)
+      mkRenderContactListsRefresh();
+    });
+  });
+}
+
+// Re-render preservando _mkEditContactLists
+function mkRenderContactListsRefresh(){
+  var cont=n('mke-lists-cont');
+  if(!cont)return;
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  var html='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  staticLists.forEach(function(l){
+    var checked=_mkEditContactLists.indexOf(l.id)>=0;
+    var bg=checked?'rgba(22,163,74,.15)':'var(--bg2)';
+    var fg=checked?'#15803d':'var(--t3)';
+    var border=checked?'#16a34a':'var(--border)';
+    var icon=checked?'\u2713':'+';
+    html+='<span class="mke-list-toggle" data-list-id="'+esc(l.id)+'" style="background:'+bg+';color:'+fg+';border:1px solid '+border+';padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px">'
+      +'<span style="font-weight:700">'+icon+'</span> '+esc(mkDecorateListName(l.name))
+      +'</span>';
+  });
+  html+='</div>';
+  cont.innerHTML=html;
+  cont.querySelectorAll('.mke-list-toggle').forEach(function(el){
+    el.addEventListener('click',function(){
+      var lid=this.getAttribute('data-list-id');
+      var idx=_mkEditContactLists.indexOf(lid);
+      if(idx>=0)_mkEditContactLists.splice(idx,1);
+      else _mkEditContactLists.push(lid);
+      mkRenderContactListsRefresh();
+    });
+  });
+}
+
+// Applica i cambi di lista al contatto: chiamato da mkSaveContact dopo il save
+function mkApplyContactListsAssignment(contactId){
+  if(!contactId)return;
+  var staticLists=mkLists.filter(function(l){return l.type==='static';});
+  staticLists.forEach(function(l){
+    if(!Array.isArray(l.contactIds))l.contactIds=[];
+    var inList=l.contactIds.indexOf(contactId)>=0;
+    var shouldBe=_mkEditContactLists.indexOf(l.id)>=0;
+    if(shouldBe&&!inList)l.contactIds.push(contactId);
+    else if(!shouldBe&&inList){
+      l.contactIds=l.contactIds.filter(function(id){return String(id)!==String(contactId);});
+    }
+  });
+  SS('mkLists',mkLists);
+}
+
+// === v9.46: AUTO-CLEANUP ghost references ===
+// Per ogni lista, rimuove gli ID che non esistono in mkContacts
+// Chiamato all'avvio e dopo eliminazione contatti
+function mkCleanGhostListReferences(){
+  var validIds={};
+  mkContacts.forEach(function(c){validIds[c.id]=true;});
+  var totalRemoved=0;
+  mkLists.forEach(function(l){
+    if(l.type==='static'&&Array.isArray(l.contactIds)){
+      var before=l.contactIds.length;
+      l.contactIds=l.contactIds.filter(function(id){return validIds[id];});
+      totalRemoved+=(before-l.contactIds.length);
+    }
+  });
+  if(totalRemoved>0){
+    SS('mkLists',mkLists);
+    console.log('[mkCleanGhostListReferences] Rimossi '+totalRemoved+' ID orfani.');
+  }
+  return totalRemoved;
+}
+
+// === v9.46: EDITOR MEMBRI LISTA dal card lista ===
+var _mkListMembersState={
+  listId:null,
+  view:'inList',  // 'inList' | 'all'
+  search:'',
+  toAdd:{},      // {contactId:true} → da aggiungere
+  toRemove:{}    // {contactId:true} → da rimuovere
+};
+
+function mkOpenListMembersEditor(listId){
+  var lst=mkLists.find(function(l){return l.id===listId;});
+  if(!lst){alert('Lista no encontrada.');return;}
+  if(lst.type!=='static'){
+    alert('Esta lista es din\u00e1mica (legacy). Para editar miembros manualmente, conv\u00edertela primero a est\u00e1tica.');
+    return;
+  }
+  _mkListMembersState={
+    listId:listId,
+    view:'inList',
+    search:'',
+    toAdd:{},
+    toRemove:{}
+  };
+  n('mkme-list-name').textContent='Editar contactos: '+lst.name;
+  n('mkme-search').value='';
+  mkListMembersUpdateButtons();
+  mkListMembersRender();
+  openM('m-mk-list-members');
+}
+
+function mkListMembersToggleView(view){
+  _mkListMembersState.view=view;
+  mkListMembersUpdateButtons();
+  mkListMembersRender();
+}
+
+function mkListMembersUpdateButtons(){
+  var bIn=n('mkme-view-inlist'),bAll=n('mkme-view-all');
+  if(!bIn||!bAll)return;
+  var act='var(--acc)',inact='var(--bg3)';
+  if(_mkListMembersState.view==='inList'){
+    bIn.style.background=act;bIn.style.color='#fff';
+    bAll.style.background=inact;bAll.style.color='var(--t2)';
+  }else{
+    bAll.style.background=act;bAll.style.color='#fff';
+    bIn.style.background=inact;bIn.style.color='var(--t2)';
+  }
+}
+
+function mkListMembersFilter(){
+  _mkListMembersState.search=(n('mkme-search').value||'').toLowerCase().trim();
+  mkListMembersRender();
+}
+
+function mkListMembersRender(){
+  var st=_mkListMembersState;
+  var lst=mkLists.find(function(l){return l.id===st.listId;});
+  if(!lst)return;
+  var listIds={};
+  (lst.contactIds||[]).forEach(function(id){listIds[id]=true;});
+  // Effective state (con cambi pending)
+  function isEffectivelyInList(cid){
+    if(st.toAdd[cid])return true;
+    if(st.toRemove[cid])return false;
+    return !!listIds[cid];
+  }
+  // Filtra contatti
+  var filtered=mkContacts.filter(function(c){
+    if(st.view==='inList'&&!isEffectivelyInList(c.id))return false;
+    if(st.search){
+      var hay=((c.firstName||'')+' '+(c.companyName||'')+' '+(c.email||'')).toLowerCase();
+      if(hay.indexOf(st.search)<0)return false;
+    }
+    return true;
+  });
+  // Summary
+  var totalIn=Object.keys(listIds).filter(function(id){return !st.toRemove[id];}).length+Object.keys(st.toAdd).length;
+  var changesAdd=Object.keys(st.toAdd).length;
+  var changesRem=Object.keys(st.toRemove).length;
+  var summaryHtml='<b>'+totalIn+'</b> contactos en la lista';
+  if(changesAdd||changesRem){
+    summaryHtml+=' &middot; <span style="color:#16a34a">+'+changesAdd+'</span> / <span style="color:#dc2626">-'+changesRem+'</span> pendientes';
+  }
+  n('mkme-summary').innerHTML=summaryHtml;
+  n('mkme-changes-cnt').textContent=changesAdd+changesRem;
+  // List
+  if(filtered.length===0){
+    n('mkme-list').innerHTML='<div style="color:var(--t4);font-size:11px;text-align:center;padding:20px">No hay contactos que coincidan</div>';
+    return;
+  }
+  var html=filtered.map(function(c){
+    var inList=isEffectivelyInList(c.id);
+    var btnLbl=inList?'\u2716 Quitar':'\u2795 A\u00f1adir';
+    var btnCls=inList?'btn bd':'btn bok';
+    var changedClass='';
+    if(st.toAdd[c.id])changedClass='border-left:3px solid #16a34a;';
+    else if(st.toRemove[c.id])changedClass='border-left:3px solid #dc2626;';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--bg2);border-radius:6px;margin-bottom:4px;'+changedClass+'">'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:12px;font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.firstName||'(sin nombre)')+(c.companyName?' &middot; <span style="font-weight:400;color:var(--t3)">'+esc(c.companyName)+'</span>':'')+'</div>'
+        +'<div style="font-size:10px;color:var(--t4);font-family:monospace">'+esc(c.email||'')+'</div>'
+      +'</div>'
+      +'<button class="'+btnCls+'" onclick="mkListMembersToggleContact(\''+esc(c.id)+'\')" style="font-size:10px;padding:3px 8px;margin-left:8px;flex-shrink:0">'+btnLbl+'</button>'
+    +'</div>';
+  }).join('');
+  n('mkme-list').innerHTML=html;
+}
+
+function mkListMembersToggleContact(cid){
+  var st=_mkListMembersState;
+  var lst=mkLists.find(function(l){return l.id===st.listId;});
+  if(!lst)return;
+  var inList=Array.isArray(lst.contactIds)&&lst.contactIds.indexOf(cid)>=0;
+  if(inList){
+    // Era in lista: toggle remove
+    if(st.toRemove[cid]){delete st.toRemove[cid];}
+    else{st.toRemove[cid]=true;}
+  }else{
+    // Non era in lista: toggle add
+    if(st.toAdd[cid]){delete st.toAdd[cid];}
+    else{st.toAdd[cid]=true;}
+  }
+  mkListMembersRender();
+}
+
+function mkListMembersSave(){
+  var st=_mkListMembersState;
+  var lst=mkLists.find(function(l){return l.id===st.listId;});
+  if(!lst)return;
+  if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+  var added=0,removed=0;
+  Object.keys(st.toAdd).forEach(function(cid){
+    if(lst.contactIds.indexOf(cid)<0){lst.contactIds.push(cid);added++;}
+  });
+  Object.keys(st.toRemove).forEach(function(cid){
+    var idx=lst.contactIds.indexOf(cid);
+    if(idx>=0){lst.contactIds.splice(idx,1);removed++;}
+  });
+  SS('mkLists',mkLists);
+  closeM('m-mk-list-members');
+  if(typeof showToast==='function')showToast('\u2713 Lista actualizada: +'+added+' / -'+removed);
+  renderMarketing();
+}
+
+// Espone globalmente
+window.mkBulkMoveToList=mkBulkMoveToList;
+window.mkBulkMoveExecute=mkBulkMoveExecute;
+window.mkRenderContactLists=mkRenderContactLists;
+window.mkApplyContactListsAssignment=mkApplyContactListsAssignment;
+window.mkCleanGhostListReferences=mkCleanGhostListReferences;
+window.mkOpenListMembersEditor=mkOpenListMembersEditor;
+window.mkListMembersToggleView=mkListMembersToggleView;
+window.mkListMembersFilter=mkListMembersFilter;
+window.mkListMembersToggleContact=mkListMembersToggleContact;
+window.mkListMembersSave=mkListMembersSave;
 
 // -- TEMPLATE CSV ---------------------------------------------------------
 function mkDownloadTemplate(){
@@ -10887,21 +11289,26 @@ function mkExportCSV(){
 function mkRenderLists(){
   var grid=n('mk-lists-grid'),empty=n('mk-lists-empty');
   if(!grid)return;
+  // v9.46: cleanup ghost references prima di renderizzare
+  if(typeof mkCleanGhostListReferences==='function')mkCleanGhostListReferences();
   if(!mkLists.length){grid.innerHTML='';if(empty)empty.style.display='';return;}
   if(empty)empty.style.display='none';
 
   grid.innerHTML=mkLists.map(function(l){
     var stats=mkCountListContactsDetailed(l);
-    var typeColor=l.type==='dynamic'?{bg:'rgba(37,99,235,.15)',fg:'var(--acc)'}:{bg:'rgba(245,158,11,.15)',fg:'#92400e'};
-    var typeLabel=l.type==='dynamic'?'\u26a1 Din\u00e1mica':'\ud83d\udcc4 Est\u00e1tica';
+    var typeColor=l.type==='dynamic'?{bg:'rgba(245,158,11,.15)',fg:'#92400e'}:{bg:'rgba(37,99,235,.15)',fg:'var(--acc)'};
+    var typeLabel=l.type==='dynamic'?'\u26a1 Din\u00e1mica (legacy)':'\ud83d\udcc4 Est\u00e1tica';
     var rulesPreview='';
     if(l.type==='dynamic'&&l.filters){
       var parts=[];
       Object.keys(l.filters).forEach(function(k){if(l.filters[k])parts.push(k+': '+l.filters[k]);});
       rulesPreview=parts.length?parts.join(' &middot; '):'(sin filtros)';
     }else if(l.type==='static'){
-      rulesPreview=(l.contactIds||[]).length+' contactos congelados';
+      // v9.46: label più chiara
+      rulesPreview=stats.total+' contacto'+(stats.total!==1?'s':'')+' en la lista';
     }
+    var canEdit=(l.type==='static');
+    var editBtn=canEdit?'<button class="btn bp" onclick="mkOpenListMembersEditor(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px" title="A\u00f1adir / quitar contactos">&#9998;&#65039; Editar</button>':'';
     return '<div class="card" style="padding:14px">'
       +'<div class="fbet mb6"><div style="font-weight:700;font-size:14px;color:var(--t1)">'+esc(mkDecorateListName(l.name))+'</div><span style="background:'+typeColor.bg+';color:'+typeColor.fg+';padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700">'+typeLabel+'</span></div>'
       +(l.desc?'<div style="font-size:11px;color:var(--t3);margin-bottom:8px">'+esc(l.desc)+'</div>':'')
@@ -10910,11 +11317,12 @@ function mkRenderLists(){
         +'<div>'
           +'<span style="font-size:18px;font-weight:700;color:var(--green)">'+stats.active+'</span>'
           +' <span style="font-size:11px;color:var(--t3)">activos</span>'
-          +(stats.unsubscribed?'<br><span style="font-size:10px;color:var(--orange);font-weight:600">+ '+stats.unsubscribed+' unsub</span>':'')
+          +(stats.unsubscribed?'<br><span style="font-size:10px;color:#92400e;font-weight:600">'+stats.unsubscribed+' no recibir\u00e1n emails</span>':'')
         +'</div>'
         +'<div class="fc g6">'
-          +'<button class="btn bs" onclick="mkOpenList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">Ver</button>'
-          +'<button class="btn bd" onclick="mkDelList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px">x</button>'
+          +editBtn
+          +'<button class="btn bs" onclick="mkOpenList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px" title="Filtrar contactos por esta lista">&#128270; Ver</button>'
+          +'<button class="btn bd" onclick="mkDelList(\''+esc(l.id)+'\')" style="font-size:10px;padding:3px 8px" title="Eliminar lista">&#128465;&#65039;</button>'
         +'</div>'
       +'</div>'
     +'</div>';
@@ -10964,22 +11372,20 @@ function mkContactMatchesFilters(c,f){
 
 function mkOpenNewList(){
   n('mkl-name').value='';n('mkl-desc').value='';
-  document.querySelectorAll('input[name="mkl-type"]').forEach(function(r){r.checked=r.value==='dynamic';});
-  // Mostra i filtri attualmente applicati come "regole" della futura lista dinamica
-  var rules=mkCurrentFilters();
-  var rd=n('mkl-rules-display');
-  if(rd){
-    var parts=[];
-    Object.keys(rules).forEach(function(k){if(rules[k])parts.push(k+': '+rules[k]);});
-    rd.innerHTML=parts.length?parts.join(' &middot; '):'<span style="color:var(--t4)">(sin filtros activos)</span>';
-  }
+  // v9.46: tipo sempre static (input hidden)
+  if(n('mkl-type-hidden'))n('mkl-type-hidden').value='static';
+  // Sezione filtri legacy nascosta per nuove liste
+  var rsec=n('mkl-rules-section');
+  if(rsec)rsec.style.display='none';
   n('m-mk-list').removeAttribute('data-edit-id');
   openM('m-mk-list');
 }
 function mkSaveCurrentFilterAsList(){
-  var rules=mkCurrentFilters();
-  var hasFilters=Object.keys(rules).some(function(k){return rules[k];});
-  if(!hasFilters){alert('Aplica al menos un filtro antes de guardar como lista din\u00e1mica.');return;}
+  // v9.46: ora questo bottone crea una lista STATICA con i contatti attualmente filtrati
+  var hasFilters=Object.keys(mkCurrentFilters()).some(function(k){return mkCurrentFilters()[k];});
+  if(!hasFilters&&mkSel.size===0){
+    if(!confirm('No hay filtros activos ni contactos seleccionados.\n\n\u00bfCrear una lista vac\u00eda?'))return;
+  }
   mkOpenNewList();
 }
 function mkCurrentFilters(){
@@ -10995,7 +11401,16 @@ function mkCurrentFilters(){
 function mkSaveList(){
   var name=n('mkl-name').value.trim();
   if(!name){alert('Pon un nombre.');return;}
-  var type=document.querySelector('input[name="mkl-type"]:checked').value;
+  // v9.46: tipo sempre 'static' (no più dinamiche per nuove liste)
+  var typeEl=n('mkl-type-hidden');
+  var type=typeEl?(typeEl.value||'static'):'static';
+  // Backward compat: se per qualche motivo il radio "mkl-type" esiste ancora (legacy DOM)
+  var legacyRadio=document.querySelector('input[name="mkl-type"]:checked');
+  if(legacyRadio)type=legacyRadio.value;
+  if(type==='dynamic'){
+    // Per sicurezza: blocca creazione di nuove dinamiche
+    if(!confirm('\u26a0\ufe0f Las listas din\u00e1micas son legacy.\n\n\u00bfSeguir con dynamic? (recomendado: cancelar y crear est\u00e1tica)'))return;
+  }
   var rec={
     id:'mkl_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     name:name,
@@ -11009,8 +11424,10 @@ function mkSaveList(){
     // Static: snapshot dei contatti FILTRATI o SELEZIONATI
     if(mkSel.size>0){
       rec.contactIds=Array.from(mkSel);
-    }else{
+    }else if(mkFlt&&mkFlt.length){
       rec.contactIds=mkFlt.map(function(c){return c.id;});
+    }else{
+      rec.contactIds=[];
     }
   }
   mkLists.push(rec);
@@ -11022,10 +11439,16 @@ function mkSaveList(){
 function mkDelList(id){
   var l=mkLists.find(function(x){return x.id===id;});
   if(!l)return;
-  if(!confirm('Eliminar lista "'+l.name+'"?'))return;
+  // v9.46: doppia conferma
+  var stats=mkCountListContactsDetailed(l);
+  var contactsInfo=stats.total>0?'\n\nLa lista contiene '+stats.total+' contacto'+(stats.total!==1?'s':'')+' ('+stats.active+' activos).\nLos CONTACTOS NO SE BORRAN, solo se elimina la lista (la asociaci\u00f3n).':'';
+  if(!confirm('\u26a0\ufe0f Eliminar la lista "'+l.name+'"?'+contactsInfo))return;
+  // Seconda conferma con pi\u00f9 enfasi
+  if(!confirm('\u26a0\ufe0f \u00daltima confirmaci\u00f3n:\n\n\u00bfQuieres eliminar definitivamente la lista "'+l.name+'"?\n\nEsta acci\u00f3n NO se puede deshacer.'))return;
   mkLists=mkLists.filter(function(x){return x.id!==id;});
   SS('mkLists',mkLists);
   mkRenderLists();
+  if(typeof showToast==='function')showToast('\u2713 Lista "'+l.name+'" eliminada');
 }
 function mkOpenList(id){
   var l=mkLists.find(function(x){return x.id===id;});
