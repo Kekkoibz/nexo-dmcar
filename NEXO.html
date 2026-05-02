@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.62 — DMCAR GROUP CRM | 2026-05-02 | NUOVA Validación import: check "precio de compra" mancante prima di completare l'import. Modal blocking m-buy-ask con 3 azioni: 1) "Aplicar a todos los faltantes" (input numerico unico applicato a tutti); 2) "Saltar (importar sin precio)" (mantiene buy vuoto); 3) "Cancelar import" (annulla completamente). Riusa pattern già consolidato di askPickupForVehicles. Esegue DOPO il check pickup (sequenza: pickup → buy → finishImport). -->
+<!-- NEXO v9.63 — DMCAR GROUP CRM | 2026-05-02 | NUOVO Sistema Backup Automatico: snapshot completo ogni ora di TUTTI i dati critici (stock, contacts, mkContacts, mkLists, leads, providers, campaigns, tasks, mailDrafts, mailUnsubscribed). Rotation automatica (max 24 backup = 24h storia). Comandi console: nxListBackups() / nxRestoreBackup(key) / nxExportBackupJSON(key) / nxImportBackupJSON(file) / nxBackupNow(). Primo backup eseguito al boot dopo 5s. Limit storage: se localStorage > 4MB salta backup oldest preventivamente. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -993,6 +993,17 @@ En que te puedo ayudar hoy?</div></div>
           <div style="font-size:11px;color:var(--t3);margin-bottom:10px">Guardada solo en este navegador.</div>
           <div class="fc g8"><button class="btn bp" onclick="saveKey()">Guardar</button><button class="btn bd" onclick="delKey()">Eliminar</button></div>
           <div id="key-msg" style="margin-top:8px;font-size:11px"></div>
+        </div>
+        <div class="card">
+          <div class="ct">&#128190; Backup autom&aacute;tico</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">NEXO crea autom&aacute;ticamente un backup completo cada hora (max 24 backup = 24h de historial). Comandos r&aacute;pidos:</div>
+          <div class="fc g8" style="flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn bp" onclick="nxBackupNow()" style="font-size:11px">&#128190; Backup ahora</button>
+            <button class="btn bs" onclick="nxBackupListUI()" style="font-size:11px">&#128203; Ver lista</button>
+            <button class="btn bs" onclick="nxExportBackupJSON()" style="font-size:11px">&#11123; Descargar &uacute;ltimo</button>
+            <button class="btn bs" onclick="nxImportBackupJSON()" style="font-size:11px">&#11122; Importar JSON</button>
+          </div>
+          <div id="bk-list-ui" style="font-size:11px;color:var(--t3);margin-top:8px"></div>
         </div>
         <div class="card">
           <div class="ct">&#9729; Sincronizacion Cloud (Firebase)</div>
@@ -18115,6 +18126,268 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(typeof stkRefreshAssignedDatalist==='function')stkRefreshAssignedDatalist();
     console.log('[v9.58] Stock Vivo: badge stale + datalist inicializados');
   },3500);
+
+  // ========================================================================
+  // v9.63: SISTEMA BACKUP AUTOMATICO ORARIO
+  // ========================================================================
+  // Snapshot completo dei dati critici ogni ora.
+  // Rotation: max 24 backup (= 24h storia). Quelli più vecchi vengono eliminati.
+  // Storage: localStorage chiavi 'nx5_autobk_<timestamp>'. JSON compresso minimal.
+  // Comandi console:
+  //   nxListBackups()          - lista tutti i backup con timestamp + size
+  //   nxRestoreBackup(key)     - ripristina backup (con conferma)
+  //   nxExportBackupJSON(key)  - download .json file (default: ultimo backup)
+  //   nxImportBackupJSON()     - upload .json file e ripristina
+  //   nxBackupNow()            - forza backup manuale immediato
+  
+  var NX_BACKUP_KEYS=['stock','contacts','mkContacts','mkLists','leads','providers','campaigns','tasks','mailDrafts','mailUnsubscribed','firstNames','companyDB','lostReasons','stkCnt','mkCntCounter','mkListsCounter'];
+  var NX_BACKUP_MAX=24; // max backup mantenuti (24 = 24h)
+  var NX_BACKUP_INTERVAL_MS=60*60*1000; // 1 ora
+  
+  // Calcola size approssimativa di localStorage in bytes
+  function nxLocalStorageSize(){
+    var total=0;
+    try{
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        var v=localStorage.getItem(k)||'';
+        total+=(k.length+v.length)*2; // UTF-16 = 2 bytes/char
+      }
+    }catch(e){}
+    return total;
+  }
+  
+  // Esegui backup completo
+  function nxDoBackup(silent){
+    try{
+      var snapshot={};
+      var collectedSize=0;
+      NX_BACKUP_KEYS.forEach(function(k){
+        try{
+          var raw=localStorage.getItem('nx5_'+k);
+          if(raw){
+            snapshot[k]=JSON.parse(raw);
+            collectedSize+=raw.length;
+          }
+        }catch(eK){console.warn('[nxDoBackup] error reading',k,eK);}
+      });
+      var backupId='nx5_autobk_'+Date.now();
+      var bkData={
+        v:'9.63',
+        timestamp:new Date().toISOString(),
+        keys:Object.keys(snapshot),
+        sizeBytes:collectedSize,
+        data:snapshot
+      };
+      // Storage check: se > 4MB di localStorage in uso, elimina backup vecchi PRIMA di salvare nuovo
+      if(nxLocalStorageSize()>4*1024*1024){
+        nxRotateBackups(NX_BACKUP_MAX/2); // pulizia aggressiva
+      }
+      try{
+        localStorage.setItem(backupId,JSON.stringify(bkData));
+      }catch(eStorage){
+        // Quota exceeded: pulisci tutti i backup tranne ultimi 5
+        console.warn('[nxDoBackup] storage quota exceeded, cleaning old backups...');
+        nxRotateBackups(5);
+        try{localStorage.setItem(backupId,JSON.stringify(bkData));}
+        catch(e2){console.error('[nxDoBackup] still failing after cleanup:',e2);return null;}
+      }
+      // Rotazione standard
+      nxRotateBackups(NX_BACKUP_MAX);
+      if(!silent){
+        console.log('[nxBackup] \u2713 Backup creado:',backupId,'size:',Math.round(collectedSize/1024)+'KB','keys:',Object.keys(snapshot).length);
+      }
+      return backupId;
+    }catch(err){
+      console.error('[nxDoBackup] FATAL:',err);
+      return null;
+    }
+  }
+  window.nxBackupNow=function(){
+    var id=nxDoBackup(false);
+    if(id&&typeof showToast==='function')showToast('\u2713 Backup manual creado');
+    return id;
+  };
+  
+  // Rotazione: elimina backup oltre maxKeep (mantiene i più recenti)
+  function nxRotateBackups(maxKeep){
+    try{
+      var keys=[];
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i);
+        if(k&&k.indexOf('nx5_autobk_')===0)keys.push(k);
+      }
+      keys.sort(); // sort ASC = oldest first
+      while(keys.length>maxKeep){
+        var oldKey=keys.shift();
+        localStorage.removeItem(oldKey);
+        console.log('[nxRotateBackups] Rimosso backup vecchio:',oldKey);
+      }
+    }catch(err){console.warn('[nxRotateBackups] error:',err);}
+  }
+  
+  // Lista tutti i backup con info
+  window.nxListBackups=function(){
+    var backups=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k&&k.indexOf('nx5_autobk_')===0){
+        try{
+          var raw=localStorage.getItem(k);
+          var data=JSON.parse(raw);
+          backups.push({
+            key:k,
+            timestamp:data.timestamp,
+            version:data.v||'?',
+            sizeKB:Math.round((raw.length||0)/1024),
+            keys:(data.keys||[]).length,
+            ageHours:Math.round((Date.now()-new Date(data.timestamp).getTime())/(1000*60*60)*10)/10
+          });
+        }catch(e){console.warn('[nxListBackups] corrupt:',k);}
+      }
+    }
+    backups.sort(function(a,b){return b.key.localeCompare(a.key);});
+    console.table(backups);
+    if(backups.length===0)console.log('Nessun backup disponibile.');
+    return backups;
+  };
+  
+  // Ripristina backup (con conferma utente)
+  window.nxRestoreBackup=function(backupKey){
+    try{
+      if(!backupKey){
+        var list=window.nxListBackups();
+        if(list.length===0){alert('Nessun backup disponibile.');return false;}
+        backupKey=list[0].key; // più recente
+      }
+      var raw=localStorage.getItem(backupKey);
+      if(!raw){alert('Backup non trovato: '+backupKey);return false;}
+      var data=JSON.parse(raw);
+      if(!data||!data.data){alert('Backup corrotto.');return false;}
+      var keys=Object.keys(data.data);
+      var msg='\u26a0\ufe0f RESTAURAR backup?\n\n';
+      msg+='Timestamp: '+data.timestamp+'\n';
+      msg+='Versi\u00f3n: '+(data.v||'?')+'\n';
+      msg+='Colecciones: '+keys.length+'\n';
+      msg+='Tama\u00f1o: '+Math.round((raw.length||0)/1024)+'KB\n\n';
+      msg+='\u26a0\ufe0f Esto SOBRESCRIBE TODOS los datos actuales:\n';
+      msg+=keys.map(function(k){return '  \u2022 '+k+' ('+(Array.isArray(data.data[k])?data.data[k].length+' items':'1 valor')+')';}).join('\n');
+      msg+='\n\nLa app se recargar\u00e1 autom\u00e1ticamente.\n\u00bfContinuar?';
+      if(!confirm(msg))return false;
+      // Backup di sicurezza PRIMA di sovrascrivere (recovery)
+      console.log('[nxRestoreBackup] Creando backup pre-restore...');
+      nxDoBackup(true);
+      // Sovrascrivi le chiavi
+      keys.forEach(function(k){
+        try{
+          localStorage.setItem('nx5_'+k,JSON.stringify(data.data[k]));
+        }catch(eS){console.warn('[nxRestoreBackup] error writing',k,eS);}
+      });
+      alert('\u2713 Backup ripristinato.\n\nLa pagina si ricarica per applicare i dati.');
+      setTimeout(function(){location.reload();},500);
+      return true;
+    }catch(err){
+      console.error('[nxRestoreBackup] FATAL:',err);
+      alert('Errore: '+err.message);
+      return false;
+    }
+  };
+  
+  // Export backup come file JSON scaricabile
+  window.nxExportBackupJSON=function(backupKey){
+    try{
+      if(!backupKey){
+        var list=window.nxListBackups();
+        if(list.length===0){alert('Nessun backup disponibile.');return false;}
+        backupKey=list[0].key;
+      }
+      var raw=localStorage.getItem(backupKey);
+      if(!raw){alert('Backup non trovato: '+backupKey);return false;}
+      var blob=new Blob([raw],{type:'application/json;charset=utf-8'});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      var ts=backupKey.replace('nx5_autobk_','');
+      var dateStr=new Date(parseInt(ts,10)).toISOString().replace(/[:.]/g,'-');
+      a.href=url;a.download='NEXO_backup_'+dateStr+'.json';
+      document.body.appendChild(a);a.click();
+      setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},500);
+      console.log('[nxExportBackupJSON] \u2713 Exportado:',a.download);
+      if(typeof showToast==='function')showToast('\u2713 Backup descargado');
+      return true;
+    }catch(err){console.error('[nxExportBackupJSON] FATAL:',err);alert('Error: '+err.message);return false;}
+  };
+  
+  // Import backup da file (apre file picker)
+  window.nxImportBackupJSON=function(){
+    try{
+      var input=document.createElement('input');
+      input.type='file';input.accept='.json';
+      input.onchange=function(e){
+        var file=e.target.files&&e.target.files[0];
+        if(!file)return;
+        var reader=new FileReader();
+        reader.onload=function(ev){
+          try{
+            var data=JSON.parse(ev.target.result);
+            if(!data||!data.data){alert('File non valido (manca campo data).');return;}
+            // Salva temporaneamente come backup e poi propone restore
+            var tmpKey='nx5_autobk_'+Date.now()+'_imported';
+            localStorage.setItem(tmpKey,ev.target.result);
+            console.log('[nxImportBackupJSON] Backup importato come:',tmpKey);
+            if(confirm('\u2713 Backup importado correctamente.\n\n\u00bfRestaurar ahora?'))
+              window.nxRestoreBackup(tmpKey);
+          }catch(eP){alert('Errore parsing JSON: '+eP.message);}
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    }catch(err){console.error('[nxImportBackupJSON] FATAL:',err);alert('Error: '+err.message);}
+  };
+  
+  // === BOOT: primo backup + setInterval orario ===
+  setTimeout(function(){
+    nxDoBackup(true);
+    console.log('[v9.63] \u2705 Sistema backup attivo. Comandi: nxListBackups(), nxRestoreBackup(), nxExportBackupJSON(), nxImportBackupJSON(), nxBackupNow()');
+  },5000); // primo backup dopo 5s (lascia caricare i dati Firebase)
+  
+  setInterval(function(){
+    nxDoBackup(true);
+  },NX_BACKUP_INTERVAL_MS);
+
+  // v9.63: UI lista backup (per pannello Configuración)
+  window.nxBackupListUI=function(){
+    var div=document.getElementById('bk-list-ui');
+    if(!div)return;
+    var backups=window.nxListBackups();
+    if(!backups||backups.length===0){
+      div.innerHTML='<div style="color:var(--t4);font-style:italic">Nessun backup disponibile (verr\u00e0 creato dopo qualche minuto).</div>';
+      return;
+    }
+    var html='<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:7px">';
+    html+='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html+='<thead><tr style="background:var(--bg3)"><th style="padding:6px;text-align:left">Fecha</th><th style="padding:6px;text-align:right">Edad</th><th style="padding:6px;text-align:right">Tama\u00f1o</th><th style="padding:6px;text-align:right">Items</th><th style="padding:6px"></th></tr></thead><tbody>';
+    backups.forEach(function(b){
+      var d=new Date(b.timestamp);
+      var dateStr=d.toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      var ageStr=b.ageHours<1?Math.round(b.ageHours*60)+'min':b.ageHours+'h';
+      html+='<tr style="border-top:1px solid var(--border)">';
+      html+='<td style="padding:6px;font-family:monospace">'+esc(dateStr)+'</td>';
+      html+='<td style="padding:6px;text-align:right;color:var(--t3)">'+ageStr+'</td>';
+      html+='<td style="padding:6px;text-align:right;color:var(--t3)">'+b.sizeKB+'KB</td>';
+      html+='<td style="padding:6px;text-align:right;color:var(--t3)">'+b.keys+' col.</td>';
+      html+='<td style="padding:6px;text-align:right;white-space:nowrap">'
+        +'<button class="btn bs" onclick="nxRestoreBackup(\''+esc(b.key)+'\')" style="font-size:10px;padding:2px 7px;margin-right:3px" title="Restaurar este backup">&#8634;</button>'
+        +'<button class="btn bs" onclick="nxExportBackupJSON(\''+esc(b.key)+'\')" style="font-size:10px;padding:2px 7px" title="Descargar JSON">&#11123;</button>'
+        +'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+    html+='<div style="margin-top:6px;font-size:10px;color:var(--t4)">\u2139\ufe0f Restore = sustituye TODOS los datos actuales. Se crea backup de seguridad antes.</div>';
+    div.innerHTML=html;
+  };
+  // ========================================================================
+  // END BACKUP SYSTEM v9.63
+  // ========================================================================
 })();
 
 </script>
