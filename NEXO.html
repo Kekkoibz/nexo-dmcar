@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.43 — DMCAR GROUP CRM | 2026-05-02 | Worker Mail integration: HMAC reale (no più btoa), View Online via /save-email + /view, sync unsubscribe da Cloudflare KV, pannello Settings "Worker Mail" configurabile (URL + API secret + HMAC secret in localStorage) -->
+<!-- NEXO v9.44 — DMCAR GROUP CRM | 2026-05-02 | Worker v2 con double opt-out (GET conferma + POST esegue) e i18n 5 lingue (es/it/en/fr/de). NEXO passa &lang=xx nel link basato su contact.country (mkCountryToLang); fallback Accept-Language nel Worker. Pagina conferma anti-bot scanner (Outlook Defender prefetch). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -11537,18 +11537,50 @@ function mkBase64UrlEncodeStr(str){
 // =========================
 // UNSUBSCRIBE LINK (HMAC)
 // =========================
+// Mappa country (string) → ISO 639-1 lang code
+// Supporta i nomi sia in spagnolo (default NEXO) che inglese/italiano/codici ISO
+var MK_COUNTRY_TO_LANG_MAP={
+  // ISO codes (passa attraverso)
+  'es':'es','it':'it','en':'en','fr':'fr','de':'de',
+  // Spanish names (default in NEXO)
+  'espa\u00f1a':'es','espana':'es','spain':'es',
+  'italia':'it','italy':'it',
+  'francia':'fr','france':'fr',
+  'alemania':'de','germany':'de','deutschland':'de',
+  'reino unido':'en','uk':'en','united kingdom':'en','inglaterra':'en','england':'en',
+  'estados unidos':'en','usa':'en','united states':'en',
+  'irlanda':'en','ireland':'en',
+  // Country codes ISO 3166 (in caso passino quelli)
+  'es-es':'es','it-it':'it','en-gb':'en','en-us':'en','fr-fr':'fr','de-de':'de',
+  // Latin America & Portuguese-speaking → English fallback (no PT support)
+  'portugal':'en','brasil':'en','mexico':'en',
+  // Eastern Europe → English fallback
+  'rumania':'en','rumania':'en','romania':'en','polonia':'en','poland':'en',
+  'rep\u00fablica checa':'en','republica checa':'en','czechia':'en','czech republic':'en',
+  'b\u00falgaria':'en','bulgaria':'en','hungria':'en','hungary':'en'
+};
+function mkCountryToLang(country){
+  if(!country)return '';
+  var key=String(country).toLowerCase().trim();
+  return MK_COUNTRY_TO_LANG_MAP[key]||'';
+}
+
 // Genera link unsubscribe firmato HMAC con scadenza 1 anno
 // Formato token: <payloadB64Url>.<hmacB64Url>
 // Payload: <email>|<expiryEpoch>
+// Param `lang`: opzionale, ISO 639-1 (es/it/en/fr/de). Se omesso il Worker
+// userà Accept-Language del browser destinatario.
 // Il Worker valida con lo stesso secret e rifiuta token scaduti/invalidi.
-function mkBuildUnsubLink(email){
+function mkBuildUnsubLink(email,lang){
   // Async: ritorna Promise<string>
   var url=mkWorkerUrl();
   var secret=mkWorkerHmacSecret();
   if(!secret){
     // Fallback se non configurato: link di placeholder che mostra errore
     console.warn('[mkBuildUnsubLink] HMAC secret no configurado. Configura en Settings > Worker Mail.');
-    return Promise.resolve(url+'/unsub?e='+encodeURIComponent(email||'')+'&t=NOT_CONFIGURED');
+    var qs='e='+encodeURIComponent(email||'')+'&t=NOT_CONFIGURED';
+    if(lang)qs+='&lang='+encodeURIComponent(lang);
+    return Promise.resolve(url+'/unsub?'+qs);
   }
   // Scadenza 1 anno
   var exp=Date.now()+(365*24*60*60*1000);
@@ -11556,7 +11588,9 @@ function mkBuildUnsubLink(email){
   var payloadB64=mkBase64UrlEncodeStr(payload);
   return mkHmacSign(payloadB64,secret).then(function(sigB64){
     var token=payloadB64+'.'+sigB64;
-    return url+'/unsub?e='+encodeURIComponent(email||'')+'&t='+encodeURIComponent(token);
+    var qs='e='+encodeURIComponent(email||'')+'&t='+encodeURIComponent(token);
+    if(lang)qs+='&lang='+encodeURIComponent(lang);
+    return url+'/unsub?'+qs;
   });
 }
 
@@ -11719,15 +11753,20 @@ function mkRenderWorkerConfigStatus(){
 // FOOTER EMAIL DIRECT MAIL (compliance)
 // =========================
 // Async: ritorna Promise<string> con HTML del footer + link unsub vero
+// `lang`: ISO 639-1 (es/it/en/fr/de). Usata sia per i testi del footer
+// che propagata al link unsub come query param.
 function mkBuildEmailFooter(email,lang){
   lang=(lang||'es').toLowerCase();
+  if(['es','it','en','fr','de'].indexOf(lang)<0)lang='es';
   var labels={
     es:{unsub:'Si no quiere recibir m\u00e1s emails, haga click aqu\u00ed para darse de baja',sent:'Has recibido este email porque est\u00e1s suscrito a nuestras comunicaciones'},
     it:{unsub:'Se non vuoi pi\u00f9 ricevere email, clicca qui per cancellarti',sent:'Hai ricevuto questa email perch\u00e9 sei iscritto alle nostre comunicazioni'},
-    en:{unsub:'If you don\'t want to receive more emails, click here to unsubscribe',sent:'You have received this email because you are subscribed to our communications'}
+    en:{unsub:'If you don\'t want to receive more emails, click here to unsubscribe',sent:'You have received this email because you are subscribed to our communications'},
+    fr:{unsub:'Si vous ne souhaitez plus recevoir d\'emails, cliquez ici pour vous d\u00e9sinscrire',sent:'Vous avez re\u00e7u cet email car vous \u00eates abonn\u00e9 \u00e0 nos communications'},
+    de:{unsub:'Wenn Sie keine E-Mails mehr erhalten m\u00f6chten, klicken Sie hier zum Abmelden',sent:'Sie erhalten diese E-Mail, weil Sie unsere Mitteilungen abonniert haben'}
   };
   var L=labels[lang]||labels.es;
-  return mkBuildUnsubLink(email).then(function(unsubLink){
+  return mkBuildUnsubLink(email,lang).then(function(unsubLink){
     return '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">'
       +'<div style="font-size:11px;color:#888;text-align:center;line-height:1.6">'
       +'<div>'+L.sent+'.</div>'
@@ -11749,6 +11788,7 @@ window.mkSyncUnsubButtonClick=mkSyncUnsubButtonClick;
 window.mkTestWorkerClick=mkTestWorkerClick;
 window.mkSaveWorkerConfig=mkSaveWorkerConfig;
 window.mkRenderWorkerConfigStatus=mkRenderWorkerConfigStatus;
+window.mkCountryToLang=mkCountryToLang;
 
 // END MARKETING WORKER MAIL HELPERS
 // ===========================================================================
@@ -13660,6 +13700,15 @@ function campSendTest(){
   if(!to)return;
   to=to.trim();
   if(!mkValidEmail(to)){alert('Email no v\u00e1lido.');return;}
+  // v9.44: pide lingua test (per testare le 5 lingue del Worker)
+  var langInput=prompt('\ud83c\udf10 \u00bfQu\u00e9 idioma para el link Unsubscribe?\n\nC\u00f3digos: es / it / en / fr / de\n\n(deja vac\u00edo o "auto" para que el Worker use Accept-Language del navegador del destinatario)','es');
+  if(langInput===null)return; // user cancelled
+  var testLang=(langInput||'').toLowerCase().trim();
+  if(testLang==='auto')testLang='';
+  if(testLang&&['es','it','en','fr','de'].indexOf(testLang)<0){
+    alert('\u26a0\ufe0f Idioma no v\u00e1lido. Usar: es, it, en, fr, de o vac\u00edo.\n\nContinuamos con auto-detect del Worker.');
+    testLang='';
+  }
   // v9.37: consume el offerId (avanza el counter) en el momento del envío
   if(_campEditing&&!_campEditing.offerIdConsumed){
     _campEditing.offerId=nxNextOfferId();
@@ -13674,10 +13723,10 @@ function campSendTest(){
   }
   // Genera emailId univoco per il view online
   var emailId=mkGenEmailId();
-  // Genera unsub link (asincrono per via di HMAC SubtleCrypto)
-  Promise.resolve(workerOk?mkBuildUnsubLink(to):(mkWorkerUrl()+'/unsub?e='+encodeURIComponent(to)+'&t=NOT_CONFIGURED'))
+  // Genera unsub link (asincrono per via di HMAC SubtleCrypto) — passa lang
+  Promise.resolve(workerOk?mkBuildUnsubLink(to,testLang):(mkWorkerUrl()+'/unsub?e='+encodeURIComponent(to)+'&t=NOT_CONFIGURED'+(testLang?'&lang='+testLang:'')))
     .then(function(unsubLink){
-      var viewOnlineLink=mkBuildViewOnlineLink(emailId);
+      var viewOnlineLink=mkBuildViewOnlineLink(emailId)+(testLang?'&lang='+testLang:'');
       // Construye HTML con inyeccio\u0301n de coches + variables reales + logos en base64
       return campBuildHTMLAsync({
         nombre:'Francesco',
@@ -13699,7 +13748,7 @@ function campSendTest(){
             return null;
           })
           :Promise.resolve(null);
-        return savePromise.then(function(){return {html:html,subject:subject};});
+        return savePromise.then(function(){return {html:html,subject:subject,lang:testLang};});
       });
     })
     .then(function(payload){
@@ -13711,7 +13760,8 @@ function campSendTest(){
           setTimeout(function(){
             var msg='\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).';
             if(workerOk){
-              msg+='\n\n\ud83d\udd17 Links incluidos:\n\u2022 Unsubscribe (HMAC firmado)\n\u2022 View Online (KV: '+emailId+')';
+              var langInfo=payload.lang?('\n\u2022 Idioma: '+payload.lang):'\n\u2022 Idioma: auto-detect (Accept-Language)';
+              msg+='\n\n\ud83d\udd17 Links incluidos:\n\u2022 Unsubscribe (HMAC firmado, doble opt-out)'+langInfo+'\n\u2022 View Online (KV: '+emailId+')';
             }else{
               msg+='\n\n\u26a0\ufe0f Worker Mail NO configurado: links son placeholder.\nVe a Configuraci\u00f3n > Worker Mail.';
             }
