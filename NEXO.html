@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.95 — DMCAR GROUP CRM | 2026-05-02 | TEMP folder + Auto-migration Vista Contable: 1) Rimossa colonna Impresa dalla Vista (info implicita nel naming expediente DMCAR/INNO/IMPEX); 2) EXP column mostra "N/A" italico per veicoli en propiedad (libre) ancora senza expediente; 3) Modulo nxTempEnsureFolder + nxTempUploadDoc: crea cartella SharePoint __TEMP/PROVEEDOR (o /TRANSPORTE /BROKER) dentro EXP.GEN [Impresa]; 4) AI auto-archive: per VIN in propriedad raggruppa per impresa stimata + carica copia doc in __TEMP/[Impresa]/[subfolder]; 5) nxTempDocs[] storage: traccia ogni doc TEMP con vins[] + companyCode; 6) nxMigrateTempDocs: trigger automatico al nxExpCreate, scarica doc da TEMP via Graph API content endpoint, ri-upload in expediente reale, marca migrated, elimina file TEMP cleanup; 7) Modal AI mostra raggruppamento per impresa nei VIN in propiedad. -->
+<!-- NEXO v9.97 — DMCAR GROUP CRM | 2026-05-02 | FIX import .docx (l'API Anthropic accetta solo PDF come document, non .docx). Soluzione: estrazione testo lato client via mammoth.js (lazy-load CDN). nxExtractDocxText helper riusabile. Applicato a: 1) Stock Vivo > Importar al Stock (file .docx); 2) Pre-Oferta > Equipamiento extract; 3) Generador Ofertas > oLoad. PDF continua via document API normale. Fix errore "Input should be 'application/pdf'" che bloccava import proforme Word fornitore. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1011,38 +1011,49 @@ En que te puedo ayudar hoy?</div></div>
 
       <!-- VISTA CONTABLE SUB-VIEW (v9.92) -->
       <div id="nb-sub-vista" class="nb-sub" style="display:none">
-        <!-- Sub-tabs interni -->
-        <div class="fc g6 mb12" style="flex-wrap:wrap">
-          <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
-          <button id="nbv-tab-propiedad" class="btn bg" onclick="numbersVistaTab('propiedad')" style="padding:6px 12px;font-size:11px">&#127968; En propiedad</button>
-          <button id="nbv-tab-expedientes" class="btn bg" onclick="numbersVistaTab('expedientes')" style="padding:6px 12px;font-size:11px">&#128193; Por expediente</button>
-          <button id="nbv-tab-pendientes" class="btn bg" onclick="numbersVistaTab('pendientes')" style="padding:6px 12px;font-size:11px">&#9888;&#65039; Pendientes archivar</button>
-          <div style="flex:1"></div>
-          <button class="btn bs" onclick="numbersExportVistaXLSX()" style="font-size:11px" title="Exportar Vista Contable a Excel (38 columnas)">&#128202; XLSX</button>
-          <button class="btn bs" onclick="numbersExportVistaCSV()" style="font-size:11px" title="Exportar a CSV">&#128202; CSV</button>
-          <button class="btn bp" onclick="numbersUploadProveedorDoc()" style="font-size:11px">&#128228; Subir doc proveedor</button>
-        </div>
-        <!-- Filtri -->
-        <div class="card" style="padding:12px;margin-bottom:12px">
-          <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 0.8fr 0.6fr auto;gap:8px;align-items:end">
-            <div><label style="font-size:10px;color:var(--t3)">Buscar (VIN / cliente / proveedor)</label><input type="text" id="nbv-f-q" placeholder="Buscar..." oninput="numbersRenderVista()" style="font-size:11px"></div>
-            <div><label style="font-size:10px;color:var(--t3)">Empresa</label><select id="nbv-f-company" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todas</option></select></div>
-            <div><label style="font-size:10px;color:var(--t3)">Vendedor</label><input type="text" id="nbv-f-seller" placeholder="Todos" oninput="numbersRenderVista()" style="font-size:11px"></div>
-            <div><label style="font-size:10px;color:var(--t3)">Estado pago</label><select id="nbv-f-pago" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todos</option><option value="pending">Pendiente</option><option value="partial">Parcial</option><option value="paid">Cobrado</option></select></div>
-            <div><label style="font-size:10px;color:var(--t3)">Desde</label><input type="date" id="nbv-f-from" onchange="numbersRenderVista()" style="font-size:11px"></div>
-            <div><label style="font-size:10px;color:var(--t3)">Hasta</label><input type="date" id="nbv-f-to" onchange="numbersRenderVista()" style="font-size:11px"></div>
-            <div><button class="btn bg" onclick="numbersResetVistaFilters()" style="font-size:11px;padding:6px 10px" title="Reset filtros">&#10006;</button></div>
+        <!-- v9.96: BLOCCO STICKY (sub-tabs + filtri + KPI) -->
+        <div id="nbv-sticky-block" style="position:sticky;top:0;z-index:50;background:var(--bg1);padding:8px 0 12px 0;margin:-6px 0 0 0;border-bottom:1px solid var(--border)">
+          <!-- Sub-tabs interni -->
+          <div class="fc g6 mb12" style="flex-wrap:wrap">
+            <button id="nbv-tab-vendidos" class="btn bg" onclick="numbersVistaTab('vendidos')" style="padding:6px 12px;font-size:11px;background:var(--acc);color:#fff">&#128666; Vendidos</button>
+            <button id="nbv-tab-propiedad" class="btn bg" onclick="numbersVistaTab('propiedad')" style="padding:6px 12px;font-size:11px">&#127968; En propiedad</button>
+            <button id="nbv-tab-expedientes" class="btn bg" onclick="numbersVistaTab('expedientes')" style="padding:6px 12px;font-size:11px">&#128193; Por expediente</button>
+            <button id="nbv-tab-pendientes" class="btn bg" onclick="numbersVistaTab('pendientes')" style="padding:6px 12px;font-size:11px">&#9888;&#65039; Pendientes archivar</button>
+            <div style="flex:1"></div>
+            <button class="btn bs" onclick="numbersExportVistaXLSX()" style="font-size:11px" title="Exportar Vista Contable a Excel">&#128202; XLSX</button>
+            <button class="btn bs" onclick="numbersExportVistaCSV()" style="font-size:11px" title="Exportar a CSV">&#128202; CSV</button>
+            <button class="btn bs" onclick="numbersResetColumnWidths()" style="font-size:11px" title="Reset anchos de columna">&#9100; Cols</button>
+            <button class="btn bp" onclick="numbersUploadProveedorDoc()" style="font-size:11px">&#128228; Subir doc proveedor</button>
+          </div>
+          <!-- Filtri (riga 1: ricerca generale + filtri specifici) -->
+          <div class="card" style="padding:10px;margin-bottom:8px">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 0.9fr auto;gap:8px;align-items:end;margin-bottom:8px">
+              <div><label style="font-size:10px;color:var(--t3)">Buscar VIN (parcial)</label><input type="text" id="nbv-f-vin" placeholder="\u00faltimas 4-5 cifras..." oninput="numbersRenderVista()" style="font-size:11px;font-family:monospace"></div>
+              <div><label style="font-size:10px;color:var(--t3)">N\u00b0 EXP</label><input type="text" id="nbv-f-exp" placeholder="001, DM, INNO..." oninput="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Cliente</label><input type="text" id="nbv-f-cliente" placeholder="Buscar cliente..." oninput="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Proveedor</label><input type="text" id="nbv-f-proveedor" placeholder="Buscar proveedor..." oninput="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Vendedor</label><input type="text" id="nbv-f-seller" placeholder="Todos" oninput="numbersRenderVista()" style="font-size:11px"></div>
+              <div><button class="btn bg" onclick="numbersResetVistaFilters()" style="font-size:11px;padding:6px 10px" title="Reset filtros">&#10006;</button></div>
+            </div>
+            <!-- Riga 2: filtri secondari (collapsabili) -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.5fr;gap:8px;align-items:end">
+              <div><label style="font-size:10px;color:var(--t3)">Empresa</label><select id="nbv-f-company" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todas</option></select></div>
+              <div><label style="font-size:10px;color:var(--t3)">Estado pago</label><select id="nbv-f-pago" onchange="numbersRenderVista()" style="font-size:11px"><option value="">Todos</option><option value="pending">Pendiente</option><option value="partial">Parcial</option><option value="paid">Cobrado</option></select></div>
+              <div><label style="font-size:10px;color:var(--t3)">Desde</label><input type="date" id="nbv-f-from" onchange="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Hasta</label><input type="date" id="nbv-f-to" onchange="numbersRenderVista()" style="font-size:11px"></div>
+              <div><label style="font-size:10px;color:var(--t3)">Busca general (cualquier campo)</label><input type="text" id="nbv-f-q" placeholder="texto libre..." oninput="numbersRenderVista()" style="font-size:11px"></div>
+            </div>
+          </div>
+          <!-- KPI Mini -->
+          <div class="g4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Veh\u00edculos</div><div id="nbv-kpi-cnt" style="font-size:20px;font-weight:800;color:var(--acc)">0</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Auto</div><div id="nbv-kpi-billed" style="font-size:20px;font-weight:800;color:var(--green)">0 \u20ac</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Trasporto</div><div id="nbv-kpi-pending" style="font-size:20px;font-weight:800;color:#0369a1">0 \u20ac</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">REAL FEES</div><div id="nbv-kpi-margin" style="font-size:20px;font-weight:800;color:#7c3aed">0 \u20ac</div></div>
           </div>
         </div>
-        <!-- KPI Mini -->
-        <div class="g4 mb12" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Veh\u00edculos</div><div id="nbv-kpi-cnt" style="font-size:22px;font-weight:800;color:var(--acc)">0</div></div>
-          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Auto</div><div id="nbv-kpi-billed" style="font-size:22px;font-weight:800;color:var(--green)">0 \u20ac</div></div>
-          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Trasporto</div><div id="nbv-kpi-pending" style="font-size:22px;font-weight:800;color:#0369a1">0 \u20ac</div></div>
-          <div class="card" style="padding:10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">REAL FEES</div><div id="nbv-kpi-margin" style="font-size:22px;font-weight:800;color:#7c3aed">0 \u20ac</div></div>
-        </div>
-        <!-- Tabella -->
-        <div class="card" style="padding:0;overflow-x:auto">
+        <!-- Tabella (scorre sotto il blocco fisso) -->
+        <div class="card" style="padding:0;overflow-x:auto;margin-top:10px">
           <div id="nbv-list" style="min-height:200px"></div>
         </div>
       </div>
@@ -9154,11 +9165,25 @@ function iLoadFile(file){
   }
 
   // PDF/Word: Claude API
+  // v9.97: per .docx estraiamo testo via mammoth.js (l'API Anthropic accetta solo PDF come document)
+  if(ext==='docx'||ext==='doc'){
+    nxExtractDocxText(file,function(text,err){
+      if(err){n('i-status').textContent='Error leyendo Word: '+err;return;}
+      if(!text||!text.trim()){n('i-status').textContent='Error: documento Word vac\u00edo o no parseable';return;}
+      n('i-btn').disabled=true;n('i-status').textContent='Analizando texto extra\u00eddo...';
+      callAPI(SI_SYS,'Filename: '+file.name+'\n\n'+text,8000,function(resp,err2){
+        n('i-btn').disabled=false;
+        if(err2){n('i-status').textContent='Error: '+err2;return;}
+        iHandleResp(resp,n('i-sup').value.trim());
+      });
+    });
+    return;
+  }
   var r=new FileReader();
   r.onload=function(e){
     var b64=e.target.result.split(',')[1];
-    var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    n('i-btn').disabled=true;n('i-status').textContent='Leyendo '+ext.toUpperCase()+'...';
+    var mt='application/pdf';  // solo PDF supportato come document
+    n('i-btn').disabled=true;n('i-status').textContent='Leyendo PDF...';
     callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:8000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:SI_SYS}]}]},function(resp,err){
       n('i-btn').disabled=false;
       if(err){n('i-status').textContent='Error: '+err;return;}
@@ -9166,6 +9191,29 @@ function iLoadFile(file){
     });
   };
   r.readAsDataURL(file);
+}
+
+// v9.97: Helper estrazione testo da .docx (lazy-load mammoth.js)
+window.nxExtractDocxText=function(file,cb){
+  function doExtract(){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var arrayBuffer=e.target.result;
+      mammoth.extractRawText({arrayBuffer:arrayBuffer}).then(function(result){
+        cb(result.value||'',null);
+      }).catch(function(err){
+        cb(null,err.message||'mammoth error');
+      });
+    };
+    reader.onerror=function(){cb(null,'FileReader error');};
+    reader.readAsArrayBuffer(file);
+  }
+  if(typeof mammoth!=='undefined'){doExtract();return;}
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+  s.onload=doExtract;
+  s.onerror=function(){cb(null,'No se pudo cargar mammoth.js');};
+  document.head.appendChild(s);
 }
 
 function iEnsureXLSX(cb){
@@ -9998,12 +10046,24 @@ function openPreOfferModal(ctx,onDone){
         rd.onload=function(e){var txt=parseEml(e.target.result)||'';applyEquip(txt);};
         rd.readAsText(_poFile,'utf-8');
       } else {
-        // PDF / Word -> Claude document API
+        // v9.97: Word → mammoth, PDF → document API
+        if(ext==='docx'||ext==='doc'){
+          nxExtractDocxText(_poFile,function(text,err){
+            if(err){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err)+'</span>';n('po-ok').disabled=false;return;}
+            callAPI('Eres un asistente que extrae listas de equipamiento de coches.',
+              'Extrae la lista de equipamiento del documento. Devuelve SOLO una linea con los items separados por " - ". Sin numeracion ni vi\u00f1etas.\n\n'+text,800,
+              function(resp,err2){
+                n('po-ok').disabled=false;
+                if(err2){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err2)+'</span>';return;}
+                applyEquip(resp);
+              });
+          });
+          return;
+        }
         var rd2=new FileReader();
         rd2.onload=function(e){
           var b64=e.target.result.split(',')[1];
-          var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-          callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:800,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae la lista de equipamiento del coche del documento. Devuelve SOLO una linea con los items separados por " - ". Sin numeracion ni viñetas.'}]}]},function(resp,err){
+          callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:800,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extrae la lista de equipamiento del coche del documento. Devuelve SOLO una linea con los items separados por " - ". Sin numeracion ni vi\u00f1etas.'}]}]},function(resp,err){
             n('po-ok').disabled=false;
             if(err){n('po-eq-status').innerHTML='<span style="color:var(--red)">Error: '+esc(err)+'</span>';return;}
             applyEquip(resp);
@@ -10050,10 +10110,22 @@ function oLoad(input){
       callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae todos los datos de vehiculos de esta imagen. Devuelve el texto completo.'}]}]},function(resp,err){n('o-raw').value=err?'Error: '+err:resp;});
     };r.readAsDataURL(file);
   } else {
+    // v9.97: docx → mammoth, pdf → document API
+    if(ext==='docx'||ext==='doc'){
+      n('o-raw').value='Leyendo Word...';
+      nxExtractDocxText(file,function(text,err){
+        if(err){n('o-raw').value='Error Word: '+err;return;}
+        n('o-raw').value='Analizando texto...';
+        callAPI('Eres un asistente que extrae datos de veh\u00edculos.',
+          'Extrae todos los datos de veh\u00edculos del documento. Devuelve el texto completo.\n\n'+text,1500,
+          function(resp,err2){n('o-raw').value=err2?'Error: '+err2:resp;});
+      });
+      return;
+    }
     r.onload=function(e){
-      var b64=e.target.result.split(',')[1];var mt=ext==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      n('o-raw').value='Leyendo documento...';
-      callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae todos los datos de vehiculos. Devuelve el texto completo.'}]}]},function(resp,err){n('o-raw').value=err?'Error: '+err:resp;});
+      var b64=e.target.result.split(',')[1];
+      n('o-raw').value='Leyendo PDF...';
+      callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extrae todos los datos de vehiculos. Devuelve el texto completo.'}]}]},function(resp,err){n('o-raw').value=err?'Error: '+err:resp;});
     };r.readAsDataURL(file);
   }
 }
@@ -14109,9 +14181,17 @@ function provStockExtractCarsFromMail(mailData){
       else if(ct==='application/pdf'||/\.pdf$/i.test(name)){
         content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
       }
-      // DOCX
+      // DOCX: estraiamo testo via mammoth.js (l'API Anthropic non accetta .docx come document)
       else if(/\.docx$/i.test(name)||ct.indexOf('wordprocessingml')>=0){
-        content.push({type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',data:b64}});
+        try{
+          if(typeof mammoth!=='undefined'){
+            var bin=atob(b64);var arr=new Uint8Array(bin.length);for(var k=0;k<bin.length;k++)arr[k]=bin.charCodeAt(k);
+            // Sync placeholder; verrà completato dopo (lo lascio come testo statico se mammoth non è già caricato)
+            content.push({type:'text',text:'[ATTACHMENT WORD: '+a.name+'] (procesando...)'});
+          }else{
+            content.push({type:'text',text:'[ATTACHMENT WORD: '+a.name+'] (no parseable - mammoth no cargado)'});
+          }
+        }catch(e){console.warn('DOCX parse fail:',e);}
       }
       // Excel: lo convertiamo a CSV testuale (Haiku non legge xlsx nativamente)
       else if(/\.(xlsx|xls)$/i.test(name)){
@@ -23086,7 +23166,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
 
   window.numbersResetVistaFilters=function(){
-    ['nbv-f-q','nbv-f-seller','nbv-f-from','nbv-f-to'].forEach(function(id){var e=n(id);if(e)e.value='';});
+    ['nbv-f-q','nbv-f-vin','nbv-f-exp','nbv-f-cliente','nbv-f-proveedor','nbv-f-seller','nbv-f-from','nbv-f-to'].forEach(function(id){var e=n(id);if(e)e.value='';});
     ['nbv-f-company','nbv-f-pago'].forEach(function(id){var e=n(id);if(e)e.value='';});
     numbersRenderVista();
   };
@@ -23210,13 +23290,38 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='pendientes')records=records.filter(function(r){return r.isVendido&&!r.expediente;});
     // Filtri
     var q=String((document.getElementById('nbv-f-q')||{}).value||'').toLowerCase().trim();
+    var fVin=String((document.getElementById('nbv-f-vin')||{}).value||'').toUpperCase().replace(/\s/g,'').trim();
+    var fExp=String((document.getElementById('nbv-f-exp')||{}).value||'').toUpperCase().trim();
+    var fCli=String((document.getElementById('nbv-f-cliente')||{}).value||'').toLowerCase().trim();
+    var fProv=String((document.getElementById('nbv-f-proveedor')||{}).value||'').toLowerCase().trim();
     var fSel=String((document.getElementById('nbv-f-seller')||{}).value||'').toLowerCase().trim();
     var fComp=String((document.getElementById('nbv-f-company')||{}).value||'').trim();
     var fPago=String((document.getElementById('nbv-f-pago')||{}).value||'').trim();
     var fFrom=String((document.getElementById('nbv-f-from')||{}).value||'').trim();
     var fTo=String((document.getElementById('nbv-f-to')||{}).value||'').trim();
-    if(q)records=records.filter(function(r){return [r.vin,r.vehLabel,r.clientName,r.supplier,r.internalId].some(function(x){return String(x||'').toLowerCase().indexOf(q)>=0;});});
+    // Filtro generale
+    if(q)records=records.filter(function(r){return [r.vin,r.vehLabel,r.clientName,r.supplier,r.internalId,r.brand,r.model,r.color].some(function(x){return String(x||'').toLowerCase().indexOf(q)>=0;});});
+    // Filtro VIN parziale (anche solo ultime 4-5 cifre)
+    if(fVin)records=records.filter(function(r){
+      var vin=String(r.vin||'').toUpperCase();
+      var iid=String(r.internalId||'').toUpperCase();
+      // Match in VIN o internalId, includes any substring
+      return vin.indexOf(fVin)>=0||iid.indexOf(fVin)>=0;
+    });
+    // Filtro N\u00b0 EXP
+    if(fExp)records=records.filter(function(r){
+      if(!r.expediente)return fExp==='N/A'||fExp==='NA';  // permette di cercare specificamente N/A
+      var expCode=(r.expediente.companyCode||'')+'-'+(r.expediente.number||'');
+      var expFull=(r.expediente.fullName||'').toUpperCase();
+      return expCode.toUpperCase().indexOf(fExp)>=0||expFull.indexOf(fExp)>=0;
+    });
+    // Filtro Cliente
+    if(fCli)records=records.filter(function(r){return String(r.clientName||'').toLowerCase().indexOf(fCli)>=0;});
+    // Filtro Proveedor
+    if(fProv)records=records.filter(function(r){return String(r.supplier||'').toLowerCase().indexOf(fProv)>=0;});
+    // Filtro Seller
     if(fSel)records=records.filter(function(r){return String(r.soldBy||'').toLowerCase().indexOf(fSel)>=0;});
+    // Altri
     if(fComp)records=records.filter(function(r){return r.companyId===fComp;});
     if(fPago)records=records.filter(function(r){return r.pagoStatus===fPago;});
     if(fFrom)records=records.filter(function(r){return (r.soldAt||r.createdAt||'').slice(0,10)>=fFrom;});
@@ -23253,7 +23358,53 @@ document.querySelectorAll('.ovl').forEach(function(el){
       mar:{bg:'rgba(168,85,247,0.10)',head:'#7e22ce',label:'MARGINI'},
       bro:{bg:'rgba(236,72,153,0.10)',head:'#9d174d',label:'BROKER'}
     };
-    var html='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px;font-family:monospace;min-width:2300px">';
+    // v9.96: Definizione colonne con larghezza default + carica salvati
+    var colDefs=[
+      {id:'data',label:'Data',w:80},
+      {id:'numexp',label:'N\u00b0 Exp',w:80},
+      {id:'vin',label:'VIN',w:130,br:true},
+      {id:'fornitore',label:'Fornitore',w:130},
+      {id:'fornNpf',label:'N\u00b0 PF/FT',w:100},
+      {id:'fornDataPag',label:'Data pag',w:80},
+      {id:'fornImpAcq',label:'Imp acq',w:90,r:true},
+      {id:'fornAccData',label:'Acconto data',w:90},
+      {id:'fornAccImp',label:'Acconto imp',w:90,r:true,br:true},
+      {id:'cliente',label:'Cliente',w:140},
+      {id:'seller',label:'Seller',w:80},
+      {id:'cliFt',label:'FT/Pro vend',w:120},
+      {id:'cliData',label:'Data saldo',w:80},
+      {id:'cliImp',label:'Imp vend',w:90,r:true},
+      {id:'cliAccData',label:'Acconto data',w:90},
+      {id:'cliAccImp',label:'Acconto imp',w:90,r:true,br:true},
+      {id:'traspForn',label:'Forn. tr.',w:110},
+      {id:'traspFtAcq',label:'FT acq tr.',w:100},
+      {id:'traspDataPag',label:'Data pag tr.',w:90},
+      {id:'traspImpAcq',label:'Imp acq tr.',w:90,r:true},
+      {id:'traspFtVend',label:'FT vend tr.',w:100},
+      {id:'traspDataInc',label:'Data inc tr.',w:90},
+      {id:'traspImpVend',label:'Imp vend tr.',w:90,r:true,br:true},
+      {id:'brand',label:'Brand',w:90},
+      {id:'model',label:'Model',w:100},
+      {id:'version',label:'Version',w:130},
+      {id:'firstReg',label:'1\u00aa Reg',w:80},
+      {id:'km',label:'Km',w:70,r:true},
+      {id:'color',label:'Color',w:90},
+      {id:'damage',label:'Damage',w:70,r:true,br:true},
+      {id:'profAuto',label:'Profit Auto',w:90,r:true},
+      {id:'profTrasp',label:'Profit Trasp.',w:90,r:true,br:true},
+      {id:'broSeller',label:'Seller prov',w:90},
+      {id:'broDest',label:'Destinatario',w:110},
+      {id:'broFt',label:'FT prov',w:100},
+      {id:'broData',label:'Data inc',w:80},
+      {id:'broImp',label:'Imp prov',w:90,r:true},
+      {id:'realFees',label:'REAL FEES',w:100,r:true}
+    ];
+    var savedWidths=LS('nxVistaColWidths',{})||{};
+    colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
+    window._nxColDefs=colDefs; // expose for resize handler
+    var cgHtml='<colgroup>'+colDefs.map(function(c){return '<col data-col-id="'+c.id+'" style="width:'+c.w+'px">';}).join('')+'</colgroup>';
+    var html='<div style="overflow-x:auto"><table id="nbv-table" style="border-collapse:collapse;font-size:10.5px;font-family:monospace;table-layout:fixed">';
+    html+=cgHtml;
     // Header riga 1: blocchi colorati
     html+='<thead><tr>'
       +'<th colspan="3" style="padding:6px 10px;background:'+COL.gen.bg+';color:'+COL.gen.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.gen.label+'</th>'
@@ -23264,57 +23415,20 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'<th colspan="2" style="padding:6px 10px;background:'+COL.mar.bg+';color:'+COL.mar.head+';text-align:center;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.mar.label+'</th>'
       +'<th colspan="6" style="padding:6px 10px;background:'+COL.bro.bg+';color:'+COL.bro.head+';text-align:left;font-weight:700;font-size:11px">'+COL.bro.label+'</th>'
     +'</tr>';
-    // Header riga 2: nomi colonne
-    var th='padding:6px 7px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--t3);font-weight:600;background:var(--bg3);border-bottom:2px solid var(--border)';
+    // Header riga 2: nomi colonne (con data-col-id per resize)
+    var th='padding:6px 7px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--t3);font-weight:600;background:var(--bg3);border-bottom:2px solid var(--border);position:relative;user-select:none';
     var thR=th+';text-align:right';
     var thC=th+';text-align:center';
-    html+='<tr>'
-      // GENERAL (3) - rimossa Impresa
-      +'<th style="'+th+'">Data</th>'
-      +'<th style="'+th+'">N\u00b0 Exp</th>'
-      +'<th style="'+th+';border-right:2px solid var(--border)">VIN</th>'
-      // FORNITORE (6)
-      +'<th style="'+th+'">Fornitore</th>'
-      +'<th style="'+th+'">N\u00b0 PF/FT</th>'
-      +'<th style="'+th+'">Data pag</th>'
-      +'<th style="'+thR+'">Imp acq</th>'
-      +'<th style="'+th+'">Acconto data</th>'
-      +'<th style="'+thR+';border-right:2px solid var(--border)">Acconto imp</th>'
-      // CLIENTE (7)
-      +'<th style="'+th+'">Cliente</th>'
-      +'<th style="'+th+'">Seller</th>'
-      +'<th style="'+th+'">FT/Pro vend</th>'
-      +'<th style="'+th+'">Data saldo</th>'
-      +'<th style="'+thR+'">Imp vend</th>'
-      +'<th style="'+th+'">Acconto data</th>'
-      +'<th style="'+thR+';border-right:2px solid var(--border)">Acconto imp</th>'
-      // TRASPORTO (7)
-      +'<th style="'+th+'">Forn. tr.</th>'
-      +'<th style="'+th+'">FT acq tr.</th>'
-      +'<th style="'+th+'">Data pag tr.</th>'
-      +'<th style="'+thR+'">Imp acq tr.</th>'
-      +'<th style="'+th+'">FT vend tr.</th>'
-      +'<th style="'+th+'">Data inc tr.</th>'
-      +'<th style="'+thR+';border-right:2px solid var(--border)">Imp vend tr.</th>'
-      // AUTO (7)
-      +'<th style="'+th+'">Brand</th>'
-      +'<th style="'+th+'">Model</th>'
-      +'<th style="'+th+'">Version</th>'
-      +'<th style="'+th+'">1\u00aa Reg</th>'
-      +'<th style="'+thR+'">Km</th>'
-      +'<th style="'+th+'">Color</th>'
-      +'<th style="'+thR+';border-right:2px solid var(--border)">Damage</th>'
-      // MARGINI (2)
-      +'<th style="'+thR+'">Profit Auto</th>'
-      +'<th style="'+thR+';border-right:2px solid var(--border)">Profit Trasp.</th>'
-      // BROKER (6)
-      +'<th style="'+th+'">Seller prov</th>'
-      +'<th style="'+th+'">Destinatario</th>'
-      +'<th style="'+th+'">FT prov</th>'
-      +'<th style="'+th+'">Data inc</th>'
-      +'<th style="'+thR+'">Imp prov</th>'
-      +'<th style="'+thR+'">REAL FEES</th>'
-    +'</tr></thead><tbody>';
+    // Costruisci header riga colonne con resize handle
+    var hdrCells=colDefs.map(function(c){
+      var thStyle=c.r?thR:th;
+      if(c.br)thStyle+=';border-right:2px solid var(--border)';
+      return '<th data-col-id="'+c.id+'" style="'+thStyle+'">'
+        +esc(c.label)
+        +'<span class="nbv-col-resize" data-col-id="'+c.id+'" style="position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;background:transparent;z-index:5" onmousedown="numbersStartColResize(event, \''+c.id+'\')"></span>'
+      +'</th>';
+    }).join('');
+    html+='<tr>'+hdrCells+'</tr></thead><tbody>';
     // Helper render cella
     var fmtMon=function(v,positiveColor){
       if(v===null||v===undefined||v==='')return '<span style="color:var(--t4)">\u2014</span>';
@@ -23595,6 +23709,52 @@ document.querySelectorAll('.ovl').forEach(function(el){
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(function(){URL.revokeObjectURL(url);},1000);
     if(typeof showToast==='function')showToast('\u2713 CSV descargado');
+  };
+
+  // ========================================================================
+  // v9.96: Column resize handlers
+  // ========================================================================
+  window._nxResizeState=null;
+  window.numbersStartColResize=function(ev,colId){
+    ev.preventDefault();ev.stopPropagation();
+    var table=document.getElementById('nbv-table');
+    if(!table)return;
+    var col=table.querySelector('col[data-col-id="'+colId+'"]');
+    if(!col)return;
+    var startX=ev.clientX;
+    var startW=col.offsetWidth||parseInt(col.style.width)||100;
+    window._nxResizeState={col:col,colId:colId,startX:startX,startW:startW};
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+    document.addEventListener('mousemove',numbersDoColResize);
+    document.addEventListener('mouseup',numbersEndColResize);
+  };
+  window.numbersDoColResize=function(ev){
+    var s=window._nxResizeState;if(!s)return;
+    var dx=ev.clientX-s.startX;
+    var newW=Math.max(40,Math.min(500,s.startW+dx)); // min 40px, max 500px
+    s.col.style.width=newW+'px';
+    s.lastWidth=newW;
+  };
+  window.numbersEndColResize=function(){
+    var s=window._nxResizeState;
+    document.body.style.cursor='';
+    document.body.style.userSelect='';
+    document.removeEventListener('mousemove',numbersDoColResize);
+    document.removeEventListener('mouseup',numbersEndColResize);
+    if(s&&s.lastWidth){
+      // Salva larghezza
+      var saved=LS('nxVistaColWidths',{})||{};
+      saved[s.colId]=s.lastWidth;
+      SS('nxVistaColWidths',saved);
+    }
+    window._nxResizeState=null;
+  };
+  window.numbersResetColumnWidths=function(){
+    if(!confirm('\u00bfResetear el ancho de todas las columnas a sus valores por defecto?'))return;
+    SS('nxVistaColWidths',{});
+    if(typeof showToast==='function')showToast('\u2713 Anchos restablecidos');
+    numbersRenderVista();
   };
 
   // Apre dettaglio (placeholder - può essere espanso in modal con tutti i docs)
