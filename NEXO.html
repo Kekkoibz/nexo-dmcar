@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.63 — DMCAR GROUP CRM | 2026-05-02 | NUOVO Sistema Backup Automatico: snapshot completo ogni ora di TUTTI i dati critici (stock, contacts, mkContacts, mkLists, leads, providers, campaigns, tasks, mailDrafts, mailUnsubscribed). Rotation automatica (max 24 backup = 24h storia). Comandi console: nxListBackups() / nxRestoreBackup(key) / nxExportBackupJSON(key) / nxImportBackupJSON(file) / nxBackupNow(). Primo backup eseguito al boot dopo 5s. Limit storage: se localStorage > 4MB salta backup oldest preventivamente. -->
+<!-- NEXO v9.64 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS F0: Setup modulo fatturazione. Sidebar entry "🧾 Nexo Numbers" sotto "Negocio". 6 sub-tab: Dashboard, Proformas, Facturas, Pagos, Reporting, Configuración. DB schema in localStorage: nxCompanies (società emittenti), nxProformas, nxInvoices, nxDocTemplates, nxEmailTemplates, nxPayments, nxNumbersNotifications. Counter sequenziali per società. View skeleton vuote pronte per F1+. Funzioni base: numbersGo(subTab), numbersRender(). -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -281,6 +281,7 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="ni" id="n-marketing" onclick="go('marketing')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l9-5 9 5"/></svg></span>Marketing<span class="ni-cnt cg" id="cnt-marketing" style="display:none">0</span></div>
     <div class="ni" id="n-campaigns" onclick="go('campaigns')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-8-7 18-2-8-9-2z"/></svg></span>Campa&ntilde;as<span class="ni-cnt cg" id="cnt-campaigns" style="display:none">0</span></div>
     <div class="ni" id="n-tareas" onclick="go('tareas')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1" fill="currentColor" stroke="none"/><path d="M9 12l1.5 1.5L13 11M9 16l1.5 1.5L13 15" stroke-linecap="round"/></svg></span>Tareas<span class="ni-cnt cr" id="cnt-tareas">0</span></div>
+    <div class="ni" id="n-numbers" onclick="go('numbers')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>Nexo Numbers<span class="ni-cnt co" id="cnt-numbers-pending" style="display:none" title="Notificaciones pendientes">0</span></div>
     <div class="sb-sec">Sistema</div>
     <div class="ni" id="n-config" onclick="go('config')"><span class="ni-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 11-2.6 2.6l-7.5 7.5a2 2 0 102.8 2.8l7.5-7.5a4 4 0 002.6-2.6z"/></svg></span>Configuracion</div>
   </div>
@@ -981,6 +982,178 @@ En que te puedo ayudar hoy?</div></div>
         <div class="fc g8"><button class="btn bp" onclick="addTask()">Guardar</button><button class="btn bg" onclick="tglAddTask()">Cancelar</button></div>
       </div>
       <div id="tasks-list"></div>
+    </div>
+
+    <!-- v9.64: NEXO NUMBERS — Modulo Fatturazione -->
+    <div class="view" id="view-numbers">
+      <div class="fbet mb14">
+        <div>
+          <div class="st">&#129534; Nexo Numbers</div>
+          <div class="ss">Facturaci&oacute;n y contabilidad &mdash; integrado con Won del Kanban</div>
+        </div>
+        <div class="fc g8">
+          <span id="nb-pending-badge" style="display:none;background:rgba(245,158,11,.15);color:#92400e;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:700">
+            &#128276; <span id="nb-pending-cnt">0</span> notificaci&oacute;n pendientes
+          </span>
+        </div>
+      </div>
+
+      <!-- SUB-TAB NAVIGATION -->
+      <div class="fc g4 mb14" style="border-bottom:1px solid var(--border);overflow-x:auto;flex-wrap:nowrap;padding-bottom:0">
+        <button id="nb-tab-dashboard" class="btn bg" onclick="numbersGo('dashboard')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;background:var(--acc);color:#fff;white-space:nowrap">&#128202; Dashboard</button>
+        <button id="nb-tab-proformas" class="btn bg" onclick="numbersGo('proformas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128203; Proformas <span id="nb-tab-cnt-pf" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+        <button id="nb-tab-facturas" class="btn bg" onclick="numbersGo('facturas')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#129534; Facturas <span id="nb-tab-cnt-fa" style="opacity:.7;font-size:11px;margin-left:4px">(0)</span></button>
+        <button id="nb-tab-pagos" class="btn bg" onclick="numbersGo('pagos')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128176; Pagos</button>
+        <button id="nb-tab-reporting" class="btn bg" onclick="numbersGo('reporting')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#128200; Reporting</button>
+        <button id="nb-tab-config" class="btn bg" onclick="numbersGo('config')" style="padding:8px 16px;border-radius:8px 8px 0 0;border-bottom:none;white-space:nowrap">&#9881;&#65039; Configuraci&oacute;n</button>
+      </div>
+
+      <!-- DASHBOARD SUB-VIEW -->
+      <div id="nb-sub-dashboard" class="nb-sub" style="display:block">
+        <div class="g3 mb14">
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Pendientes Won</div>
+            <div style="font-size:28px;font-weight:800;color:var(--orange)" id="nb-stat-pending">0</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:4px">Esperando proforma</div>
+          </div>
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Proformas activas</div>
+            <div style="font-size:28px;font-weight:800;color:var(--acc)" id="nb-stat-proformas">0</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:4px">No facturadas a&uacute;n</div>
+          </div>
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;color:var(--t3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Facturado este mes</div>
+            <div style="font-size:28px;font-weight:800;color:var(--green)" id="nb-stat-month">0 &euro;</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:4px" id="nb-stat-month-cnt">0 facturas</div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px">
+          <div class="ct">&#128276; Notificaciones pendientes</div>
+          <div id="nb-notifs-list" style="font-size:12px;color:var(--t3);text-align:center;padding:30px">
+            <div style="font-size:32px;margin-bottom:10px">&#128276;</div>
+            <div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin notificaciones</div>
+            <div style="font-size:11px">Cuando un vendedor mueva una oportunidad a "Won" en el Kanban, aparecer&aacute; aqu&iacute;.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFORMAS SUB-VIEW -->
+      <div id="nb-sub-proformas" class="nb-sub" style="display:none">
+        <div class="fbet mb14">
+          <div style="font-size:13px;color:var(--t2)">Documentos pre-fattura. Generan factura una volta cobrada la operaci&oacute;n.</div>
+          <button class="btn bp" onclick="numbersNewProforma()" style="font-size:12px">+ Nueva Proforma</button>
+        </div>
+        <div class="card" style="padding:0">
+          <div id="nb-proformas-list" style="padding:30px;text-align:center;color:var(--t3)">
+            <div style="font-size:32px;margin-bottom:10px">&#128203;</div>
+            <div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin proformas todav&iacute;a</div>
+            <div style="font-size:11px">Crea una manualmente o esperar a que se genere desde Kanban Won.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FACTURAS SUB-VIEW -->
+      <div id="nb-sub-facturas" class="nb-sub" style="display:none">
+        <div class="fbet mb14">
+          <div style="font-size:13px;color:var(--t2)">Facturas definitivas emitidas. Generadas a partir de Proformas cobradas.</div>
+          <button class="btn bs" onclick="alert('Las facturas se generan desde una Proforma marcada como cobrada (F7).')" style="font-size:11px">&#9432; &iquest;C&oacute;mo crear?</button>
+        </div>
+        <div class="card" style="padding:0">
+          <div id="nb-facturas-list" style="padding:30px;text-align:center;color:var(--t3)">
+            <div style="font-size:32px;margin-bottom:10px">&#129534;</div>
+            <div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin facturas todav&iacute;a</div>
+            <div style="font-size:11px">Las facturas se crean a partir de una Proforma cobrada.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGOS SUB-VIEW -->
+      <div id="nb-sub-pagos" class="nb-sub" style="display:none">
+        <div class="fbet mb14">
+          <div style="font-size:13px;color:var(--t2)">Cobros registrados, vencimientos y aging.</div>
+          <button class="btn bp" onclick="alert('F-pagos: pendiente desarrollo (Phase 7)')" style="font-size:12px">+ Registrar pago</button>
+        </div>
+        <div class="g2 mb14">
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em">Por cobrar</div>
+            <div style="font-size:24px;font-weight:800;color:var(--orange);margin-top:4px" id="nb-pay-pending">0 &euro;</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px" id="nb-pay-pending-cnt">0 facturas</div>
+          </div>
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em">Cobrado este mes</div>
+            <div style="font-size:24px;font-weight:800;color:var(--green);margin-top:4px" id="nb-pay-collected">0 &euro;</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px" id="nb-pay-collected-cnt">0 cobros</div>
+          </div>
+        </div>
+        <div class="card" style="padding:0">
+          <div id="nb-pagos-list" style="padding:30px;text-align:center;color:var(--t3)">
+            <div style="font-size:32px;margin-bottom:10px">&#128176;</div>
+            <div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin pagos registrados</div>
+            <div style="font-size:11px">Cuando un cliente pague una factura, registrar&aacute; aqu&iacute;.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REPORTING SUB-VIEW -->
+      <div id="nb-sub-reporting" class="nb-sub" style="display:none">
+        <div class="fbet mb14">
+          <div style="font-size:13px;color:var(--t2)">Estad&iacute;sticas y exportes contables.</div>
+          <div class="fc g6">
+            <button class="btn bs" onclick="alert('F8: pendiente desarrollo (export CSV)')" style="font-size:11px">&#11123; CSV</button>
+            <button class="btn bs" onclick="alert('F8: pendiente desarrollo (export XLSX)')" style="font-size:11px">&#11123; Excel</button>
+          </div>
+        </div>
+        <div class="card" style="padding:30px;text-align:center;color:var(--t3)">
+          <div style="font-size:32px;margin-bottom:10px">&#128200;</div>
+          <div style="font-weight:600;color:var(--t2);margin-bottom:5px">Reporting en construcci&oacute;n</div>
+          <div style="font-size:11px;line-height:1.6">Aqu&iacute; aparecer&aacute;n: facturado por empresa, IVA por per&iacute;odo,<br>top clientes, aging report, comparativas mensuales.</div>
+        </div>
+      </div>
+
+      <!-- CONFIGURACIÓN SUB-VIEW -->
+      <div id="nb-sub-config" class="nb-sub" style="display:none">
+        <div class="g2 mb14">
+          <div class="card">
+            <div class="fbet mb10"><div class="ct">&#127970; Empresas emisoras</div><button class="btn bp" onclick="numbersNewCompany()" style="font-size:11px">+ Nueva empresa</button></div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Sociedades del grupo que emiten facturas. Cada una con sus datos fiscales, numerador propio, plantilla y logo.</div>
+            <div id="nb-companies-list">
+              <div style="font-size:12px;color:var(--t3);text-align:center;padding:20px">Cargando empresas...</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="fbet mb10"><div class="ct">&#128196; Plantillas documentos</div><button class="btn bs" onclick="alert('F3: pendiente desarrollo (editor template HTML)')" style="font-size:11px">+ Nueva plantilla</button></div>
+            <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas HTML personalizables para Proformas y Facturas. Cada empresa puede usar la suya.</div>
+            <div id="nb-templates-list">
+              <div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">
+                Pendiente F3 \u2014 editor HTML con variables {{client.name}}, {{items}}, etc.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card mb14">
+          <div class="fbet mb10"><div class="ct">&#128231; Plantillas email</div><button class="btn bs" onclick="alert('F3: pendiente desarrollo')" style="font-size:11px">+ Nueva plantilla</button></div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Plantillas para envio Proforma / Factura / Recordatorio pago, con variables dinamicas y multi-idioma.</div>
+          <div id="nb-email-tpl-list">
+            <div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">
+              Pendiente F3 \u2014 editor con multi-idioma (es/it/en/fr/de).
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">&#128737;&#65039; Estado del m&oacute;dulo (Roadmap)</div>
+          <div style="font-size:11px;color:var(--t2);line-height:1.7;margin-top:8px">
+            <div><span style="color:#16a34a">\u2713 F0</span> Setup + DB schema (esta versi&oacute;n)</div>
+            <div><span style="color:var(--t4)">\u25cb F1</span> CRUD Empresas (siguiente)</div>
+            <div><span style="color:var(--t4)">\u25cb F2</span> Proformas manual</div>
+            <div><span style="color:var(--t4)">\u25cb F3</span> Templates editor</div>
+            <div><span style="color:var(--t4)">\u25cb F4</span> Generador PDF</div>
+            <div><span style="color:var(--t4)">\u25cb F5</span> Trigger Won \u2192 Notificaci&oacute;n</div>
+            <div><span style="color:var(--t4)">\u25cb F6</span> Env&iacute;o email autom&aacute;tico</div>
+            <div><span style="color:var(--t4)">\u25cb F7</span> Pagos + conversi&oacute;n a Factura</div>
+            <div><span style="color:var(--t4)">\u25cb F8</span> Reporting + export</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- CONFIG -->
@@ -4691,7 +4864,7 @@ function fmtPickup(loc){
 }
 
 // -- NAV ------------------------------------------------------
-var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',campaigns:'Campa\u00f1as',tareas:'Tareas',config:'Configuracion'};
+var TITLES={dashboard:'Dashboard',asistente:'Asistente NEXO',stock:'Stock Vivo',ofertas:'Generador de Ofertas',contactos:'Contactos B2B',providers:'Providers',leads:'Leads',marketing:'Marketing',campaigns:'Campa\u00f1as',tareas:'Tareas',numbers:'Nexo Numbers',config:'Configuracion'};
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
@@ -4711,6 +4884,7 @@ function go(v){
   if(v==='leads') renderLeads();
   if(v==='marketing') renderMarketing();
   if(v==='campaigns') renderCampaigns();
+  if(v==='numbers') renderNumbers();
   if(v==='config') renderConfig();
   if(window.innerWidth<=768) document.getElementById('sb').classList.remove('mob');
 }
@@ -18126,6 +18300,230 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(typeof stkRefreshAssignedDatalist==='function')stkRefreshAssignedDatalist();
     console.log('[v9.58] Stock Vivo: badge stale + datalist inicializados');
   },3500);
+
+  // ========================================================================
+  // v9.64: NEXO NUMBERS — Modulo Fatturazione (F0 Setup)
+  // ========================================================================
+  // DB schema:
+  //   nxCompanies: array società emittenti (4 sociedades del grupo + future)
+  //   nxProformas: array proformas
+  //   nxInvoices: array facturas
+  //   nxDocTemplates: array plantillas HTML (proforma + factura)
+  //   nxEmailTemplates: array plantillas email (envio proforma/factura/recordatorio)
+  //   nxPayments: array pagos registrati
+  //   nxNumbersNotifications: cola notifiche da Won kanban
+  //   nxNumbersCounters: counter per società (per numerazione progressiva)
+  
+  // Variabili globali
+  window.nxCompanies=LS('nxCompanies',[]);
+  window.nxProformas=LS('nxProformas',[]);
+  window.nxInvoices=LS('nxInvoices',[]);
+  window.nxDocTemplates=LS('nxDocTemplates',[]);
+  window.nxEmailTemplates=LS('nxEmailTemplates',[]);
+  window.nxPayments=LS('nxPayments',[]);
+  window.nxNumbersNotifications=LS('nxNumbersNotifications',[]);
+  window.nxNumbersCounters=LS('nxNumbersCounters',{}); // {companyId_year_proforma: 1, companyId_year_invoice: 1}
+  
+  // Tab corrente
+  window._nbActiveTab='dashboard'; // dashboard | proformas | facturas | pagos | reporting | config
+  
+  // Sub-tab navigation
+  window.numbersGo=function(subTab){
+    if(!subTab)subTab='dashboard';
+    window._nbActiveTab=subTab;
+    var validTabs=['dashboard','proformas','facturas','pagos','reporting','config'];
+    if(validTabs.indexOf(subTab)<0)subTab='dashboard';
+    // Update tab buttons
+    validTabs.forEach(function(t){
+      var btn=document.getElementById('nb-tab-'+t);
+      if(btn){
+        if(t===subTab){
+          btn.style.background='var(--acc)';
+          btn.style.color='#fff';
+        }else{
+          btn.style.background='';
+          btn.style.color='';
+        }
+      }
+      var view=document.getElementById('nb-sub-'+t);
+      if(view)view.style.display=(t===subTab)?'block':'none';
+    });
+    // Render contenuto specifico
+    if(subTab==='dashboard')numbersRenderDashboard();
+    else if(subTab==='proformas')numbersRenderProformas();
+    else if(subTab==='facturas')numbersRenderFacturas();
+    else if(subTab==='pagos')numbersRenderPagos();
+    else if(subTab==='reporting')numbersRenderReporting();
+    else if(subTab==='config')numbersRenderConfig();
+  };
+  
+  // Render principale (chiamato da go('numbers'))
+  window.renderNumbers=function(){
+    numbersUpdateBadges();
+    numbersGo(window._nbActiveTab||'dashboard');
+  };
+  
+  // Aggiorna badge sidebar + counter tab
+  window.numbersUpdateBadges=function(){
+    var pendingCount=(nxNumbersNotifications||[]).filter(function(n){return n&&n.status==='pending';}).length;
+    var pfCount=(nxProformas||[]).length;
+    var faCount=(nxInvoices||[]).length;
+    // Badge sidebar
+    var sb=document.getElementById('cnt-numbers-pending');
+    if(sb){
+      if(pendingCount>0){sb.textContent=pendingCount;sb.style.display='';}
+      else{sb.style.display='none';}
+    }
+    // Badge tab counter
+    var pfCnt=document.getElementById('nb-tab-cnt-pf');
+    if(pfCnt)pfCnt.textContent='('+pfCount+')';
+    var faCnt=document.getElementById('nb-tab-cnt-fa');
+    if(faCnt)faCnt.textContent='('+faCount+')';
+    // Banner top
+    var bannerBadge=document.getElementById('nb-pending-badge');
+    var bannerCnt=document.getElementById('nb-pending-cnt');
+    if(bannerBadge&&bannerCnt){
+      if(pendingCount>0){
+        bannerBadge.style.display='';
+        bannerCnt.textContent=pendingCount;
+      }else{
+        bannerBadge.style.display='none';
+      }
+    }
+  };
+  
+  // Sub-render: Dashboard
+  window.numbersRenderDashboard=function(){
+    var pending=(nxNumbersNotifications||[]).filter(function(n){return n&&n.status==='pending';});
+    var activeProformas=(nxProformas||[]).filter(function(p){return p&&p.status!=='converted'&&p.status!=='cancelled';});
+    // Mese corrente
+    var thisMonth=new Date();
+    thisMonth.setDate(1);thisMonth.setHours(0,0,0,0);
+    var monthInvoices=(nxInvoices||[]).filter(function(inv){
+      if(!inv||!inv.createdAt)return false;
+      return new Date(inv.createdAt)>=thisMonth;
+    });
+    var monthTotal=monthInvoices.reduce(function(s,inv){return s+(inv.total||0);},0);
+    // Aggiorna stats
+    var sP=document.getElementById('nb-stat-pending');if(sP)sP.textContent=pending.length;
+    var sPr=document.getElementById('nb-stat-proformas');if(sPr)sPr.textContent=activeProformas.length;
+    var sM=document.getElementById('nb-stat-month');if(sM)sM.textContent=monthTotal.toLocaleString('es-ES')+' \u20ac';
+    var sMc=document.getElementById('nb-stat-month-cnt');if(sMc)sMc.textContent=monthInvoices.length+' factura'+(monthInvoices.length!==1?'s':'');
+    // Lista notifiche
+    var listEl=document.getElementById('nb-notifs-list');
+    if(listEl){
+      if(pending.length===0){
+        listEl.innerHTML='<div style="font-size:32px;margin-bottom:10px">\ud83d\udd14</div>'
+          +'<div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin notificaciones</div>'
+          +'<div style="font-size:11px">Cuando un vendedor mueva una oportunidad a "Won" en el Kanban, aparecer\u00e1 aqu\u00ed.</div>';
+      }else{
+        listEl.innerHTML=pending.map(function(ntf){
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border-radius:7px;margin-bottom:6px">'
+            +'<div style="flex:1"><div style="font-weight:600;font-size:13px">'+esc(ntf.title||'Notificaci\u00f3n')+'</div>'
+            +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+esc(ntf.message||'')+'</div></div>'
+            +'<div class="fc g6"><button class="btn bp" style="font-size:11px;padding:4px 10px" onclick="numbersAcceptNotif(\''+esc(ntf.id)+'\')">\u2705 Aceptar</button>'
+            +'<button class="btn bg" style="font-size:11px;padding:4px 10px" onclick="numbersRejectNotif(\''+esc(ntf.id)+'\')">Rechazar</button></div>'
+            +'</div>';
+        }).join('');
+      }
+    }
+  };
+  
+  // Sub-render: Proformas
+  window.numbersRenderProformas=function(){
+    var listEl=document.getElementById('nb-proformas-list');
+    if(!listEl)return;
+    var proformas=nxProformas||[];
+    if(proformas.length===0){
+      listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3)">'
+        +'<div style="font-size:32px;margin-bottom:10px">\ud83d\udccb</div>'
+        +'<div style="font-weight:600;color:var(--t2);margin-bottom:5px">Sin proformas todav\u00eda</div>'
+        +'<div style="font-size:11px">Crea una manualmente o esperar a que se genere desde Kanban Won.</div>'
+        +'</div>';
+      return;
+    }
+    // F2: render lista
+    listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3)">F2 pendiente \u2014 lista proformas</div>';
+  };
+  
+  // Sub-render: Facturas
+  window.numbersRenderFacturas=function(){
+    var listEl=document.getElementById('nb-facturas-list');
+    if(!listEl)return;
+    if((nxInvoices||[]).length===0){
+      // Already showing empty state in HTML
+      return;
+    }
+    listEl.innerHTML='<div style="padding:30px;text-align:center;color:var(--t3)">F7 pendiente \u2014 lista facturas</div>';
+  };
+  
+  // Sub-render: Pagos
+  window.numbersRenderPagos=function(){
+    // F7 pending - placeholder vacío
+  };
+  
+  // Sub-render: Reporting
+  window.numbersRenderReporting=function(){
+    // F8 pending
+  };
+  
+  // Sub-render: Configuración (lista empresas)
+  window.numbersRenderConfig=function(){
+    var listEl=document.getElementById('nb-companies-list');
+    if(!listEl)return;
+    var companies=nxCompanies||[];
+    if(companies.length===0){
+      listEl.innerHTML='<div style="font-size:12px;color:var(--t3);text-align:center;padding:20px;background:var(--bg3);border-radius:7px">'
+        +'<div style="margin-bottom:8px">No hay empresas configuradas todav\u00eda.</div>'
+        +'<div style="font-size:11px">Pendiente F1 \u2014 CRUD empresas (DMCAR SRO, INNOQUEST, IMPEX, MERCEDES SOLUTION).</div>'
+        +'</div>';
+      return;
+    }
+    // F1: render lista companies
+    listEl.innerHTML=companies.map(function(c){
+      return '<div style="padding:10px;background:var(--bg3);border-radius:7px;margin-bottom:6px">'
+        +'<div style="font-weight:600;font-size:13px">'+esc(c.name||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--t3);margin-top:2px">VAT: '+esc(c.vatNumber||'?')+' \u00b7 '+esc((c.address&&c.address.country)||'')+'</div>'
+        +'</div>';
+    }).join('');
+  };
+  
+  // F1 placeholder
+  window.numbersNewCompany=function(){
+    alert('F1 pendiente: formulario CRUD empresa con todos los datos fiscales.\n\nPodemos hacerlo en la siguiente versi\u00f3n.');
+  };
+  
+  // F2 placeholder
+  window.numbersNewProforma=function(){
+    alert('F2 pendiente: formulario crear proforma manual.\n\nPodemos hacerlo despu\u00e9s de F1.');
+  };
+  
+  // F5 placeholder: accept/reject notifiche
+  window.numbersAcceptNotif=function(notifId){
+    var ntf=(nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!ntf)return;
+    alert('F5 pendiente: al aceptar abrir\u00eda formulario proforma pre-popolato.\n\nNotificaci\u00f3n: '+ntf.title);
+  };
+  
+  window.numbersRejectNotif=function(notifId){
+    if(!confirm('Rechazar esta notificaci\u00f3n?'))return;
+    var idx=(nxNumbersNotifications||[]).findIndex(function(n){return n.id===notifId;});
+    if(idx<0)return;
+    nxNumbersNotifications[idx].status='rejected';
+    nxNumbersNotifications[idx].resolvedAt=new Date().toISOString();
+    SS('nxNumbersNotifications',nxNumbersNotifications);
+    numbersUpdateBadges();
+    numbersRenderDashboard();
+  };
+  
+  // Init: aggiorna badge al boot
+  setTimeout(function(){
+    numbersUpdateBadges();
+    console.log('[v9.64] Nexo Numbers F0 ready. DB initialized: '+nxCompanies.length+' empresas, '+nxProformas.length+' proformas, '+nxInvoices.length+' facturas.');
+  },3700);
+  // ========================================================================
+  // END NEXO NUMBERS F0
+  // ========================================================================
 
   // ========================================================================
   // v9.63: SISTEMA BACKUP AUTOMATICO ORARIO
