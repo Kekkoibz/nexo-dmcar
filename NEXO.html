@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.52 — DMCAR GROUP CRM | 2026-05-02 | Bug fix routing: aggiunto try/catch granulare in tutto il flusso (mkExecuteAutoroutingFor, mkSyncFromB2B, mkFindOrCreateListByName, mkRoutingShowSingleDialog, mkRoutingYesAll, mkRoutingFinalize) con logging dettagliato. Defensiva: assicura mkContacts/mkLists arrays anche se localStorage corrotto. Fix: validazione email pre-routing, return safe in caso di errori, alert chiaro all'utente con dettagli errore. -->
+<!-- NEXO v9.53 — DMCAR GROUP CRM | 2026-05-02 | FIX BUG CRITICO routing: 1) sanitizza mkContact prima di SS() (rimpiazza undefined→'' per compatibilità Firestore), 2) helper mkSanitizeForFirebase() applicato anche a mkLists; 3) NUOVO MODAL ROUTING con CHECKBOX per selezione esplicita liste (sostituisce confirm() opaco); 4) Country picker con bandiere + autocomplete in modal Lead (riusa mkCreateCountryDropdown già esistente in Marketing). Test 4 ora completamente non bloccante. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1334,7 +1334,11 @@ En que te puedo ayudar hoy?</div></div>
     </div>
     <div class="g2 mb10">
       <div><label>Ciudad</label><input type="text" id="le-city" placeholder="Ostuni"></div>
-      <div><label>Pais (codigo)</label><input type="text" id="le-country" placeholder="IT, ES, DE, FR..."></div>
+      <div>
+        <label>Pa&iacute;s</label>
+        <div id="le-country_wrapper"></div>
+        <input type="hidden" id="le-country" value="">
+      </div>
     </div>
     <div class="g2 mb10">
       <div><label>Telefono</label><input type="tel" id="le-phone" placeholder="+39 334 311 4631"></div>
@@ -2388,7 +2392,40 @@ window.onerror = function(msg, src, line, col, err) {
 
 // -- STORAGE --------------------------------------------------
 function LS(k,d){try{var v=localStorage.getItem('nx5_'+k);return v!==null?JSON.parse(v):d;}catch(e){return d;}}
-function SS(k,v){try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}if(typeof NX_FB!=='undefined'&&NX_FB&&NX_FB.onLocalSave)NX_FB.onLocalSave(k,v);}
+function SS(k,v){
+  try{localStorage.setItem('nx5_'+k,JSON.stringify(v));}catch(e){}
+  // v9.53: deep sanitize undefined→null prima del save Firebase (Firestore non accetta undefined)
+  if(typeof NX_FB!=='undefined'&&NX_FB&&NX_FB.onLocalSave){
+    try{
+      var clean=_nxSanitizeForFirebase(v);
+      NX_FB.onLocalSave(k,clean);
+    }catch(eFB){
+      console.warn('[SS] Firebase sanitize error for key',k,':',eFB);
+      try{NX_FB.onLocalSave(k,v);}catch(e2){}  // fallback raw
+    }
+  }
+}
+
+// v9.53: Helper deep sanitize — sostituisce undefined con null in tutto l'oggetto.
+// Firestore rifiuta undefined ma accetta null. Lavora su oggetti, array, primitivi.
+function _nxSanitizeForFirebase(val){
+  if(val===undefined)return null;
+  if(val===null||typeof val!=='object')return val;
+  if(Array.isArray(val)){
+    return val.map(function(item){return _nxSanitizeForFirebase(item);});
+  }
+  // Plain object
+  var out={};
+  for(var k in val){
+    if(Object.prototype.hasOwnProperty.call(val,k)){
+      var sub=val[k];
+      if(sub===undefined){out[k]=null;}
+      else if(typeof sub==='object'&&sub!==null){out[k]=_nxSanitizeForFirebase(sub);}
+      else{out[k]=sub;}
+    }
+  }
+  return out;
+}
 function getKey(){return localStorage.getItem('nx5_key')||'';}
 
 // ===========================================================================
@@ -3380,17 +3417,19 @@ function mkSyncFromB2B(contactB2B,sourceTag){
       existing=mkContacts.find(function(c){return (c.email||'').toLowerCase()===email.toLowerCase();});
     }
     if(existing){
-      // Update soft: solo campi vuoti
+      // Update soft: solo campi vuoti — v9.53: SEMPRE stringa, mai undefined
       existing.firstName=existing.firstName||contactB2B.name||'';
       existing.companyName=existing.companyName||contactB2B.company||'';
       existing.country=existing.country||contactB2B.country||'';
       existing.phone=existing.phone||contactB2B.phone||'';
       existing.customerType=existing.customerType||(contactB2B.clientType||'');
       existing.updatedAt=new Date().toISOString();
+      // v9.53: sanitize prima del save (Firestore non accetta undefined)
+      mkSanitizeContactRecord(existing);
       SS('mkContacts',mkContacts);
       return existing.id;
     }
-    // Crea nuovo
+    // Crea nuovo record - v9.53: TUTTI i campi inizializzati a stringa vuota se mancanti
     var newRec={
       id:'mk_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
       firstName:contactB2B.name||'',
@@ -3409,6 +3448,8 @@ function mkSyncFromB2B(contactB2B,sourceTag){
     if(typeof mkAutoEnrich==='function'){
       try{mkAutoEnrich(newRec);}catch(e){console.warn('[mkSyncFromB2B] mkAutoEnrich error:',e);}
     }
+    // v9.53: sanitize dopo enrich (potrebbe aver introdotto undefined)
+    mkSanitizeContactRecord(newRec);
     mkContacts.push(newRec);
     if(typeof mkCntCounter!=='undefined'){mkCntCounter++;SS('mkCntCounter',mkCntCounter);}
     SS('mkContacts',mkContacts);
@@ -3418,6 +3459,36 @@ function mkSyncFromB2B(contactB2B,sourceTag){
     return null;
   }
 }
+
+// v9.53: Sanitizer FIREBASE — Firestore non accetta undefined. Sostituisce undefined→'' o []/null.
+// Applica DEEP su un singolo contact record (mkContact) o list record.
+function mkSanitizeContactRecord(c){
+  if(!c||typeof c!=='object')return c;
+  // Lista campi text che devono essere stringa (mai undefined)
+  var textFields=['firstName','companyName','email','phone','country','customerType','status','origin','notes','unsubscribedAt','createdAt','updatedAt'];
+  textFields.forEach(function(f){
+    if(c[f]===undefined||c[f]===null)c[f]='';
+  });
+  // Array fields
+  if(!Array.isArray(c.interest))c.interest=[];
+  // Sanitize array contents (no undefined)
+  c.interest=c.interest.filter(function(x){return x!==undefined&&x!==null;}).map(function(x){return String(x);});
+  return c;
+}
+
+// Sanitize una lista (mkLists record)
+function mkSanitizeListRecord(l){
+  if(!l||typeof l!=='object')return l;
+  var textFields=['name','desc','type','createdAt'];
+  textFields.forEach(function(f){
+    if(l[f]===undefined||l[f]===null)l[f]='';
+  });
+  if(!Array.isArray(l.contactIds))l.contactIds=[];
+  l.contactIds=l.contactIds.filter(function(x){return x!==undefined&&x!==null;}).map(function(x){return String(x);});
+  return l;
+}
+window.mkSanitizeContactRecord=mkSanitizeContactRecord;
+window.mkSanitizeListRecord=mkSanitizeListRecord;
 
 // Esegue effettivamente l'assegnazione contatto → liste matchate
 // Ritorna numero di liste a cui è stato aggiunto, o 0 se errore
@@ -3504,7 +3575,7 @@ function mkPromptRoutingConfirm(contactsB2B,onComplete){
   }
 }
 
-// Dialog single contact
+// Dialog single contact — v9.53: modal con CHECKBOX per selezione esplicita liste
 function mkRoutingShowSingleDialog(){
   try{
     var st=_mkRoutingState;
@@ -3520,28 +3591,127 @@ function mkRoutingShowSingleDialog(){
     }
     var c=item.contact;
     var name=c.name||c.email||'(sin nombre)';
-    var emp=c.company?' ('+c.company+')':'';
-    var listLines=item.matches.map(function(m){return '\u2192 '+m.listName+' \u2014 '+m.reason;}).join('\n');
-    var msg='\ud83d\udccb \u00bfA\u00f1adir el contacto a las listas correspondientes?\n\n';
-    msg+=name+emp+'\n\n';
-    msg+=listLines+'\n\n';
-    msg+='[OK] = a\u00f1adir a las listas indicadas\n[Cancelar] = no a\u00f1adir';
-    if(confirm(msg)){
-      var added=mkExecuteAutoroutingFor(c);
-      st.stats.routed++;
-      st.stats.listsTouched+=added;
-    }else{
-      st.stats.skipped++;
-    }
-    st.pending.shift();
-    mkRoutingFinalize();
+    var emp=c.company?(' '+c.company):'';
+    // Build checkboxes per ogni match
+    var checksHtml=item.matches.map(function(m,i){
+      return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border-radius:7px;margin-bottom:6px;cursor:pointer;border:1px solid var(--border)">'
+        +'<input type="checkbox" class="mke-route-chk" data-idx="'+i+'" checked style="width:16px;height:16px;cursor:pointer">'
+        +'<div style="flex:1">'
+          +'<div style="font-size:13px;font-weight:700;color:var(--t1)">\ud83d\udccb '+esc(m.listName)+'</div>'
+          +'<div style="font-size:10px;color:var(--t3);margin-top:2px">'+esc(m.reason)+'</div>'
+        +'</div>'
+      +'</label>';
+    }).join('');
+    // Render modal
+    var existing=n('m-mk-routing-single');
+    if(existing)existing.parentNode.removeChild(existing);
+    var ovl=document.createElement('div');
+    ovl.className='ovl';
+    ovl.id='m-mk-routing-single';
+    ovl.style.display='flex';
+    ovl.innerHTML=
+      '<div class="modal" style="max-width:520px">'
+        +'<div class="fbet mb14">'
+          +'<div class="mt">\ud83d\udccb A\u00f1adir contacto a listas</div>'
+          +'<button class="btn bg" onclick="mkRoutingSingleSkip()" style="padding:5px 10px">X</button>'
+        +'</div>'
+        +'<div style="background:var(--bg3);border-radius:7px;padding:10px;font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5">'
+          +'<div style="font-weight:600;color:var(--t1);font-size:13px;margin-bottom:4px">'+esc(name)+(emp?' \u00b7 <span style="font-weight:400;color:var(--t3)">'+esc(emp.trim())+'</span>':'')+'</div>'
+          +'<div style="font-size:11px;color:var(--t3)">'+esc(c.email||'')+'</div>'
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--t3);margin-bottom:8px;font-weight:600">SELECCIONA LAS LISTAS:</div>'
+        +'<div id="mke-route-checks">'+checksHtml+'</div>'
+        +'<div class="fc g8" style="margin-top:14px;flex-wrap:wrap">'
+          +'<button class="btn bg" onclick="mkRoutingSingleSkip()" style="flex:1">Saltar este</button>'
+          +'<button class="btn bp" onclick="mkRoutingSingleConfirm()" style="flex:2">\u2705 Confirmar selecci\u00f3n</button>'
+        +'</div>'
+      +'</div>';
+    document.body.appendChild(ovl);
   }catch(err){
     console.error('[mkRoutingShowSingleDialog] FATAL:',err);
     alert('Error en routing single:\n'+(err&&err.message||err));
-    // Forza reset state per non bloccare app
     _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
   }
 }
+
+// v9.53: Conferma con liste selezionate (checkboxes)
+function mkRoutingSingleConfirm(){
+  try{
+    var st=_mkRoutingState;
+    var item=st.pending[0];
+    if(!item){mkRoutingFinalize();return;}
+    // Leggi checkboxes selezionate
+    var checks=document.querySelectorAll('#mke-route-checks .mke-route-chk');
+    var selectedMatches=[];
+    checks.forEach(function(chk){
+      if(chk.checked){
+        var idx=parseInt(chk.getAttribute('data-idx'),10);
+        if(!isNaN(idx)&&item.matches[idx])selectedMatches.push(item.matches[idx]);
+      }
+    });
+    // Chiudi modal
+    var m=n('m-mk-routing-single');if(m)m.parentNode.removeChild(m);
+    if(selectedMatches.length===0){
+      // Niente selezionato → skip questo
+      st.stats.skipped++;
+      st.pending.shift();
+      mkRoutingFinalize();
+      return;
+    }
+    // Esegui solo le liste selezionate (sostituisce mkExecuteAutoroutingFor che fa TUTTI i matches)
+    var added=mkExecuteAutoroutingForWithMatches(item.contact,selectedMatches);
+    st.stats.routed++;
+    st.stats.listsTouched+=added;
+    st.pending.shift();
+    mkRoutingFinalize();
+  }catch(err){
+    console.error('[mkRoutingSingleConfirm] FATAL:',err);
+    var m=n('m-mk-routing-single');if(m)m.parentNode.removeChild(m);
+    _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
+  }
+}
+
+// v9.53: Skip questo contatto
+function mkRoutingSingleSkip(){
+  try{
+    var st=_mkRoutingState;
+    var m=n('m-mk-routing-single');if(m)m.parentNode.removeChild(m);
+    st.stats.skipped++;
+    st.pending.shift();
+    mkRoutingFinalize();
+  }catch(err){
+    console.error('[mkRoutingSingleSkip] error:',err);
+    _mkRoutingState={pending:[],yesAll:false,onComplete:null,stats:{routed:0,skipped:0,listsTouched:0}};
+  }
+}
+
+// v9.53: variante di mkExecuteAutoroutingFor che usa matches già filtrati (selezione utente)
+function mkExecuteAutoroutingForWithMatches(contactB2B,selectedMatches){
+  try{
+    if(!contactB2B||!Array.isArray(selectedMatches)||selectedMatches.length===0)return 0;
+    var mkId=mkSyncFromB2B(contactB2B);
+    if(!mkId){console.warn('[mkExecuteAutoroutingForWithMatches] mkSyncFromB2B null');return 0;}
+    if(!Array.isArray(mkLists))mkLists=[];
+    var added=0;
+    selectedMatches.forEach(function(m){
+      try{
+        var lst=mkFindOrCreateListByName(m.listName);
+        if(!lst){console.warn('[mkExecuteAutoroutingForWithMatches] lista non trovata/creata:',m.listName);return;}
+        if(!Array.isArray(lst.contactIds))lst.contactIds=[];
+        if(lst.contactIds.indexOf(mkId)<0){lst.contactIds.push(mkId);added++;}
+      }catch(eInner){console.error('[mkExecuteAutoroutingForWithMatches] errore lista',m.listName,':',eInner);}
+    });
+    if(added>0)SS('mkLists',mkLists);
+    return added;
+  }catch(err){
+    console.error('[mkExecuteAutoroutingForWithMatches] FATAL:',err);
+    return 0;
+  }
+}
+
+window.mkRoutingSingleConfirm=mkRoutingSingleConfirm;
+window.mkRoutingSingleSkip=mkRoutingSingleSkip;
+window.mkExecuteAutoroutingForWithMatches=mkExecuteAutoroutingForWithMatches;
 
 // Dialog bulk (con elenco completo + Sí/Sí a todos/No)
 function mkRoutingShowBulkDialog(){
@@ -7585,8 +7755,44 @@ function openLeadModal(){
   n('le-google-status').textContent='';
   n('le-labels-data').value='';
   renderLeadLabelsDisplay();
+  // v9.53: init country dropdown con bandiere + autocomplete
+  initLeadCountryDropdown('');
   openM('m-lead-edit');
 }
+
+// v9.53: helper init country dropdown nel modal Lead
+function initLeadCountryDropdown(initialValue){
+  var wrapper=n('le-country_wrapper');
+  if(!wrapper||typeof mkCreateCountryDropdown!=='function')return;
+  // Il dropdown lavora con label paese (es. "Italia") ma il modulo Lead usa codice ISO (es. "IT")
+  // Manteniamo IL CODICE nell'hidden field, ma mostriamo l'etichetta. Mappa basic se serve.
+  var labelInitial=initialValue||'';
+  // Se il valore è codice ISO (2 char), prova a convertire in label
+  if(labelInitial.length===2&&typeof mkCountryInfo==='function'){
+    // Cerca nei paesi conosciuti
+    try{
+      var info=mkCountryInfo(labelInitial);
+      if(info&&info.label)labelInitial=info.label;
+    }catch(e){}
+  }
+  mkCreateCountryDropdown({
+    container:wrapper,
+    value:labelInitial,
+    allowEmpty:true,
+    onChange:function(newVal){
+      var hid=n('le-country');
+      if(hid)hid.value=newVal;
+    }
+  });
+  // Riallinea l'id all'hidden interno (mkCreateCountryDropdown crea hidden con id custom)
+  var ddHidden=wrapper.querySelector('[data-cdd-value]');
+  if(ddHidden){
+    // Setta il valore nell'le-country (esterno)
+    var leC=n('le-country');
+    if(leC)leC.value=ddHidden.value||labelInitial;
+  }
+}
+window.initLeadCountryDropdown=initLeadCountryDropdown;
 
 function editLead(id){
   var l=leads.find(function(x){return String(x.id)===String(id);});
@@ -7608,6 +7814,8 @@ function editLead(id){
   n('le-source').value=l.source||'';
   n('le-status').value=l.status||'Nuevo';
   n('le-notes').value=l.notes||'';
+  // v9.53: init country dropdown con valore esistente
+  initLeadCountryDropdown(l.country||'');
   n('le-labels-data').value=(l.labels||[]).join(',');
   renderLeadLabelsDisplay();
   n('le-google-status').textContent=l.googleResourceName?'\u2713 Sincronizado con Google ('+l.googleSyncedAt||''+')':'';
