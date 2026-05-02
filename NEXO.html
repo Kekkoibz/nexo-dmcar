@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.69 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UI: 1) Label VIN/1°Reg/Km/Color/Damage ora in <strong> bold (più leggibili); 2) Layout linea veicolo riorganizzato (Modello brand+model+version sulla prima riga, poi metadati su riga 2 separati da spazi multipli); 3) Sample preview template aggiornato a TOYOTA YARIS Cross Style 130km (esempio fornito da Francesco) per testing più realistico. -->
+<!-- NEXO v9.70 — DMCAR GROUP CRM | 2026-05-02 | NEXO NUMBERS UI: Layout tabella ottimizzato 3 colonne (Un. | Producto | € Net) - Cantidad spostata a sinistra abbreviata, Total eliminata, Importe rinominato "€ Net" allineato a destra. FIX line-break: usa white-space:nowrap sulle coppie label-valor per evitare "Kms" e "10" su righe diverse. Spaziatura inter-meta separata da "|" per leggibilità. Sezione totali sotto tabella con SUBTOTAL / VAT (0%) / TOTAL ben strutturata. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -19117,7 +19117,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       proforma_sub:'Documento provisional sin valor fiscal',invoice_sub:'Documento fiscal',credit_sub:'Rectificaci\u00f3n / Anulaci\u00f3n',
       bill_to:'Facturar a',from:'Emisor',date:'Fecha',number:'N\u00famero',
       product_service:'Nombre del producto o servicio',quantity:'Cantidad',amount:'Importe',total:'Total',
-      unit:'unidad',units:'unidades',subtotal:'Subtotal',vat:'IVA',
+      unit:'unidad',units:'unidades',unit_short:'Un.',subtotal:'Subtotal',vat:'IVA',
       bank_details:'Datos bancarios',iban:'IBAN',swift:'SWIFT',bank_name:'Banco',
       legal_notes:'Notas legales',payment_terms:'Condiciones de pago',
       vat_mode_standard:'Con IVA',vat_mode_export:'Exportaci\u00f3n (0% IVA)',vat_mode_reverse:'Reverse Charge intra-UE',vat_mode_exempt:'Exento',
@@ -19128,7 +19128,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       proforma_sub:'Documento provvisorio senza valore fiscale',invoice_sub:'Documento fiscale',credit_sub:'Rettifica / Annullamento',
       bill_to:'Fatturare a',from:'Emittente',date:'Data',number:'Numero',
       product_service:'Nome del prodotto o del servizio',quantity:'Quantit\u00e0',amount:'Importo',total:'Totale',
-      unit:'unit\u00e0',units:'unit\u00e0',subtotal:'Imponibile',vat:'IVA',
+      unit:'unit\u00e0',units:'unit\u00e0',unit_short:'Un.',subtotal:'Imponibile',vat:'IVA',
       bank_details:'Dati bancari',iban:'IBAN',swift:'SWIFT',bank_name:'Banca',
       legal_notes:'Note legali',payment_terms:'Condizioni di pagamento',
       vat_mode_standard:'Con IVA',vat_mode_export:'Esportazione (0% IVA)',vat_mode_reverse:'Inversione contabile UE',vat_mode_exempt:'Esente',
@@ -19139,7 +19139,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       proforma_sub:'Provisional document, no fiscal value',invoice_sub:'Fiscal document',credit_sub:'Rectification / Cancellation',
       bill_to:'Bill to',from:'From',date:'Date',number:'Number',
       product_service:'Product or service name',quantity:'Quantity',amount:'Amount',total:'Total',
-      unit:'unit',units:'units',subtotal:'Subtotal',vat:'VAT',
+      unit:'unit',units:'units',unit_short:'Qty',subtotal:'Subtotal',vat:'VAT',
       bank_details:'Bank details',iban:'IBAN',swift:'SWIFT',bank_name:'Bank',
       legal_notes:'Legal notes',payment_terms:'Payment terms',
       vat_mode_standard:'With VAT',vat_mode_export:'Export (0% VAT)',vat_mode_reverse:'Reverse charge intra-EU',vat_mode_exempt:'Exempt',
@@ -19167,26 +19167,25 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!item)return '';
     // Item manuale (no VIN, no model auto) → solo description con line-break
     if(!item.vin&&!item.model&&!item.brand)return esc(item.description||'').replace(/\n/g,'<br>');
-    // Item veicolo: layout esempio (Modello a capo, poi VIN/Reg/Km/Color/Damage con label in BOLD)
-    // Esempio: TOYOTA YARIS Cross Style 130km
-    //          VIN: JTDKGAGB20A149201   1º Reg: 16/02/2025   km: 10   Color: Grey Metalic   Damage: 0€
+    // Item veicolo: Modello a capo, poi metadati con NOWRAP per ogni coppia label-valore
     var modelParts=[];
     if(item.brand)modelParts.push(item.brand);
     if(item.model)modelParts.push(item.model);
     if(item.version)modelParts.push(item.version);
-    var line1=esc(modelParts.join(' '));
-    // Linea 2: tutti i metadati con label in <strong>
+    var line1='<strong>'+esc(modelParts.join(' '))+'</strong>';
+    // Linea 2: ogni coppia in un <span style="white-space:nowrap"> per evitare break "Kms" / "10"
     var parts2=[];
-    if(item.vin)parts2.push('<strong>VIN:</strong> '+esc(item.vin));
-    if(item.reg)parts2.push('<strong>'+t('reg',lang)+':</strong> '+esc(item.reg));
-    if(item.kms)parts2.push('<strong>'+t('kms',lang)+':</strong> '+esc(item.kms));
-    if(item.color)parts2.push('<strong>'+t('color',lang)+':</strong> '+esc(item.color));
-    if(item.damage&&item.damage!=='--')parts2.push('<strong>'+t('damage',lang)+':</strong> '+esc(item.damage));
-    var line2=parts2.join('&nbsp;&nbsp;&nbsp;');
+    if(item.vin)parts2.push('<span style="white-space:nowrap"><strong>VIN:</strong> '+esc(item.vin)+'</span>');
+    if(item.reg)parts2.push('<span style="white-space:nowrap"><strong>'+t('reg',lang)+':</strong> '+esc(item.reg)+'</span>');
+    if(item.kms)parts2.push('<span style="white-space:nowrap"><strong>'+t('kms',lang)+':</strong> '+esc(item.kms)+'</span>');
+    if(item.color)parts2.push('<span style="white-space:nowrap"><strong>'+t('color',lang)+':</strong> '+esc(item.color)+'</span>');
+    if(item.damage&&item.damage!=='--')parts2.push('<span style="white-space:nowrap"><strong>'+t('damage',lang)+':</strong> '+esc(item.damage)+'</span>');
+    // Separatore "|" tra metadati per leggibilità
+    var line2=parts2.join(' <span style="color:#bbb;margin:0 4px">|</span> ');
     // Linea 3 opzionale: descripcion extra
     var line3=item.description&&item.description!==(item.brand+' '+item.model+' '+item.version).trim()?esc(item.description):'';
     var html=line1;
-    if(line2)html+='<br>'+line2;
+    if(line2)html+='<br><span style="font-size:11px">'+line2+'</span>';
     if(line3)html+='<br><span style="color:#888;font-size:10px;font-style:italic">'+line3+'</span>';
     return html;
   };
@@ -19375,35 +19374,31 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(client.vatNumber)html+='<div style="font-size:11px;color:#666;font-family:monospace">VAT: '+esc(client.vatNumber)+'</div>';
     html+='<div style="font-size:11px;color:#666">'+esc(client.address||'')+'</div>';
     html+='</div>';
-    // TABLE 4 COLONNE: Nome prodotto | Cantidad | Importe | Total
+    // TABLE 3 COLONNE: Un. | Producto | € Net (v9.70 layout ottimizzato)
     html+='<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">';
     html+='<thead><tr style="border-bottom:2px solid '+cfg.colorPrimary+'">';
-    html+='<th style="padding:10px 8px;text-align:left;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;text-transform:none">'+t('product_service',lang)+'</th>';
-    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:90px">'+t('quantity',lang)+'</th>';
-    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:130px">'+t('amount',lang)+'</th>';
-    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:130px">'+t('total',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:center;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:60px">'+t('unit_short',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:left;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px">'+t('product_service',lang)+'</th>';
+    html+='<th style="padding:10px 8px;text-align:right;font-weight:700;color:'+cfg.colorPrimary+';font-size:11px;width:140px">&euro; Net</th>';
     html+='</tr></thead><tbody>';
     (data.items||[]).forEach(function(it){
       var qty=parseFloat(it.quantity)||1;
       var unitPrice=parseFloat(it.unitPrice)||0;
       var total=qty*unitPrice;
-      var qtyLabel=qty===1?t('unit',lang):t('units',lang);
       // Composizione cella prodotto multi-linea
       var productHtml=window.nxComposeVehicleLine(it,lang);
       html+='<tr style="border-bottom:1px solid #e5e5e5;vertical-align:top">';
-      html+='<td style="padding:14px 8px;color:#222;line-height:1.5">'+productHtml+'</td>';
-      html+='<td style="padding:14px 8px;text-align:right;color:#666;white-space:nowrap">'+qty+' '+qtyLabel+'</td>';
-      html+='<td style="padding:14px 8px;text-align:right;font-family:monospace;color:#222;white-space:nowrap">'+fmt(unitPrice)+'</td>';
+      html+='<td style="padding:14px 8px;text-align:center;color:#444;white-space:nowrap;font-weight:600">'+qty+'</td>';
+      html+='<td style="padding:14px 8px;color:#222;line-height:1.6">'+productHtml+'</td>';
       html+='<td style="padding:14px 8px;text-align:right;font-family:monospace;font-weight:600;color:#222;white-space:nowrap">'+fmt(total)+'</td>';
       html+='</tr>';
     });
     html+='</tbody></table>';
-    // TOTALS
+    // TOTALS SECTION (v9.70: pulita e standard B2B)
     html+='<div style="display:flex;justify-content:flex-end;margin-bottom:24px">';
-    html+='<div style="min-width:300px">';
-    html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>'+t('subtotal',lang)+':</span><span style="font-family:monospace">'+fmt(data.subtotal||0)+'</span></div>';
-    if((data.vatAmount||0)>0||(data.vatRate||0)>0)
-      html+='<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:12px"><span>'+t('vat',lang)+' '+(data.vatRate||0)+'%:</span><span style="font-family:monospace">'+fmt(data.vatAmount||0)+'</span></div>';
+    html+='<div style="min-width:320px;border-top:1px solid #e5e5e5;padding-top:8px">';
+    html+='<div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:12px"><span style="color:#666;font-weight:600">'+t('subtotal',lang).toUpperCase()+':</span><span style="font-family:monospace;color:#222">'+fmt(data.subtotal||0)+'</span></div>';
+    html+='<div style="display:flex;justify-content:space-between;padding:6px 12px;font-size:12px"><span style="color:#666;font-weight:600">'+t('vat',lang)+' ('+(data.vatRate||0)+'%):</span><span style="font-family:monospace;color:#222">'+fmt(data.vatAmount||0)+'</span></div>';
     html+='<div style="display:flex;justify-content:space-between;padding:10px 12px;background:'+cfg.colorPrimary+';color:#fff;font-weight:700;font-size:15px;margin-top:6px;border-radius:4px"><span>'+t('total',lang).toUpperCase()+':</span><span style="font-family:monospace">'+fmt(data.total||0)+'</span></div>';
     html+='</div></div>';
     // BANK + NOTES
