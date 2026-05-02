@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v9.42 — DMCAR GROUP CRM | 2026-05-01 | New/Km 0 → Kms=0, Damages=0€ con label "Kms"/"Damages" (no "Avg."); Used lote → "Average Kms"/"Avg. Damages"; units "Varias" → "several units" → label "Units available" -->
+<!-- NEXO v9.43 — DMCAR GROUP CRM | 2026-05-02 | Worker Mail integration: HMAC reale (no più btoa), View Online via /save-email + /view, sync unsubscribe da Cloudflare KV, pannello Settings "Worker Mail" configurabile (URL + API secret + HMAC secret in localStorage) -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -995,6 +995,41 @@ En que te puedo ayudar hoy?</div></div>
                 <button class="btn bp" onclick="inboxOpen()" style="font-size:11px">&#9993;&#65039; Abrir bandeja <span id="cfg-inbox-cnt" style="margin-left:6px;background:rgba(255,255,255,.2);padding:1px 6px;border-radius:8px;font-size:10px;display:none">0</span></button>
                 <button class="btn bs" onclick="if(typeof NX_INBOX!=='undefined'){NX_INBOX.fetchInbox().then(function(){if(typeof showToast==='function')showToast('✓ Bandeja actualizada');});}" style="font-size:11px">&#128260; Refrescar ahora</button>
               </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">&#128231;&#127760; Worker Mail (Unsubscribe + View Online)</div>
+          <div style="font-size:11px;color:var(--t3);margin-bottom:10px;line-height:1.5">Cloudflare Worker que gestiona los links <b>Unsubscribe</b> (con firma HMAC) y <b>View Online</b> (HTML guardado en KV) para las campa&ntilde;as Direct Mail. Los secrets se guardan en localStorage (no en el c&oacute;digo p&uacute;blico).</div>
+          <div class="fb-cfg-card" style="margin-bottom:0">
+            <div class="fb-cfg-row" style="margin-bottom:10px">
+              <div class="fb-cfg-status">
+                <span class="fb-status-dot" id="mk-worker-cfg-dot" style="background:#dc2626"></span>
+                <span id="mk-worker-cfg-status-text" style="color:#dc2626">No configurado</span>
+              </div>
+              <div class="fc g8" style="flex-wrap:wrap">
+                <button class="btn bs" id="mk-worker-test-btn" onclick="mkTestWorkerClick()" style="font-size:11px">&#129514; Test conexi&oacute;n</button>
+                <button class="btn bp" id="mk-worker-sync-btn" onclick="mkSyncUnsubButtonClick()" style="font-size:11px">&#128260; Sincronizar unsubscribed</button>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px">
+              <div>
+                <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:3px">URL del Worker</label>
+                <input type="text" id="mk-worker-url" placeholder="https://nexo-mail.shiny-pond-1403.workers.dev" style="width:100%;font-size:11px;font-family:monospace">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:3px">HMAC Secret <span style="color:var(--t4);font-weight:400">(para firmar links unsubscribe)</span></label>
+                <input type="password" id="mk-worker-hmac" placeholder="64 caracteres hex" style="width:100%;font-size:11px;font-family:monospace" autocomplete="off">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--t3);display:block;margin-bottom:3px">API Secret <span style="color:var(--t4);font-weight:400">(para guardar emails en KV y leer la lista unsub)</span></label>
+                <input type="password" id="mk-worker-api" placeholder="64 caracteres hex" style="width:100%;font-size:11px;font-family:monospace" autocomplete="off">
+              </div>
+              <div class="fc g8" style="margin-top:6px;flex-wrap:wrap">
+                <button class="btn bok" onclick="mkSaveWorkerConfig()" style="font-size:11px">&#128190; Guardar configuraci&oacute;n</button>
+                <button class="btn bg" onclick="if(confirm('Borrar credenciales del Worker?')){SS('mkWorkerHmacSecret','');SS('mkWorkerApiSecret','');document.getElementById('mk-worker-hmac').value='';document.getElementById('mk-worker-api').value='';mkRenderWorkerConfigStatus();showToast('Secrets borrados');}" style="font-size:11px">&#128465;&#65039; Borrar secrets</button>
+              </div>
+              <div style="font-size:10px;color:var(--t4);margin-top:4px;line-height:1.5">&#128274; Los secrets se guardan SOLO en este navegador (localStorage). Nunca se env&iacute;an a NEXO ni a GitHub. Para usar NEXO en otro Mac, configura los mismos secrets all&iacute;.</div>
             </div>
           </div>
         </div>
@@ -7853,7 +7888,20 @@ function renderConfig(){
   updateGoogleConfigUI();
   updateFirebaseConfigUI();
   updateMicrosoftConfigUI();
+  updateWorkerMailConfigUI();
 }
+
+// Inizializza la card "Worker Mail" con i valori salvati in localStorage
+function updateWorkerMailConfigUI(){
+  var urlEl=n('mk-worker-url');
+  var hmacEl=n('mk-worker-hmac');
+  var apiEl=n('mk-worker-api');
+  if(urlEl) urlEl.value=mkWorkerUrl();
+  if(hmacEl) hmacEl.value=mkWorkerHmacSecret();
+  if(apiEl) apiEl.value=mkWorkerApiSecret();
+  if(typeof mkRenderWorkerConfigStatus==='function')mkRenderWorkerConfigStatus();
+}
+window.updateWorkerMailConfigUI=updateWorkerMailConfigUI;
 
 function updateFirebaseConfigUI(){
   var dot=n('fb-cfg-dot');
@@ -11433,23 +11481,244 @@ function mkSearchCompanyGoogle(){
 }
 
 // ===========================================================================
-// MARKETING — Unsubscribe link (per template email Direct Mail futuri)
+// MARKETING — Worker Mail (Unsubscribe + View Online via Cloudflare Worker)
 // ===========================================================================
-// URL del Cloudflare Worker che gestisce le disiscrizioni
-var MK_UNSUB_WORKER_URL='https://nexo-unsubscribe.shiny-pond-1403.workers.dev';
+// Configurazione di default: URL Worker + secrets letti da localStorage.
+// I secrets si configurano da Configuracion > Worker Mail (NON sono hardcoded
+// perch\u00e9 NEXO.html e\u0300 pubblico su GitHub Pages).
+// Default URL: https://nexo-mail.shiny-pond-1403.workers.dev
+var MK_WORKER_DEFAULT_URL='https://nexo-mail.shiny-pond-1403.workers.dev';
 
-// Genera link unsubscribe firmato per un contatto specifico
-// Il "token" \u00e8 un HMAC dell'email + secret condiviso col Worker
-// Cos\u00ec previene unsubscribe arbitrari (solo chi ha il link valido pu\u00f2 disiscrivere quello specifico email)
-function mkBuildUnsubLink(email){
-  // Per ora token semplice: btoa(email + timestamp). In futuro HMAC vero.
-  // Il Worker valida e accetta.
-  var ts=Date.now();
-  var token=btoa(email+'|'+ts);
-  return MK_UNSUB_WORKER_URL+'/?email='+encodeURIComponent(email)+'&t='+encodeURIComponent(token);
+// Helpers per leggere config Worker Mail da localStorage
+function mkWorkerUrl(){
+  var u=LS('mkWorkerUrl',MK_WORKER_DEFAULT_URL);
+  if(!u||typeof u!=='string')return MK_WORKER_DEFAULT_URL;
+  // Toglie eventuale trailing slash
+  return u.replace(/\/+$/,'');
+}
+function mkWorkerHmacSecret(){return LS('mkWorkerHmacSecret','');}
+function mkWorkerApiSecret(){return LS('mkWorkerApiSecret','');}
+function mkWorkerConfigured(){
+  return !!(mkWorkerUrl()&&mkWorkerHmacSecret()&&mkWorkerApiSecret());
 }
 
-// Footer HTML standard per email (Direct Mail compliance)
+// =========================
+// HMAC SHA-256 (Web Crypto)
+// =========================
+// Genera HMAC SHA-256 base64url di un messaggio
+function mkHmacSign(message,secret){
+  if(!window.crypto||!window.crypto.subtle){
+    return Promise.reject(new Error('Web Crypto API no disponible'));
+  }
+  var enc=new TextEncoder();
+  return window.crypto.subtle.importKey(
+    'raw',enc.encode(secret),
+    {name:'HMAC',hash:'SHA-256'},
+    false,['sign']
+  ).then(function(key){
+    return window.crypto.subtle.sign('HMAC',key,enc.encode(message));
+  }).then(function(sig){
+    return mkBase64UrlEncode(new Uint8Array(sig));
+  });
+}
+
+// Codifica base64url (URL-safe, no padding) — compatibile con Worker
+function mkBase64UrlEncode(bytes){
+  var bin='';
+  for(var i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+// Encode UTF-8 string a base64url
+function mkBase64UrlEncodeStr(str){
+  var bytes=new TextEncoder().encode(str);
+  return mkBase64UrlEncode(bytes);
+}
+
+// =========================
+// UNSUBSCRIBE LINK (HMAC)
+// =========================
+// Genera link unsubscribe firmato HMAC con scadenza 1 anno
+// Formato token: <payloadB64Url>.<hmacB64Url>
+// Payload: <email>|<expiryEpoch>
+// Il Worker valida con lo stesso secret e rifiuta token scaduti/invalidi.
+function mkBuildUnsubLink(email){
+  // Async: ritorna Promise<string>
+  var url=mkWorkerUrl();
+  var secret=mkWorkerHmacSecret();
+  if(!secret){
+    // Fallback se non configurato: link di placeholder che mostra errore
+    console.warn('[mkBuildUnsubLink] HMAC secret no configurado. Configura en Settings > Worker Mail.');
+    return Promise.resolve(url+'/unsub?e='+encodeURIComponent(email||'')+'&t=NOT_CONFIGURED');
+  }
+  // Scadenza 1 anno
+  var exp=Date.now()+(365*24*60*60*1000);
+  var payload=(email||'').toLowerCase()+'|'+exp;
+  var payloadB64=mkBase64UrlEncodeStr(payload);
+  return mkHmacSign(payloadB64,secret).then(function(sigB64){
+    var token=payloadB64+'.'+sigB64;
+    return url+'/unsub?e='+encodeURIComponent(email||'')+'&t='+encodeURIComponent(token);
+  });
+}
+
+// Versione SYNC (placeholder) per quando serve un link statico nel template
+// Il replacement reale avviene in campSendNow/campSendTest (async)
+function mkBuildUnsubLinkPlaceholder(){
+  return '{{unsubscribe_url}}';
+}
+
+// =========================
+// VIEW ONLINE LINK
+// =========================
+// Genera ID univoco per email (timestamp + random)
+function mkGenEmailId(){
+  var ts=Date.now().toString(36);
+  var rnd=Math.random().toString(36).substring(2,10);
+  return ts+'-'+rnd;
+}
+
+// Costruisce URL view online dato un emailId
+function mkBuildViewOnlineLink(emailId){
+  return mkWorkerUrl()+'/view?id='+encodeURIComponent(emailId);
+}
+
+// Salva HTML email su KV via POST /save-email
+// Usato prima dell'invio per generare il link "View Online"
+// Ritorna Promise<{ok, id}> o reject
+function mkSaveEmailToWorker(emailId,html,subject){
+  var url=mkWorkerUrl()+'/save-email';
+  var apiSecret=mkWorkerApiSecret();
+  if(!apiSecret){
+    return Promise.reject(new Error('API secret no configurado. Ve a Settings > Worker Mail.'));
+  }
+  return fetch(url,{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-NEXO-Secret':apiSecret
+    },
+    body:JSON.stringify({id:emailId,html:html||'',subject:subject||''})
+  }).then(function(r){
+    if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t);});
+    return r.json();
+  });
+}
+
+// =========================
+// SYNC UNSUBSCRIBED dal Worker → marca contatti NEXO come unsubscribed
+// =========================
+// Chiama GET /api/unsub-list e processa la lista, applicando mkUnsubscribe
+// per ogni email nuovo.
+function mkSyncUnsubFromWorker(opts){
+  opts=opts||{};
+  var url=mkWorkerUrl()+'/api/unsub-list';
+  var apiSecret=mkWorkerApiSecret();
+  if(!apiSecret){
+    if(!opts.silent)alert('\u26a0\ufe0f API secret no configurado.\n\nVe a Configuraci\u00f3n > Worker Mail y configura el secret.');
+    return Promise.reject(new Error('No api secret'));
+  }
+  return fetch(url,{
+    method:'GET',
+    headers:{'X-NEXO-Secret':apiSecret}
+  }).then(function(r){
+    if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t);});
+    return r.json();
+  }).then(function(data){
+    if(!data||!data.ok||!Array.isArray(data.items)){
+      throw new Error('Respuesta inv\u00e1lida del Worker');
+    }
+    var newCount=0;
+    var alreadyCount=0;
+    data.items.forEach(function(item){
+      var em=(item.email||'').toLowerCase();
+      if(!em)return;
+      // Trova contatto NEXO con questa email
+      var contact=null;
+      for(var i=0;i<mkContacts.length;i++){
+        if((mkContacts[i].email||'').toLowerCase()===em){contact=mkContacts[i];break;}
+      }
+      if(!contact)return; // non in DB, skip
+      if(contact.status==='unsubscribed'){alreadyCount++;return;}
+      // Marca unsubscribed (no delete policy)
+      mkUnsubscribe(contact.id||contact.email,'worker_sync');
+      newCount++;
+    });
+    if(typeof mkSave==='function')mkSave();
+    if(typeof mkRender==='function')mkRender();
+    return {total:data.items.length,newUnsub:newCount,already:alreadyCount};
+  });
+}
+
+// Bottone Settings: sync manuale
+function mkSyncUnsubButtonClick(){
+  var btn=document.getElementById('mk-worker-sync-btn');
+  if(btn){btn.disabled=true;btn.textContent='\u23f3 Sincronizando...';}
+  mkSyncUnsubFromWorker({silent:false}).then(function(r){
+    if(btn){btn.disabled=false;btn.textContent='\ud83d\udd04 Sincronizar unsubscribed';}
+    var msg='\u2705 Sync completado:\n\n'
+      +'\u2022 Total en Worker: '+r.total+'\n'
+      +'\u2022 Nuevos unsubscribed: '+r.newUnsub+'\n'
+      +'\u2022 Ya estaban unsub: '+r.already;
+    alert(msg);
+    if(typeof showToast==='function')showToast('\u2713 '+r.newUnsub+' nuevos unsub sincronizados');
+  }).catch(function(e){
+    if(btn){btn.disabled=false;btn.textContent='\ud83d\udd04 Sincronizar unsubscribed';}
+    alert('\u274c Error sync:\n\n'+(e.message||e)+'\n\nVerifica:\n\u2022 URL del Worker correcto\n\u2022 API Secret correcto\n\u2022 Conexi\u00f3n a internet');
+  });
+}
+
+// Test Worker: verifica /health endpoint
+function mkTestWorkerClick(){
+  var btn=document.getElementById('mk-worker-test-btn');
+  if(btn){btn.disabled=true;btn.textContent='\u23f3 Testando...';}
+  fetch(mkWorkerUrl()+'/').then(function(r){
+    return r.json().then(function(data){return {status:r.status,data:data};});
+  }).then(function(res){
+    if(btn){btn.disabled=false;btn.textContent='\ud83e\uddea Test conexi\u00f3n';}
+    if(res.data&&res.data.ok){
+      alert('\u2705 Worker LIVE!\n\nServicio: '+(res.data.service||'?')+'\nURL: '+mkWorkerUrl()+'\n\nEl Worker responde correctamente.');
+    }else{
+      alert('\u26a0\ufe0f Worker responde pero no es nexo-mail:\n\n'+JSON.stringify(res.data||{}));
+    }
+  }).catch(function(e){
+    if(btn){btn.disabled=false;btn.textContent='\ud83e\uddea Test conexi\u00f3n';}
+    alert('\u274c No se puede conectar al Worker:\n\n'+(e.message||e)+'\n\nVerifica que la URL sea correcta y el Worker est\u00e9 deployado.');
+  });
+}
+
+// Salva config Worker Mail dalla UI
+function mkSaveWorkerConfig(){
+  var url=document.getElementById('mk-worker-url').value.trim();
+  var hmac=document.getElementById('mk-worker-hmac').value.trim();
+  var api=document.getElementById('mk-worker-api').value.trim();
+  if(!url){alert('URL del Worker requerida');return;}
+  if(!/^https?:\/\//.test(url)){alert('URL debe empezar con https://');return;}
+  SS('mkWorkerUrl',url.replace(/\/+$/,''));
+  SS('mkWorkerHmacSecret',hmac);
+  SS('mkWorkerApiSecret',api);
+  if(typeof showToast==='function')showToast('\u2713 Config Worker Mail guardada');
+  mkRenderWorkerConfigStatus();
+}
+
+// Aggiorna lo status visivo della config (icone verde/rosso)
+function mkRenderWorkerConfigStatus(){
+  var dot=document.getElementById('mk-worker-cfg-dot');
+  var txt=document.getElementById('mk-worker-cfg-status-text');
+  if(!dot||!txt)return;
+  if(mkWorkerConfigured()){
+    dot.style.background='#16a34a';
+    txt.textContent='\u2713 Configurado y listo';
+    txt.style.color='#16a34a';
+  }else{
+    dot.style.background='#dc2626';
+    txt.textContent='\u26a0\ufe0f No configurado (faltan secrets)';
+    txt.style.color='#dc2626';
+  }
+}
+
+// =========================
+// FOOTER EMAIL DIRECT MAIL (compliance)
+// =========================
+// Async: ritorna Promise<string> con HTML del footer + link unsub vero
 function mkBuildEmailFooter(email,lang){
   lang=(lang||'es').toLowerCase();
   var labels={
@@ -11458,16 +11727,30 @@ function mkBuildEmailFooter(email,lang){
     en:{unsub:'If you don\'t want to receive more emails, click here to unsubscribe',sent:'You have received this email because you are subscribed to our communications'}
   };
   var L=labels[lang]||labels.es;
-  var unsubLink=mkBuildUnsubLink(email);
-  return '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">'
-    +'<div style="font-size:11px;color:#888;text-align:center;line-height:1.6">'
-    +'<div>'+L.sent+'.</div>'
-    +'<div style="margin-top:6px"><a href="'+unsubLink+'" style="color:#888;text-decoration:underline">'+L.unsub+'</a></div>'
-    +'<div style="margin-top:6px">DMCAR GROUP &middot; info@dmcargroup.com</div>'
-    +'</div>';
+  return mkBuildUnsubLink(email).then(function(unsubLink){
+    return '<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">'
+      +'<div style="font-size:11px;color:#888;text-align:center;line-height:1.6">'
+      +'<div>'+L.sent+'.</div>'
+      +'<div style="margin-top:6px"><a href="'+unsubLink+'" style="color:#888;text-decoration:underline">'+L.unsub+'</a></div>'
+      +'<div style="margin-top:6px">DMCAR GROUP &middot; info@dmcargroup.com</div>'
+      +'</div>';
+  });
 }
 
-// END MARKETING UNSUBSCRIBE HELPERS
+// Espone funzioni globali
+window.mkWorkerUrl=mkWorkerUrl;
+window.mkWorkerConfigured=mkWorkerConfigured;
+window.mkBuildUnsubLink=mkBuildUnsubLink;
+window.mkBuildViewOnlineLink=mkBuildViewOnlineLink;
+window.mkGenEmailId=mkGenEmailId;
+window.mkSaveEmailToWorker=mkSaveEmailToWorker;
+window.mkSyncUnsubFromWorker=mkSyncUnsubFromWorker;
+window.mkSyncUnsubButtonClick=mkSyncUnsubButtonClick;
+window.mkTestWorkerClick=mkTestWorkerClick;
+window.mkSaveWorkerConfig=mkSaveWorkerConfig;
+window.mkRenderWorkerConfigStatus=mkRenderWorkerConfigStatus;
+
+// END MARKETING WORKER MAIL HELPERS
 // ===========================================================================
 
 // ===========================================================================
@@ -13382,38 +13665,67 @@ function campSendTest(){
     _campEditing.offerId=nxNextOfferId();
     _campEditing.offerIdConsumed=true;
   }
-  // Construye HTML con inyecci\u00f3n de coches + variables de ejemplo + logos en base64
+  // v9.43: Genera link unsubscribe + view online reali via Cloudflare Worker
+  // Se Worker non configurato avvisa pero\u0300 continua con placeholder (utile in dev)
   if(typeof showToast==='function')showToast('\u23f3 Descargando logos y construyendo email...');
-  campBuildHTMLAsync({
-    nombre:'Francesco',
-    empresa:'DMCAR Group (TEST)',
-    pais:'Espa\u00f1a',
-    email:to,
-    unsubscribe_url:'https://example.com/unsubscribe/test',
-    view_online_url:'https://example.com/view-online/test'
-  }).then(function(html){
-    if(!html){alert('Error al construir el HTML.');return;}
-    var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
-    // Quita emojis decorativos del HTML Y del subject (anti-spam B2B)
-    html=campStripEmojis(html);
-    subject=campStripEmojis(subject).trim();
-    // Envio
-    if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
-    NX_MS.sendEmail(to,subject,html,function(ok,err){
-      if(ok){
-        if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
-        setTimeout(function(){
-          var carCount=_campEditing.selectedCarIds.length;
-          alert('\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).');
-        },300);
-      }else{
-        alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
-      }
+  var workerOk=mkWorkerConfigured();
+  if(!workerOk){
+    console.warn('[campSendTest] Worker Mail no configurado. Los links unsub/view-online sera\u0300n placeholder.');
+  }
+  // Genera emailId univoco per il view online
+  var emailId=mkGenEmailId();
+  // Genera unsub link (asincrono per via di HMAC SubtleCrypto)
+  Promise.resolve(workerOk?mkBuildUnsubLink(to):(mkWorkerUrl()+'/unsub?e='+encodeURIComponent(to)+'&t=NOT_CONFIGURED'))
+    .then(function(unsubLink){
+      var viewOnlineLink=mkBuildViewOnlineLink(emailId);
+      // Construye HTML con inyeccio\u0301n de coches + variables reales + logos en base64
+      return campBuildHTMLAsync({
+        nombre:'Francesco',
+        empresa:'DMCAR Group (TEST)',
+        pais:'Espa\u00f1a',
+        email:to,
+        unsubscribe_url:unsubLink,
+        view_online_url:viewOnlineLink
+      }).then(function(html){
+        if(!html)throw new Error('HTML vac\u00edo');
+        var subject='[NEXO Test Campa\u00f1a] '+(_campEditing.subject||_campEditing.name||'Vista previa');
+        // Quita emojis decorativos del HTML Y del subject (anti-spam B2B)
+        html=campStripEmojis(html);
+        subject=campStripEmojis(subject).trim();
+        // Salva HTML su KV per "View Online" (solo se Worker configurato)
+        var savePromise=workerOk
+          ?mkSaveEmailToWorker(emailId,html,subject).catch(function(e){
+            console.warn('[campSendTest] Save email fall\u00f3 (continuamos igualmente):',e);
+            return null;
+          })
+          :Promise.resolve(null);
+        return savePromise.then(function(){return {html:html,subject:subject};});
+      });
+    })
+    .then(function(payload){
+      // Envio email
+      if(typeof showToast==='function')showToast('\u23f3 Enviando email de prueba...');
+      NX_MS.sendEmail(to,payload.subject,payload.html,function(ok,err){
+        if(ok){
+          if(typeof showToast==='function')showToast('\u2713 Email de prueba enviado a '+to);
+          setTimeout(function(){
+            var msg='\u2705 Email de prueba enviado a:\n\n'+to+'\n\n\ud83d\udce7 Verifica tu bandeja (puede tardar 1-2 min).';
+            if(workerOk){
+              msg+='\n\n\ud83d\udd17 Links incluidos:\n\u2022 Unsubscribe (HMAC firmado)\n\u2022 View Online (KV: '+emailId+')';
+            }else{
+              msg+='\n\n\u26a0\ufe0f Worker Mail NO configurado: links son placeholder.\nVe a Configuraci\u00f3n > Worker Mail.';
+            }
+            alert(msg);
+          },300);
+        }else{
+          alert('\u274c Error al enviar email:\n\n'+(err||'Desconocido')+'\n\nVerifica:\n\u2022 Configuraci\u00f3n Microsoft Graph\n\u2022 Conexi\u00f3n a internet');
+        }
+      });
+    })
+    .catch(function(e){
+      console.error('[campSendTest] Error:',e);
+      alert('\u274c Error al construir el email:\n\n'+(e.message||e));
     });
-  }).catch(function(e){
-    console.error('[campSendTest] Error:',e);
-    alert('\u274c Error al construir el email:\n\n'+(e.message||e));
-  });
 }
 
 function campSendNow(){
