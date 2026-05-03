@@ -4,16 +4,13 @@
    - Strategia: OVERWRITE intelligente (campi commerciali sovrascritti, workflow flags preservati)
    - Match: SOLO per VIN (1:1 deterministico)
    - No match → salta automaticamente VIN duplicati, importa solo i "nuovi"
-2) Implementazione: 3 nuove funzioni a global scope vicino a nxValidateVIN:
-   (a) window.NX_REIMPORT_PRESERVED_FIELDS = array di 19 campi sistemici PRESERVATI: id, internalId, status, ownerCompany, _ownNotified, _ownPendingProforma, accDocs, _purchaseNotifId, importBatch, addedAt, commercialStatus, commercialUpdatedAt, ownership, sentAt, sent, transferStatus, transferTo, _transferHistory.
-   (b) window.nxFindVehicleByVIN(vin) → ritorna {found, lot, vehIdx} cercando match 17-char in tutti i lotti e sub-vehicles. vehIdx=-1 per match su lotto principale, >=0 per sub-vehicle.
-   (c) window.nxOverwriteVehicleSmart(target, source) → applica OVERWRITE selettivo: itera Object.keys(source), salta campi in PRESERVED_FIELDS + skip 'vehicles' + skip valori vuoti/null. Ritorna count campi modificati.
-   (d) window.nxApplyReimportOverwrite(vehicles) → orchestratore principale invocato in finishImport prima di addStkItem. Ritorna {matched, skipped, toImport, remainingVehicles, affectedStockIds}.
-3) Logica per lotti con sub-vehicles: itera ogni sub-vehicle, se matcha lo overwrite e non lo include in remainingVehicles, se non matcha lo aggiunge a unmatched. Caso parziale (alcuni matchati, altri no) → tiene il lotto in remainingVehicles con solo i sub-vehicles non matchati. Caso totale match → lotto skippato come nuovo (solo overwrite). Caso totale unmatch → lotto intero in remainingVehicles.
-4) Hook in finishImport: invocato come prima azione, modifica vehicles array (rimuovendo veicoli matchati), poi prosegue con addStkItem normale per i restanti. affectedStockIds aggiunti a newStockIds per includere lotti aggiornati nelle review post-import (Memo #1+#2 dati mancanti, ecc).
-5) Toast feedback: "🔄 Re-import: N actualizado(s), M duplicado(s) sin cambios, K nuevo(s)" — info immediata di cosa è successo.
-6) Smoke test 16/16 PASS su 4 scenari: tutti match (proforma→factura caso utente), match parziale, tutto nuovo, attack test preserve fields (payload non sovrascrive status/ownerCompany/_ownNotified/accDocs anche se prova).
-7) PRESERVA: tutto v10.10.25 (VIN dialog), v10.10.24 (review dati), v10.10.23 (workflow OWN), v10.10.22 (status STOCK PROPIO), v10.10.21 (dialog adquisición). -->
+2) HOTFIX critico (v10.10.26.1 immediatamente integrato): primo deploy ha mostrato "0 matched, 8 to import as new" creando duplicati. ROOT CAUSE: nxFindVehicleByVIN e nxApplyReimportOverwrite leggevano window.stock, ma gli stock vivono nella variabile LOCALE `stock` dell'IIFE wrapper (var stock=LS('stock',[])); window.stock era una reference desincronizzata o vuota dal punto di vista del global scope. FIX: nxApplyReimportOverwrite ora riceve stockArr come SECONDO PARAMETRO (passato dal chiamante finishImport con il proprio `stock` locale). Helper inner findInStockArr usa stockArr direttamente. Le modifiche sui target sono in-place su oggetti referenziati dalla var locale del chiamante, che poi fa SS('stock', stock) per persistere. nxFindVehicleByVIN aggiornato in fallback per leggere da localStorage diretto (più sicuro).
+3) Implementazione: 3 funzioni a global scope vicino a nxValidateVIN: NX_REIMPORT_PRESERVED_FIELDS (19 campi), nxFindVehicleByVIN(vin), nxOverwriteVehicleSmart(target,source), nxApplyReimportOverwrite(vehicles,stockArr).
+4) Logica per lotti con sub-vehicles: caso parziale (alcuni matchati) → tiene il lotto in remainingVehicles con solo i sub-vehicles non matchati. Caso totale match → lotto skippato come nuovo. Caso totale unmatch → lotto intero in remainingVehicles.
+5) Hook in finishImport: invocato come prima azione PASSANDO stock come secondo arg, modifica vehicles array (rimuovendo veicoli matchati), poi prosegue con addStkItem normale per i restanti. SS('stock', stock) chiamato dal chiamante. affectedStockIds aggiunti a newStockIds per includere lotti aggiornati nelle review post-import.
+6) Toast feedback: "🔄 Re-import: N actualizado(s), M duplicado(s) sin cambios, K nuevo(s)".
+7) Smoke test 16/16 PASS pre-fix + 7/7 PASS post-fix con stockArr param.
+8) PRESERVA: tutto v10.10.25 (VIN dialog), v10.10.24 (review dati), v10.10.23 (workflow OWN), v10.10.22 (status STOCK PROPIO), v10.10.21 (dialog adquisición). -->
 <!-- NEXO v10.10.25 — DMCAR GROUP CRM | 2026-05-03 | Memo VIN — Dialog correzione VIN inválidos:
 1) Bug osservato (utente Foto v10.10.24): dopo import PDF, console mostra ripetuti "[v10.10.5] VIN invalido: WAUZZZZGY8TA060102 reason=too_long_18". I VIN dell'Audi A3 estratti dall'AI hanno 18 caratteri invece dei 17 standard ISO 3779. Nel render della tabella Stock Vivo, i VIN appaiono in giallo con badge ⚠. Mancava un workflow di correzione interattivo.
 2) FIX: nuovo dialog post-import nxReviewInvalidVINs inserito tra nxReviewMissingData e nxAskAdquisicionPropia. Trigger: SOLO se ci sono VIN flaggati _vinUnverified=true tra i nuovi stockIds. Skip silenzioso se non ce ne sono. Gestisce sia sub-vehicles che stock semplici.
@@ -4793,21 +4790,34 @@ window.NX_REIMPORT_PRESERVED_FIELDS=[
 
 // Helper: trova un veicolo (lotto o sub-vehicle) per VIN matching
 // Ritorna: {found:bool, lot, vehIdx} con vehIdx=-1 per match su lotto principale, >=0 per sub-vehicle
+// v10.10.26.1: legge da localStorage perché window.stock potrebbe essere desincronizzato
+// dalla variabile locale `stock` dell'IIFE (var stock=LS('stock',[]))
 window.nxFindVehicleByVIN=function(vin){
-  if(!vin||!window.stock)return {found:false};
+  if(!vin)return {found:false};
   var target=String(vin).toUpperCase().replace(/[^A-Z0-9]/g,'');
   if(target.length!==17)return {found:false}; // solo VIN validi
-  for(var i=0;i<window.stock.length;i++){
-    var s=window.stock[i];
+  // Leggi stock direttamente da localStorage (source of truth)
+  var stockArr=[];
+  try{
+    var raw=localStorage.getItem('nx5_stock');
+    stockArr=raw?JSON.parse(raw):[];
+  }catch(e){
+    console.warn('[v10.10.26.1] nxFindVehicleByVIN: cannot read stock from LS:',e);
+    // Fallback a window.stock se LS fallisce
+    stockArr=window.stock||[];
+  }
+  if(!Array.isArray(stockArr)||!stockArr.length)return {found:false};
+  for(var i=0;i<stockArr.length;i++){
+    var s=stockArr[i];
     // Match su lotto principale
     var sVin=String(s.vin||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-    if(sVin===target)return {found:true,lot:s,vehIdx:-1};
+    if(sVin===target)return {found:true,lot:s,vehIdx:-1,_lsArr:stockArr,_lsIdx:i};
     // Match su sub-vehicles
     if(Array.isArray(s.vehicles)){
       for(var j=0;j<s.vehicles.length;j++){
         var v=s.vehicles[j];
         var vVin=String(v.vin||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-        if(vVin===target)return {found:true,lot:s,vehIdx:j};
+        if(vVin===target)return {found:true,lot:s,vehIdx:j,_lsArr:stockArr,_lsIdx:i};
       }
     }
   }
@@ -4840,30 +4850,58 @@ window.nxOverwriteVehicleSmart=function(target,source){
 };
 
 // Funzione principale di applicazione re-import overwrite
-// Input: array di vehicles (output del parser), come passato a finishImport
+// v10.10.26.1: signature cambiata — ora riceve stockArr come parametro per evitare
+// desincronizzazione tra window.stock e variabile locale stock dell'IIFE.
+// Input: array vehicles (output del parser) + stockArr (la variabile locale `stock` del chiamante)
 // Output: {matched, skipped, toImport, remainingVehicles, affectedStockIds}
 //   - matched: numero di veicoli che hanno fatto overwrite di esistenti
 //   - skipped: numero di veicoli skippati (VIN duplicato senza modifiche)
 //   - toImport: numero di veicoli che restano da importare come nuovi
 //   - remainingVehicles: array da passare a addStkItem (solo i "nuovi")
 //   - affectedStockIds: array di s.id dei lotti che hanno subito overwrite (per review post-import)
-window.nxApplyReimportOverwrite=function(vehicles){
+window.nxApplyReimportOverwrite=function(vehicles,stockArr){
   var result={matched:0,skipped:0,toImport:0,remainingVehicles:[],affectedStockIds:[]};
   if(!Array.isArray(vehicles)||!vehicles.length)return result;
+  // v10.10.26.1: usa stockArr passato dal chiamante (la sua var locale `stock`)
+  // Fallback a window.stock per backward compat ma loggalo
+  if(!stockArr){
+    console.warn('[v10.10.26.1] nxApplyReimportOverwrite called without stockArr param, falling back to window.stock');
+    stockArr=window.stock||[];
+  }
+  if(!Array.isArray(stockArr)||!stockArr.length){
+    // No stock to match against → tutto va come nuovo
+    result.remainingVehicles=vehicles.slice();
+    vehicles.forEach(function(v){
+      result.toImport+=Array.isArray(v.vehicles)&&v.vehicles.length?v.vehicles.length:(parseInt(v.units,10)||1);
+    });
+    return result;
+  }
+  // Helper inner: cerca VIN nello stockArr (locale del chiamante)
+  function findInStockArr(vin){
+    if(!vin)return {found:false};
+    var target=String(vin).toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(target.length!==17)return {found:false};
+    for(var i=0;i<stockArr.length;i++){
+      var s=stockArr[i];
+      var sVin=String(s.vin||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      if(sVin===target)return {found:true,lot:s,vehIdx:-1};
+      if(Array.isArray(s.vehicles)){
+        for(var j=0;j<s.vehicles.length;j++){
+          var v=s.vehicles[j];
+          var vVin=String(v.vin||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+          if(vVin===target)return {found:true,lot:s,vehIdx:j};
+        }
+      }
+    }
+    return {found:false};
+  }
   var affectedSet={};
-  // Itera ogni vehicle (può essere un lotto con sub-vehicles o un veicolo singolo)
   vehicles.forEach(function(v){
     if(Array.isArray(v.vehicles)&&v.vehicles.length){
-      // È un LOTTO con sub-vehicles. Cerca match per OGNI sub-vehicle.
-      // Se TUTTI i sub-vehicles matchano → overwrite tutti, lotto skippato come nuovo.
-      // Se ALCUNI matchano → overwrite quelli matchati, sub-vehicles non matchati restano da importare come nuovi.
-      // (Per ora SEMPLIFICAZIONE: se ALMENO 1 sub-vehicle matcha → fai overwrite di TUTTI quelli matchati,
-      //  rimuovi quelli matchati dai vehicles, se restano sub-vehicles non matchati → mantieni il lotto con quelli rimasti)
       var unmatched=[];
-      var lotMatchedTo=null;
       v.vehicles.forEach(function(sv){
         if(!sv.vin){unmatched.push(sv);return;}
-        var found=window.nxFindVehicleByVIN(sv.vin);
+        var found=findInStockArr(sv.vin);
         if(found.found){
           var target=found.vehIdx>=0?found.lot.vehicles[found.vehIdx]:found.lot;
           var changes=window.nxOverwriteVehicleSmart(target,sv);
@@ -4875,27 +4913,21 @@ window.nxApplyReimportOverwrite=function(vehicles){
             result.skipped++;
             console.log('[v10.10.26] skip VIN '+sv.vin+': no changes (data identical)');
           }
-          // Anche il lotto principale potrebbe beneficiare di alcuni dati (supplier, providerId)
-          if(!lotMatchedTo)lotMatchedTo=found.lot;
         }else{
           unmatched.push(sv);
         }
       });
       if(unmatched.length>0&&unmatched.length<v.vehicles.length){
-        // Caso parziale: alcuni sub-vehicles matchati, altri no. Tieni il lotto con i restanti.
         v.vehicles=unmatched;
         result.remainingVehicles.push(v);
         result.toImport+=unmatched.length;
       }else if(unmatched.length===v.vehicles.length){
-        // Nessun sub-vehicle matchato → import normale del lotto intero
         result.remainingVehicles.push(v);
         result.toImport+=v.vehicles.length;
       }
-      // Se unmatched.length===0 → tutti matchati, lotto NON va in remainingVehicles (skippato)
     }else{
-      // Veicolo singolo (no sub-vehicles)
       if(v.vin){
-        var found=window.nxFindVehicleByVIN(v.vin);
+        var found=findInStockArr(v.vin);
         if(found.found){
           var target=found.vehIdx>=0?found.lot.vehicles[found.vehIdx]:found.lot;
           var changes=window.nxOverwriteVehicleSmart(target,v);
@@ -4906,23 +4938,21 @@ window.nxApplyReimportOverwrite=function(vehicles){
           }else{
             result.skipped++;
           }
-          return; // non importare come nuovo
+          return;
         }
       }
-      // No VIN o no match → import normale
       result.remainingVehicles.push(v);
       result.toImport+=(parseInt(v.units,10)||1);
     }
   });
   result.affectedStockIds=Object.keys(affectedSet);
-  if(result.matched>0||result.skipped>0){
-    SS('stock',stock); // persisti modifiche
-    if(typeof showToast==='function'){
-      var msg='\u{1F504} Re-import: '+result.matched+' actualizado'+(result.matched!==1?'s':'');
-      if(result.skipped>0)msg+=', '+result.skipped+' duplicado'+(result.skipped!==1?'s':'')+' sin cambios';
-      if(result.toImport>0)msg+=', '+result.toImport+' nuevo'+(result.toImport!==1?'s':'');
-      showToast(msg,6000);
-    }
+  // v10.10.26.1: NON chiamiamo SS qui, lasciamo al chiamante che ha la sua var locale
+  // (le modifiche su target sono già visibili nel chiamante perché stockArr è la sua reference)
+  if((result.matched>0||result.skipped>0)&&typeof showToast==='function'){
+    var msg='\u{1F504} Re-import: '+result.matched+' actualizado'+(result.matched!==1?'s':'');
+    if(result.skipped>0)msg+=', '+result.skipped+' duplicado'+(result.skipped!==1?'s':'')+' sin cambios';
+    if(result.toImport>0)msg+=', '+result.toImport+' nuevo'+(result.toImport!==1?'s':'');
+    showToast(msg,6000);
   }
   return result;
 };
@@ -10899,8 +10929,13 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     // Se match → NON aggiungere come duplicato, fai OVERWRITE intelligente del veicolo esistente.
     // Se nessun match → import normale via addStkItem.
     // Match: solo VIN (deterministico 1:1). Spec utente: salta automaticamente i VIN duplicati.
-    var reimportStats=window.nxApplyReimportOverwrite(vehicles);
+    // v10.10.26.1: passa `stock` (locale dell'IIFE) come parametro per evitare desync con window.stock
+    var reimportStats=window.nxApplyReimportOverwrite(vehicles,stock);
     console.log('[v10.10.26] reimport detection: '+reimportStats.matched+' matched (overwrite), '+reimportStats.skipped+' skipped, '+reimportStats.toImport+' to import as new');
+    // Se ci sono state modifiche di overwrite, persisti subito lo stato del lotto modificato
+    if(reimportStats.matched>0||reimportStats.skipped>0){
+      SS('stock',stock); // v10.10.26.1: chiamata SS qui, sul `stock` locale modificato dalla fn
+    }
     // Filtra out i vehicles già processati come overwrite (resta solo new + skipped)
     vehicles=reimportStats.remainingVehicles;
     vehicles.forEach(function(v){
