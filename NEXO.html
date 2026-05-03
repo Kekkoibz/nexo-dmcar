@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.7 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX Vista Contable upload + modali bloccati:
+1) Bug Anomalia 1 (Foto 9 utente): Vista Contable → "Subir doc proveedor" sullo stesso PDF Audi A3 funzionante in Stock Vivo dava errore "PDF no contiene texto extraíble". ROOT CAUSE: nxAIAnalyzeDoc usava SOLO pdfjsLib.getTextContent() (estrazione testo locale), che fallisce su PDF scansionati. Stock Vivo invece manda PDF come document base64 a Claude Sonnet (vision). FIX: nuova fn nxAIParseScannedPdf che replica il pattern Stock Vivo: legge file come base64 → callAPIbody con type:'document' source:base64 → AI analizza visualmente → ritorna stesso JSON schema. Trigger automatico quando textTrimmed.trim() vuoto, no più confirm() bloccante. Toast "PDF escaneado detectado — usando AI vision" per UX trasparente;
+2) Bug Anomalia 2 (Foto 10 utente): bottone "Cancelar" del dialog "Asignar a expediente manualmente" non chiudeva il modal. ROOT CAUSE: stesso bug v10.10.1 (modali insertAdjacentHTML con style="display:flex" inline ma chiamavano closeM() che rimuove solo classe 'on'). FIX: 8 chiamate sostituite con nxCloseDynModal su 3 modali dinamici: m-ai-doc (3 close: backdrop, X, Cancelar), m-manual-exp (era già fixato + chiamata cascata), m-na-temp (3 close: backdrop, X, Cancelar) + chiamate cascata in nxAIDocManualAssignDo + nxAIDocSaveAsNADo + afterAll() + nxAIDocManual();
+3) PRESERVA: tutto v10.10.6 (cleanup orfane), v10.10.5 (parser PDF + provider picker + autocomplete città), v10.10.4 (Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.6 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX cleanup notifiche orfane: 1) Bug riportato: dopo eliminazione manuale degli stock dal Stock Vivo, le notifiche purchase in Nexo Numbers e i task collegati in Tareas restano "fantasma" perché legati a stockIds non più esistenti; 2) FIX: nuova fn window.nxCleanOrphanPurchaseNotifs() che scansiona nxNumbersNotifications, identifica quelle con type='purchase' i cui stockIds[] sono TUTTI eliminati, e le rimuove + cascade-elimina i task con purchaseNotifId match (preserva task generici senza link e notifiche non-purchase tipo 'sale'); 3) Hook in 4 punti: init() dopo migrazione (cleanup automatico al primo load), delItem (eliminazione singola), delSel (bulk delete), numbersUpdateBadges (cleanup ad ogni refresh badge); 4) Aggiorna anche badge sidebar Tareas + renderTareas dopo cleanup; 5) Smoke test 1/1 PASS: 2 notifiche orfane + task linkati eliminate, notifica sale e task generico preservati. PRESERVA: tutto v10.10.5 (parser PDF, VIN salvage, provider picker, autocomplete città), v10.10.4 (Ubicación/Pick-Up), v10.10.3 (notifica purchase architecture). -->
 <!-- NEXO v10.10.5 — DMCAR GROUP CRM | 2026-05-03 | Parser PDF + Anagrafica reuse + Trasladar UX:
 
@@ -26048,16 +26052,78 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var vins=nxExtractVins(text||'');  // usa regex unificato
       var textTrimmed=String(text||'').substring(0,30000);
       if(!textTrimmed.trim()){
-        // PDF senza testo (probabilmente scansionato)
-        if(!confirm('\u26a0\ufe0f El PDF no contiene texto extra\u00edble (probablemente escaneado).\n\n\u00bfContinuar con el AI parser usando solo el nombre de archivo?')){
-          return;
-        }
+        // v10.10.7: PDF senza testo (scansionato) → usa AI document mode (PDF→base64→AI vision)
+        // Stesso pattern di Stock Vivo che funziona perfettamente con scansioni
+        if(typeof showToast==='function')showToast('\u26a0\ufe0f PDF escaneado detectado \u2014 usando AI vision\u2026',4000);
+        nxAIParseScannedPdf(file,function(parsed,err){
+          if(err){alert('Error AI vision: '+err);return;}
+          nxShowAIDocConfirm(file,parsed);
+        });
+        return;
       }
       nxAIParseWithClaude(file,textTrimmed,vins,function(parsed,err){
         if(err){alert('Error AI: '+err);return;}
         nxShowAIDocConfirm(file,parsed);
       });
     });
+  };
+
+  // v10.10.7: AI parser per PDF SCANSIONATI (no testo extraibile)
+  // Manda il PDF come document base64 a Claude (vision) invece di estrarre solo testo.
+  window.nxAIParseScannedPdf=function(file,cb){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var b64=String(e.target.result).split(',')[1];
+      var systemPrompt='Sei un parser specializzato di documenti fiscali (fatture/proforme) scansionati. '
+        +'Analizza visualmente il PDF e estrai dati strutturati. '
+        +'Restituisci SOLO JSON valido senza commenti, senza markdown fence, senza testo extra.\n\n'
+        +'SCHEMA OBBLIGATORIO:\n'
+        +'{\n'
+        +'  "docType": "factura_proveedor" | "factura_transporte_acq" | "factura_transporte_vend" | "broker_factura" | "factura_cliente" | "proforma_proveedor" | "otro",\n'
+        +'  "docNumber": "numero fattura/proforma esatto come scritto",\n'
+        +'  "docDate": "YYYY-MM-DD",\n'
+        +'  "supplierName": "ragione sociale del fornitore (chi emette la fattura)",\n'
+        +'  "clientName": "ragione sociale del destinatario (a chi è indirizzata)",\n'
+        +'  "totalAmount": numero (totale documento),\n'
+        +'  "currency": "EUR" | "USD" | etc,\n'
+        +'  "lines": [\n'
+        +'    { "vin": "VIN17caratteri", "amount": numero, "description": "descrizione riga" }\n'
+        +'  ]\n'
+        +'}\n\n'
+        +'REGOLE:\n'
+        +'- VIN: 17 caratteri alfanumerici esclusi I/O/Q\n'
+        +'- Per ogni VIN trovato, prova ad estrarre l\'importo della riga corrispondente\n'
+        +'- Se non riesci a separare gli importi per VIN, dividi il totale equamente\n'
+        +'- docType: "proforma_proveedor" se titolo contiene "PROFORMA" o "PRO-FORMA"\n'
+        +'- docType: "factura_transporte_acq" se è trasporto (CMR, transport)\n'
+        +'- docType: "broker_factura" se contiene "commissione", "provvigione", "broker"\n'
+        +'- Date: converti SEMPRE a YYYY-MM-DD\n'
+        +'- Importi: usa . come decimale, no separatori migliaia\n'
+        +'- Se un campo manca, usa null';
+      callAPIbody({
+        model:'claude-sonnet-4-5-20250929',
+        max_tokens:3000,
+        messages:[{
+          role:'user',
+          content:[
+            {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
+            {type:'text',text:systemPrompt+'\n\nFilename: '+file.name+'\n\nAnalizza il PDF e restituisci SOLO il JSON.'}
+          ]
+        }]
+      },function(resp,err){
+        if(err){cb(null,err);return;}
+        try{
+          var clean=String(resp||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+          var parsed=JSON.parse(clean);
+          cb(parsed,null);
+        }catch(e){
+          console.error('[AI Vision Parser] Parse error:',e,'\nResponse:',resp);
+          cb(null,'JSON inv\u00e1lido del AI vision: '+e.message);
+        }
+      });
+    };
+    reader.onerror=function(){cb(null,'Error leyendo archivo');};
+    reader.readAsDataURL(file);
   };
 
   // Estrae TUTTO il testo dal PDF (non solo VIN)
@@ -26184,9 +26250,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
       'otro':'Otro documento'
     };
     var docTypeLabel=docTypeLabels[parsed.docType]||parsed.docType||'?';
-    var html='<div id="m-ai-doc" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-ai-doc\')">'
+    var html='<div id="m-ai-doc" class="modal-bg" style="display:flex" onclick="if(event.target===this)nxCloseDynModal(\'m-ai-doc\')">'
       +'<div class="modal" style="max-width:720px;padding:0">'
-        +'<div class="mh"><span>&#129302; AI Parser &mdash; Documento analizado</span><button class="mx" onclick="closeM(\'m-ai-doc\')">&times;</button></div>'
+        +'<div class="mh"><span>&#129302; AI Parser &mdash; Documento analizado</span><button class="mx" onclick="nxCloseDynModal(\'m-ai-doc\')">&times;</button></div>'
         +'<div class="mb">'
           +'<div style="background:rgba(124,58,237,.06);padding:14px;border-radius:7px;margin-bottom:14px;border-left:4px solid #7c3aed">'
             +'<div style="font-size:11px;color:#7c3aed;font-weight:700;margin-bottom:6px">&#129302; Datos extra\u00eddos por IA:</div>'
@@ -26285,7 +26351,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'</div>';
     }
     html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
-      +'<button class="btn bg" onclick="closeM(\'m-ai-doc\')">Cancelar</button>'
+      +'<button class="btn bg" onclick="nxCloseDynModal(\'m-ai-doc\')">Cancelar</button>'
       +(expCount===0&&inPropriedad.length===0?
          '<button class="btn bs" onclick="nxAIDocManualAssign()" style="border-color:var(--acc);color:var(--acc)">\ud83d\udcc1 Asignar manualmente</button>'
         +'<button class="btn bs" onclick="nxAIDocSaveAsNA()" style="border-color:#f59e0b;color:#f59e0b">\u23f3 Guardar como N/A temporal</button>'
@@ -26312,9 +26378,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var opts=exps.map(function(e){
       return '<option value="'+esc(e.id)+'">'+esc(e.companyCode)+'-'+esc(e.number)+' \u2014 '+esc(e.clientName||'?')+'</option>';
     }).join('');
-    var html='<div id="m-manual-exp" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-manual-exp\')">'
+    var html='<div id="m-manual-exp" class="modal-bg" style="display:flex" onclick="if(event.target===this)nxCloseDynModal(\'m-manual-exp\')">'
       +'<div class="modal" style="max-width:480px">'
-        +'<div class="mh"><span>\ud83d\udcc1 Asignar a expediente manualmente</span><button class="mx" onclick="closeM(\'m-manual-exp\')">&times;</button></div>'
+        +'<div class="mh"><span>\ud83d\udcc1 Asignar a expediente manualmente</span><button class="mx" onclick="nxCloseDynModal(\'m-manual-exp\')">&times;</button></div>'
         +'<div class="mb">'
           +'<p style="font-size:12px;color:var(--t2);margin-bottom:14px">Selecciona el expediente d\u00f3nde guardar el documento:</p>'
           +'<select id="nbv-manual-exp-sel" style="width:100%;font-size:12px;padding:8px">'+opts+'</select>'
@@ -26326,7 +26392,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
               +'<option value="CLIENTE">CLIENTE</option>'
             +'</select></div>'
           +'<div class="fc g8" style="justify-content:flex-end;margin-top:18px">'
-            +'<button class="btn bg" onclick="closeM(\'m-manual-exp\')">Cancelar</button>'
+            +'<button class="btn bg" onclick="nxCloseDynModal(\'m-manual-exp\')">Cancelar</button>'
             +'<button class="btn bp" onclick="nxAIDocManualAssignDo()" style="background:var(--acc);color:#fff">\u2713 Guardar</button>'
           +'</div>'
         +'</div>'
@@ -26358,7 +26424,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
         });
         SS('stock',stock);
       }
-      closeM('m-manual-exp');closeM('m-ai-doc');
+      nxCloseDynModal('m-manual-exp');nxCloseDynModal('m-ai-doc');
       if(typeof numbersRenderVista==='function')numbersRenderVista();
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en '+(exp?exp.fullName:expId),5000);
     });
@@ -26367,9 +26433,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
   // v9.98: Salva come N/A temporale - sceglie quale impresa
   window.nxAIDocSaveAsNA=function(){
     var ctx=window._nxAIDocCtx;if(!ctx)return;
-    var html='<div id="m-na-temp" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-na-temp\')">'
+    var html='<div id="m-na-temp" class="modal-bg" style="display:flex" onclick="if(event.target===this)nxCloseDynModal(\'m-na-temp\')">'
       +'<div class="modal" style="max-width:480px">'
-        +'<div class="mh"><span>\u23f3 Guardar como N/A temporal</span><button class="mx" onclick="closeM(\'m-na-temp\')">&times;</button></div>'
+        +'<div class="mh"><span>\u23f3 Guardar como N/A temporal</span><button class="mx" onclick="nxCloseDynModal(\'m-na-temp\')">&times;</button></div>'
         +'<div class="mb">'
           +'<p style="font-size:12px;color:var(--t2);margin-bottom:14px">El documento se guardar\u00e1 en la carpeta <code>__TEMP/[Impresa]/PROVEEDOR/</code>. Cuando se cree el expediente correspondiente, ser\u00e1 migrado autom\u00e1ticamente.</p>'
           +'<label style="font-size:11px;color:var(--t3)">Impresa:</label>'
@@ -26385,7 +26451,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
             +'<option value="BROKER">BROKER</option>'
           +'</select>'
           +'<div class="fc g8" style="justify-content:flex-end;margin-top:18px">'
-            +'<button class="btn bg" onclick="closeM(\'m-na-temp\')">Cancelar</button>'
+            +'<button class="btn bg" onclick="nxCloseDynModal(\'m-na-temp\')">Cancelar</button>'
             +'<button class="btn bp" onclick="nxAIDocSaveAsNADo()" style="background:#f59e0b;color:#fff">\u23f3 Guardar en TEMP</button>'
           +'</div>'
         +'</div>'
@@ -26409,7 +26475,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       parsed:ctx.parsed
     },function(ok,data){
       if(!ok){alert('Error subiendo a TEMP: '+data);return;}
-      closeM('m-na-temp');closeM('m-ai-doc');
+      nxCloseDynModal('m-na-temp');nxCloseDynModal('m-ai-doc');
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en __TEMP/'+cc+'/'+subfolder+' \u2014 se migrar\u00e1 cuando se cree el expediente',7000);
     });
   };
@@ -27469,7 +27535,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     function afterAll(){
       // Salva stock con accDocs
       SS('stock',stock);
-      closeM('m-ai-doc');
+      nxCloseDynModal('m-ai-doc');
       if(typeof numbersRenderVista==='function')numbersRenderVista();
       var msg='\u2728 Doc archivado: '+expIds.length+' expediente(s)';
       if(tempCompanies.length>0)msg+=' + '+tempCompanies.length+' TEMP';
@@ -27509,7 +27575,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
   window.nxAIDocManual=function(){
     var ctx=window._nxAIDocCtx;
     if(!ctx)return;
-    closeM('m-ai-doc');
+    nxCloseDynModal('m-ai-doc');
     nxDocSmartUpload(ctx.file,ctx.file.name,{docType:ctx.parsed.docType||'factura_proveedor'});
   };
 
