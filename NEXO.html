@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.07 — DMCAR GROUP CRM | 2026-05-03 | Stock Import fix blocco a "Extrayendo datos": 1) Pre-parser deterministico (tryNativeBlockParse) per formato "block-of-rows" tipico subasta/lista veicoli - riconosce pattern: <Brand Model Version> + <Fecha matriculacion DD/MM/YYYY> + <Color codice+nome (Métal)> + <Kms> + <Pickup/Campa CAT/Berge> + <Daños €> + [<Venta €>]; rileva 30+ brand (VW/Volkswagen/Audi/BMW/Mercedes/MB/Renault/Peugeot/etc); espande abbreviazioni VW→VOLKSWAGEN, MB→MERCEDES-BENZ; salta header rows (Marca/Modelo/Color/etc); 2) parseVehicleBlock: estrae brand+model+version dalla prima riga, identifica fecha (regex DD/MM/YYYY), color (codice [A-Z0-9]2-8 + nome), kms (numero), pickup (CAT/Berge keyword), importi € (primo=daños, secondo=venta); 3) Try pre-parser PRIMA della chiamata AI - se ok, no AI call (più veloce, gratis); 4) Timeout 60s su API call per evitare blocco infinito UI (Extrayendo datos... senza fine); 5) Errori migliori: "Timeout 60s - intenta con menos texto"; 6) detectSupplierFromText: cerca riga maiuscola con suffisso S.A./S.L./GmbH; 7) Fallback chain: pre-parser → AI → user feedback. -->
+<!-- NEXO v10.07 — DMCAR GROUP CRM | 2026-05-03 | Stock Import fix blocco a "Extrayendo datos" + dialog z-index: 1) Pre-parser deterministico (tryNativeBlockParse) per formato "block-of-rows" tipico subasta/lista veicoli - riconosce pattern 6-7 righe per blocco: Brand+Model+Version, Fecha matriculacion DD/MM/YYYY, Color codice+nome (Métal), Kms, Pickup/Campa CAT/Berge, Daños €, [Venta €]; rileva 30+ brand (VW/Volkswagen/Audi/BMW/Mercedes/MB/Renault/Peugeot/etc); espande abbreviazioni VW→VOLKSWAGEN, MB→MERCEDES-BENZ; salta header rows (Marca/Modelo/Color/etc); 2) parseVehicleBlock estrae brand+model+version dalla prima riga, identifica fecha (regex DD/MM/YYYY), color (codice [A-Z0-9]2-8 + nome), kms (numero), pickup (CAT/Berge keyword), importi € (primo=daños, secondo=venta); 3) Try pre-parser PRIMA della chiamata AI - se ok, no AI call; 4) Timeout 60s su API call per evitare blocco UI; 5) FIX dialog z-index: aggiunto CSS .modal-bg (z-index:300) per dialog dinamici (m-import-report, m-email-recipients, m-doc-upload) che prima non erano stilizzati e non visibili; alzato z-index a 250 per #m-pickup/#m-buy-ask così non vengono nascosti da m-import (z-index 200); 6) Dialog "Reporte de importación" si apre ora SOLO se ci sono VIN duplicati - NON per missingVin alone (normale in liste subasta senza VIN); 7) detectSupplierFromText e fallback chain: pre-parser → AI → user feedback. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -148,6 +148,14 @@ input[type=checkbox]{width:15px;height:15px;accent-color:var(--b2);cursor:pointe
 input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
 /* MODAL */
 .ovl{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center;padding:12px}
+/* v10.07: Modal secondari (chiamati da dentro un altro modal) - z-index più alto */
+#m-pickup,#m-buy-ask,#m-import-vin-warn{z-index:250}
+/* v10.07: Dynamic modal-bg (creati via insertAdjacentHTML) - sopra tutto */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:300;display:none;align-items:center;justify-content:center;padding:12px}
+.modal-bg .modal{background:var(--bg1);border:1px solid var(--border);border-radius:12px;max-width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal-bg .mh{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700}
+.modal-bg .mb{padding:18px}
+.modal-bg .mx{background:transparent;border:none;color:var(--t2);font-size:22px;cursor:pointer;padding:0 4px;line-height:1}
 .ovl.on{display:flex}
 .modal{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:22px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto}
 .modal.xl{max-width:720px}
@@ -9806,8 +9814,8 @@ function iHandleResp(resp,manualSup){
     });
     report.ok=report.total-report.duplicateVins.length;
 
-    // Se ci sono duplicati o mancanze, mostra dialog di conferma
-    if(report.duplicateVins.length>0||report.missingVin.length>0){
+    // v10.07: Apri dialog SOLO se ci sono VIN duplicati (i missing VIN sono normali per liste subasta senza VIN)
+    if(report.duplicateVins.length>0){
       stkShowImportReport(report,function(action){
         if(action==='cancel'){
           window._currentImportBatch=null;
@@ -9831,6 +9839,10 @@ function iHandleResp(resp,manualSup){
         proceedToImport(vehicles,manualSup,batchId);
       });
       return;
+    }
+    // Se ci sono solo VIN mancanti (senza duplicati) → procedi senza dialog ma logga
+    if(report.missingVin.length>0){
+      console.log('[v10.07] '+report.missingVin.length+' veh\u00edculos sin VIN (normal en listas de subasta) - procediendo');
     }
 
     // Caso normale: nessun duplicato, prosegui
