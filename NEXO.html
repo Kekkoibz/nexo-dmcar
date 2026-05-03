@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.3 — DMCAR GROUP CRM | 2026-05-03 | FIX 4 anomalie report consolidato: 1) Daños AVG in Vista Contable: causa ROOT nxAccGetExtended leggeva s.damage (lotto aggregato es. "304,68 € avg") invece del damage real per-veicolo. FIX: in nxBuildVistaRecords lotto-mode, ogni record ora include _vehKm/_vehDamage/_vehReg/_vehPickup parsati da v.kms/v.damage/v.reg/v.pickup; nxAccGetExtended consuma questi se presenti, fallback a s.* per non-lotto; 2) buy/sell per-veicolo: vehBuy=v.buy||buy, vehSell=v.sell||sale, margin per-vehicle calcolato singolarmente (non più diviso per N); 3) Pickup riga sintesi: causa ROOT join("/") di tutti i piazzali. FIX: detectCountry helper con regex per ES/IT/FR/DE/PT/UK/NL/BE; output spec "España (3 piazzales)" per stesso paese, "España (2), Italia (1)" multi-paese; preservato _pickupListOriginal per drill-down dei sub-rows; 4) Notifica Nexo Numbers purchase: causa ROOT funzionalità mancante. FIX: nuova fn nxNumbersCreatePurchaseNotification con type:"purchase", proformaUploaded boolean, ownerCompany, supplier, brand, model, quantity. Logica spec: N>=2 → "un stock de N modelo", N=1 → "1 vehículo modelo". Render dedicato in numbersRenderNotifs con icone/colori distinti Caso A (verde "completada") vs Caso B (giallo "cargar proforma"). Hook: Step2aChoice('now') → Caso A, Step2aChoice('later') → Caso B, Step2bChoice('si'/'no') → Caso B; 5) Memorandum Tareas: in Caso B crea automaticamente task con title="📄 Cargar proforma — un stock de N marca", priority=high, assignedTo=Contabilidad, link bidirezionale purchaseNotifId+stockIds, aggiorna badge sidebar; 6) numbersPurchaseLoadProforma: click "Cargar proforma" naviga a Vista Contable + apre numbersUploadProveedorDoc; 7) nxParseEsNum promosso a window-scope per riuso. PRESERVA: workflow OWN v10.10.1, fix --bg1/--t1 v10.10.2, parsing es-ES kms/damage v10.10.2, aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.2 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug critici Vista Contable: 1) BUG GRAFICO sfondo nero: causa ROOT era CSS var --bg1 NON DEFINITA in :root (definite solo --bg, --bg2, --bg3, --bg4) → modali con background:var(--bg1) cadevano in fallback transparent → backdrop nero passava attraverso. FIX: aggiunte --bg1:#ffffff e --t1:#0f172a in :root; 2) BUG KMS=20: causa ROOT parsing erroneo es-ES "19.614 avg" interpretato come decimale 19.614 → Math.round=20 invece di 19614. FIX: nxParseEsNum smart parser detecta separatore migliaia "." (1 dot + esattamente 3 cifre dopo = es-ES migliaia) vs decimale + gestisce correttamente "," come decimal separator; 3) BUG Invalid Date: causa ROOT new Date("31/03/2025") non parsabile da Chrome (formato non ISO) → "Invalid Date" mostrato nella colonna 1ª Matr. FIX: fmtDate ora detecta dd/mm/yyyy + dd-mm-yyyy + dd.mm.yyyy + supporto YY 2-digit (>50 = 19YY, <=50 = 20YY); 4) BUG P.Compra vuoto: causa ROOT lettura da s.buyPrice/s.salePrice ma in Stock Vivo i campi reali sono s.buy/s.sell. FIX: nxBuildVistaRecords ora legge da s.buy/s.sell con fallback agli alias buyPrice/salePrice; 5) Patch applicata in nxAccGetExtended (km, damage, firstReg) + nxBuildVistaRecords (sale, buy, margin) + fmtDate global; 6) Smoke test 11/11 PASS su parsing "19.614" "304,68 €" "15.200 €" "1.014" "450,00 €" ecc. PRESERVA: workflow OWN v10.10.1 (modali dinamici + email Contabilidad), aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.1 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX modali OWN workflow: 1) Bug freeze "Más tarde" su Step2a → causa: closeM(id) rimuove la classe 'on' ma i modali dinamici v10.01+ (insertAdjacentHTML) usano style="display:flex" inline, quindi closeM NON funzionava → modal restava in DOM bloccando l'UI; 2) Bug grafico schermo nero → causa: Step1 NON veniva rimosso prima di Step2a/2b, doppio backdrop rgba(0,0,0,.75) sovrapposto = nero opaco illeggibile; 3) FIX: nuovo helper window.nxCloseDynModal(id) che fa parentNode.removeChild() invece di toggle classe, sostituito in tutte le 11 chiamate del workflow (Step1/2a/2b/Decline/Decline2); 4) Effetto collaterale risolto: ora Step1 viene rimosso dal DOM prima di mostrare 2a/2b → niente più doppio backdrop → contrasto WCAG ripristinato come da design system; 5) Test branch coperti: Sì→Cargar ahora, Sì→Más tarde, No→Sí richiedi, No→No suspenso, X→Decline; 6) PRESERVA: Step2aChoice('now') → numbersUploadProveedorDoc, Step2bChoice('si') → nxOwnEntryRequestProforma, ownerCompany persistito su tutti i branch. -->
 <!-- NEXO v10.10 — DMCAR GROUP CRM | 2026-05-03 | Workflow Libre→OWN: 1) Step1 ridisegnato con selettore impresa acquirente (DMCAR GROUP / INNOQUEST SOLUTIONS / IMPEX CONSULTING / MERCEDES SOLUTION via window.NX_OWN_COMPANIES) e template notifica spec: "[Empresa] ha adquirido [N] [Marca Modelo] de [Provider]. Los vehículos han sido cargados en Vista Contable"; 2) Step2b ("No tengo proforma") refactor: invece di "¿Registrar igualmente?" ora chiede "¿Solicitar la proforma al proveedor?" — branch Sì apre email pre-compilata, branch No lascia in suspenso (sempre OWN+N/D in Vista Contable, propagazione obbligatoria come da spec); 3) Nuova fn nxOwnEntryRequestProforma: pesca contatti Rol=Contabilidad da provider.staff[] + fallback su provider.email se role=Contabilidad, costruisce mailto: con subject/body template spec ("Solicitud de proforma – Marca Modelo – N° unidades"); 4) Fallback a 3 livelli: provider non in DB → mailto vuoto, provider senza Contabilidad → riusa nxProvSelectEmailRecipients per scelta manuale, contatti trovati → mailto con tutti i Contabilidad in TO; 5) Persiste s.ownerCompany su ogni stock OWN per traccia multi-impresa (usato in render Vista Contable e re-display Step1 in caso di re-entry); 6) Helper nxOpenMailtoFallback con clipboard fallback se mailto: fallisce. PRESERVA: 10.09 aggregazione lotti subasta intatta, sub-rows VW Taigo funzionanti. -->
@@ -9547,9 +9548,45 @@ window.tryNativeBlockParse=function(text,manualSup){
       var buyVal=allSame?g._buyList[0]:(g._buyList.reduce(function(s,x){return s+x;},0)/g._buyList.length);
       g.buy=buyVal.toLocaleString('es-ES')+' \u20ac';
     }
-    // Pickup: lista unica join
+    // Pickup: v10.10.3 — riga sintesi mostra paese aggregato (es. "Spagna (3 piazzali)")
+    // mentre i veicoli singoli in vehicles[] mantengono il pickup specifico
     var pks=Object.keys(g._pickupSet);
-    g.pickup=pks.length===1?pks[0]:(pks.length>1?pks.join(' / '):'');
+    if(pks.length===0){
+      g.pickup='';
+    }else if(pks.length===1){
+      g.pickup=pks[0];
+    }else{
+      // Deriva paese da ciascun pickup
+      var detectCountry=function(pk){
+        var p=String(pk||'').toLowerCase();
+        // Spagna: keyword tipiche dei pickup spagnoli
+        if(/\b(es|spain|espa[nñ]a|cat\s|berge|valencia|madrid|barcelona|sevilla|salobral|cheste|roda|andaluc|catalu)/i.test(p))return 'Espa\u00f1a';
+        if(/\b(it|italy|italia|milano|roma|torino|napoli|bologna)/i.test(p))return 'Italia';
+        if(/\b(fr|france|francia|paris|lyon|marseille)/i.test(p))return 'Francia';
+        if(/\b(de|germany|alemania|deutschland|berlin|munich|frankfurt|hamburg)/i.test(p))return 'Alemania';
+        if(/\b(pt|portugal|lisboa|porto)/i.test(p))return 'Portugal';
+        if(/\b(uk|england|london|manchester|liverpool)/i.test(p))return 'UK';
+        if(/\b(nl|netherlands|holanda|amsterdam|rotterdam)/i.test(p))return 'Holanda';
+        if(/\b(be|belgium|belgica|brussels|antwerp)/i.test(p))return 'B\u00e9lgica';
+        return null;
+      };
+      var countrySet={};
+      pks.forEach(function(pk){
+        var c=detectCountry(pk);
+        if(c)countrySet[c]=(countrySet[c]||0)+1;
+        else countrySet['(otros)']=(countrySet['(otros)']||0)+1;
+      });
+      var ck=Object.keys(countrySet);
+      if(ck.length===1&&ck[0]!=='(otros)'){
+        // Tutti nello stesso paese → "España (3 piazzali)"
+        g.pickup=ck[0]+' ('+pks.length+' piazzal'+(pks.length!==1?'es':'')+')';
+      }else{
+        // Più paesi → join "España (2), Italia (1)"
+        g.pickup=ck.map(function(c){return c+' ('+countrySet[c]+')';}).join(', ');
+      }
+      // Salva la lista originale per drill-down dei veicoli
+      g._pickupListOriginal=pks.slice();
+    }
     // Colors: lista unica
     var cls=Object.keys(g._colorSet);
     g.colors=cls.length===1?cls[0]:(cls.length>1?cls.join(', '):'');
@@ -22532,6 +22569,31 @@ document.querySelectorAll('.ovl').forEach(function(el){
                 +'<button class="btn bd" style="font-size:11px;padding:6px 14px;color:#fff;border:none;white-space:nowrap" onclick="event.stopPropagation();numbersOpenNotificationCancel(\''+esc(ntf.id)+'\')">Revisar &rarr;</button>'
               +'</div></div>';
           }
+          // v10.10.3: PURCHASE notification (acquisto OWN — A=proforma caricata / B=assente)
+          if(ntf.type==='purchase'){
+            var whenP=ntf.createdAt?new Date(ntf.createdAt).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+            var hasProforma=!!ntf.proformaUploaded;
+            var bgColor=hasProforma?'rgba(16,163,74,.06)':'rgba(245,158,11,.08)';
+            var borderColor=hasProforma?'#16a34a':'#f59e0b';
+            var icon=hasProforma?'\u2705':'\u26a0\ufe0f';
+            var title=hasProforma?'COMPRA REGISTRADA + PROFORMA':'COMPRA SIN PROFORMA';
+            var titleColor=hasProforma?'#15803d':'#92400e';
+            var msgQty=ntf.quantity>=2?'un stock de '+ntf.quantity+' '+(ntf.brand||'')+' '+(ntf.model||''):'1 veh\u00edculo '+(ntf.brand||'')+' '+(ntf.model||'');
+            var msg=(ntf.ownerCompany||'DMCAR')+' ha comprado '+msgQty+' de '+(ntf.supplier||'(sin proveedor)')+'. ';
+            msg+=hasProforma?'La proforma ya ha sido cargada.':'Proforma ausente — \u00bfcargar?';
+            var actionBtn=hasProforma
+              ?'<span style="font-size:11px;color:#16a34a;font-weight:600;padding:6px 14px;background:rgba(16,163,74,.1);border-radius:6px;white-space:nowrap">\u2713 Completada</span>'
+              :'<button class="btn bp" style="font-size:11px;padding:6px 14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;white-space:nowrap" onclick="event.stopPropagation();numbersPurchaseLoadProforma(\''+esc(ntf.id)+'\')">\u{1F4C4} Cargar proforma</button>';
+            return '<div style="padding:14px;background:'+bgColor+';border-radius:8px;margin-bottom:8px;border-left:4px solid '+borderColor+';transition:all .15s">'
+              +'<div class="fbet" style="align-items:flex-start">'
+                +'<div style="flex:1">'
+                  +'<div style="font-size:11px;color:'+titleColor+';font-weight:700">'+icon+' '+esc(title)+' &middot; '+esc(whenP)+'</div>'
+                  +'<div style="font-size:13px;color:var(--t1);margin-top:6px;line-height:1.5">'+esc(msg)+'</div>'
+                  +(ntf.internalId?'<div style="font-size:10px;color:var(--t3);margin-top:4px">'+esc(ntf.internalId)+'</div>':'')
+                +'</div>'
+                +actionBtn
+              +'</div></div>';
+          }
           // Fallback formato legacy (notifiche vecchie tipo Won kanban)
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg3);border-radius:7px;margin-bottom:6px">'
             +'<div style="flex:1"><div style="font-weight:600;font-size:13px">'+esc(ntf.title||'Notificaci\u00f3n')+'</div>'
@@ -24693,18 +24755,22 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // Margine
       // v10.10.2 FIX: i campi reali in Stock Vivo sono s.buy/s.sell (non buyPrice/salePrice)
       // + parsing es-ES per separatore migliaia "."
-      var nxParseEsNum=function(v){
-        if(v==null||v==='')return null;
-        var raw=String(v).replace(/[^\d.,-]/g,'');
-        if(!raw)return null;
-        if(raw.indexOf(',')>=0){
-          raw=raw.replace(/\./g,'').replace(',','.');
-        }else if((raw.match(/\./g)||[]).length===1&&raw.split('.')[1].length===3){
-          raw=raw.replace(/\./g,'');
-        }
-        var n=parseFloat(raw);
-        return isNaN(n)?null:n;
-      };
+      // v10.10.3: promosso a window.nxParseEsNum per riuso
+      if(typeof window.nxParseEsNum!=='function'){
+        window.nxParseEsNum=function(v){
+          if(v==null||v==='')return null;
+          var raw=String(v).replace(/[^\d.,-]/g,'');
+          if(!raw)return null;
+          if(raw.indexOf(',')>=0){
+            raw=raw.replace(/\./g,'').replace(',','.');
+          }else if((raw.match(/\./g)||[]).length===1&&raw.split('.')[1].length===3){
+            raw=raw.replace(/\./g,'');
+          }
+          var n=parseFloat(raw);
+          return isNaN(n)?null:n;
+        };
+      }
+      var nxParseEsNum=window.nxParseEsNum;
       var sale=nxParseEsNum(s.sell||s.salePrice||s.sellPrice);
       var buy=nxParseEsNum(s.buy||s.buyPrice);
       var margin=null;
@@ -24712,6 +24778,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // Se ha veicoli singoli (lot expanded), creo record per ognuno
       if(hasVehicles){
         s.vehicles.forEach(function(v,idx){
+          // v10.10.3 FIX: parsing es-ES per damage/kms per-unità
+          var vehKm=v.kms?nxParseEsNum(v.kms):null;
+          var vehDamage=v.damage?nxParseEsNum(v.damage):null;
+          var vehBuy=v.buy?nxParseEsNum(v.buy):buy;
+          var vehSell=v.sell?nxParseEsNum(v.sell):sale;
+          var vehMargin=(vehSell!==null&&vehBuy!==null)?vehSell-vehBuy:null;
           records.push({
             stockId:s.id,
             internalId:s.internalId||'',
@@ -24733,9 +24805,14 @@ document.querySelectorAll('.ovl').forEach(function(el){
             clientId:resolvedClientId,
             soldBy:resolvedSoldBy,
             companyId:(proformas[0]&&proformas[0].companyId)||(invoices[0]&&invoices[0].companyId)||'',
-            margin:margin?(margin/(s.vehicles.length||1)):null,
-            salePrice:sale,
-            buyPrice:buy,
+            margin:vehMargin,
+            salePrice:vehSell,
+            buyPrice:vehBuy,
+            // v10.10.3: dati REAL per-veicolo (no AVG del lotto)
+            _vehKm:vehKm,
+            _vehDamage:vehDamage,
+            _vehReg:v.reg||'',
+            _vehPickup:v.pickup||'',
             proformas:proformas,
             invoices:invoices,
             creditNotes:creditNotes,
@@ -25177,31 +25254,42 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     // Stock 1ª reg + km dal Stock
     // v10.10.2 FIX: parsing es-ES "19.614" come migliaia (=19614) non come decimale (=19.614→round 20)
-    var firstReg=s&&(s.reg||s.firstReg)||'';
-    var km=s&&(s.kms||s.km)||0;
-    if(typeof km==='string'){
-      // Formato es-ES: "." = migliaia, "," = decimale. Esempi: "19.614" -> 19614, "19.614,5" -> 19614.5
-      var rawKm=String(km).replace(/[^\d.,-]/g,'');
-      if(rawKm.indexOf(',')>=0){
-        // Ha decimale virgola: rimuovi punti (migliaia), poi sostituisci virgola con punto
-        rawKm=rawKm.replace(/\./g,'').replace(',','.');
-      }else if((rawKm.match(/\./g)||[]).length===1&&rawKm.split('.')[1].length===3){
-        // Solo un punto seguito da 3 cifre = separatore migliaia es-ES (es. "19.614")
-        rawKm=rawKm.replace(/\./g,'');
+    // v10.10.3 FIX: per le righe lotto-mode, usa i dati REALI per-veicolo (r._vehKm, r._vehDamage, r._vehReg) invece dell'AVG aggregato
+    var firstReg=(r&&r._vehReg)||(s&&(s.reg||s.firstReg))||'';
+    var km;
+    if(r&&typeof r._vehKm==='number'&&!isNaN(r._vehKm)){
+      km=r._vehKm; // valore reale del veicolo (lotto-mode)
+    }else{
+      km=s&&(s.kms||s.km)||0;
+      if(typeof km==='string'){
+        // Formato es-ES: "." = migliaia, "," = decimale. Esempi: "19.614" -> 19614, "19.614,5" -> 19614.5
+        var rawKm=String(km).replace(/[^\d.,-]/g,'');
+        if(rawKm.indexOf(',')>=0){
+          // Ha decimale virgola: rimuovi punti (migliaia), poi sostituisci virgola con punto
+          rawKm=rawKm.replace(/\./g,'').replace(',','.');
+        }else if((rawKm.match(/\./g)||[]).length===1&&rawKm.split('.')[1].length===3){
+          // Solo un punto seguito da 3 cifre = separatore migliaia es-ES (es. "19.614")
+          rawKm=rawKm.replace(/\./g,'');
+        }
+        // else: già numero pulito (es. "19614" o "19.5" decimale anglo)
+        km=parseFloat(rawKm)||0;
       }
-      // else: già numero pulito (es. "19614" o "19.5" decimale anglo)
-      km=parseFloat(rawKm)||0;
     }
-    var damage=s&&(s.damage||0);
-    if(typeof damage==='string'){
-      // Stesso parsing es-ES per damage (es. "304,68 €" -> 304.68; "1.014 €" -> 1014)
-      var rawDmg=String(damage).replace(/[^\d.,-]/g,'');
-      if(rawDmg.indexOf(',')>=0){
-        rawDmg=rawDmg.replace(/\./g,'').replace(',','.');
-      }else if((rawDmg.match(/\./g)||[]).length===1&&rawDmg.split('.')[1].length===3){
-        rawDmg=rawDmg.replace(/\./g,'');
+    var damage;
+    if(r&&typeof r._vehDamage==='number'&&!isNaN(r._vehDamage)){
+      damage=r._vehDamage; // valore reale del veicolo (lotto-mode)
+    }else{
+      damage=s&&(s.damage||0);
+      if(typeof damage==='string'){
+        // Stesso parsing es-ES per damage (es. "304,68 €" -> 304.68; "1.014 €" -> 1014)
+        var rawDmg=String(damage).replace(/[^\d.,-]/g,'');
+        if(rawDmg.indexOf(',')>=0){
+          rawDmg=rawDmg.replace(/\./g,'').replace(',','.');
+        }else if((rawDmg.match(/\./g)||[]).length===1&&rawDmg.split('.')[1].length===3){
+          rawDmg=rawDmg.replace(/\./g,'');
+        }
+        damage=parseFloat(rawDmg)||0;
       }
-      damage=parseFloat(rawDmg)||0;
     }
     // Profit Auto
     var profitAuto=null;
@@ -26155,6 +26243,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
       ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;s.ownerCompany=ownerCompany;});
       SS('stock',stock);
       nxCloseDynModal('m-own-entry-2');
+      // v10.10.3: notifica purchase Caso A (proforma sta per essere caricata)
+      // Marca come uploaded perché l'utente ha confermato che la caricherà ora
+      if(typeof window.nxNumbersCreatePurchaseNotification==='function'){
+        window.nxNumbersCreatePurchaseNotification({
+          group:ctx.group,
+          ownerCompany:ownerCompany,
+          proformaUploaded:true
+        });
+      }
       // Apri direttamente l'upload doc proveedor (Vista Contable AI parser)
       if(typeof showToast==='function')showToast('\u2728 Carga la proforma desde Vista Contable',5000);
       // Naviga a Vista Contable
@@ -26176,6 +26273,14 @@ document.querySelectorAll('.ovl').forEach(function(el){
       });
       SS('stock',stock);
       nxCloseDynModal('m-own-entry-2');
+      // v10.10.3: notifica purchase Caso B (proforma esiste ma non ancora caricata) → crea task in Tareas
+      if(typeof window.nxNumbersCreatePurchaseNotification==='function'){
+        window.nxNumbersCreatePurchaseNotification({
+          group:ctx.group,
+          ownerCompany:ownerCompany,
+          proformaUploaded:false
+        });
+      }
       if(typeof numbersRenderVista==='function')numbersRenderVista();
       if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos registrados en Vista Contable con N/D - carga proforma cuando tengas',5500);
       if(ctx.onDone)ctx.onDone();
@@ -26219,6 +26324,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
     });
     SS('stock',stock);
     nxCloseDynModal('m-own-entry-3');
+    // v10.10.3: notifica purchase Caso B (utente ha detto "no proforma" in Step1)
+    // Sia "sí, solicitar al proveedor" sia "no, dejar en suspenso" → proforma assente → crea task Tareas
+    if(typeof window.nxNumbersCreatePurchaseNotification==='function'){
+      window.nxNumbersCreatePurchaseNotification({
+        group:ctx.group,
+        ownerCompany:ownerCompany,
+        proformaUploaded:false
+      });
+    }
     if(typeof numbersRenderVista==='function')numbersRenderVista();
     if(choice==='si'){
       // Apri email precompilata al Contabile del provider
@@ -26355,6 +26469,87 @@ document.querySelectorAll('.ovl').forEach(function(el){
         });
       }
     }
+  };
+
+  // ========================================================================
+  // v10.10.3: nxNumbersCreatePurchaseNotification
+  // Crea notifica nel modulo Nexo Numbers per ogni acquisto OWN
+  //   - Caso A: proformaUploaded=true  → "COMPRA REGISTRADA + PROFORMA"
+  //   - Caso B: proformaUploaded=false → "COMPRA SIN PROFORMA" + crea task Tareas
+  // Logica quantità: N>=2 → "un stock"; N=1 → "1 vehículo"
+  // ========================================================================
+  window.nxNumbersCreatePurchaseNotification=function(opts){
+    if(!opts||!opts.group||!opts.group.stocks||!opts.group.stocks.length)return null;
+    if(!Array.isArray(window.nxNumbersNotifications))window.nxNumbersNotifications=LS('nxNumbersNotifications',[]);
+    var totalUnits=opts.group.stocks.reduce(function(a,s){return a+(s.vehicles?s.vehicles.length:1);},0);
+    var firstStock=opts.group.stocks[0];
+    var stockIds=opts.group.stocks.map(function(s){return s.id;});
+    var notif={
+      id:'nbpur_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      type:'purchase',
+      status:'pending',
+      proformaUploaded:!!opts.proformaUploaded,
+      ownerCompany:opts.ownerCompany||'DMCAR GROUP',
+      supplier:opts.group.supplier||'',
+      brand:opts.group.brand||'',
+      model:opts.group.model||'',
+      quantity:totalUnits,
+      stockIds:stockIds,
+      internalId:firstStock.internalId||'',
+      createdAt:new Date().toISOString()
+    };
+    window.nxNumbersNotifications.push(notif);
+    SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+    if(typeof numbersRenderNotifs==='function')numbersRenderNotifs();
+    // Caso B: crea task in Tareas
+    if(!opts.proformaUploaded){
+      try{
+        if(typeof tasks==='undefined'||!Array.isArray(window.tasks))window.tasks=LS('tasks',[]);
+        var qtyLabel=totalUnits>=2?'un stock de '+totalUnits+' '+(opts.group.brand||''):'1 veh\u00edculo '+(opts.group.brand||'');
+        var task={
+          id:'tsk_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+          title:'\u{1F4C4} Cargar proforma — '+qtyLabel+' '+(opts.group.model||''),
+          description:'Acquisto OWN registrado: '+(opts.ownerCompany||'DMCAR')+' ha comprado '+qtyLabel+' '+(opts.group.model||'')+' de '+(opts.group.supplier||'(sin proveedor)')+'. Proforma pendiente — solicitar al proveedor o cargar manualmente.',
+          assignedTo:'Contabilidad',
+          priority:'high',
+          status:'pending',
+          empresa:opts.ownerCompany||'DMCAR GROUP',
+          dueDate:'',
+          createdAt:new Date().toISOString(),
+          purchaseNotifId:notif.id,  // link inverso alla notifica
+          stockIds:stockIds  // link diretto agli stock
+        };
+        window.tasks.push(task);
+        SS('tasks',window.tasks);
+        if(typeof renderTareas==='function')renderTareas();
+        // Aggiorna contatore badge sidebar Tareas
+        var tareasBadge=document.getElementById('cnt-tareas');
+        if(tareasBadge){
+          var pendingCnt=window.tasks.filter(function(t){return t.status==='pending';}).length;
+          tareasBadge.textContent=pendingCnt;
+          tareasBadge.style.display=pendingCnt>0?'':'none';
+        }
+        console.log('[v10.10.3] Task Tareas creado:',task.id,'(linkado a notif',notif.id+')');
+      }catch(eTsk){
+        console.warn('[v10.10.3] Error creando task Tareas:',eTsk);
+      }
+    }
+    console.log('[v10.10.3] Purchase notif creada:',notif.id,'('+(opts.proformaUploaded?'Caso A':'Caso B')+')');
+    return notif;
+  };
+
+  // Click "Cargar proforma" su notifica purchase: apre upload Vista Contable
+  window.numbersPurchaseLoadProforma=function(notifId){
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif)return;
+    if(typeof go==='function')go('numbers');
+    setTimeout(function(){
+      if(typeof numbersGo==='function')numbersGo('vista');
+      setTimeout(function(){
+        if(typeof window.numbersUploadProveedorDoc==='function')window.numbersUploadProveedorDoc();
+      },400);
+    },200);
   };
 
   // Auto-archive con dati AI
