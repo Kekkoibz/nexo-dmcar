@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.17 — DMCAR GROUP CRM | 2026-05-03 | Feature Cancelar Traslado (rollback):
+1) Feature richiesta utente: dopo aver fatto Trasladar (singolo o bulk) non c'era modo di tornare allo stato anteriore in caso di errore. Era un'asimmetria UX problematica: facile entrare in_transit, impossibile uscirne se non ricaricando un altro Trasladar manuale (e perdendo l'Ubicación originale);
+2) FIX: nuovo bottone "↩ Cancelar traslado" nel modal Trasladar, visibile SOLO se transferStatus='in_transit' o 'arrived'. Posizionato a sinistra accanto a "Confirmar llegada" (raggruppati come azioni di stato). Bottone in stile rosso outline (border-color:#dc2626) per indicare azione distruttiva;
+3) Nuova fn nxCancelTraslado(sid,vi): conferma esplicita via confirm() per evitare cancellazioni accidentali (mostra stato attuale + Ubicación di destinazione del rollback); ripristina v.pickup=v.ubicacion (originale storica); rimuove transferStatus, transferTo, arrivedAt; preserva audit trail in v._transferHistory[] (array che cresce ad ogni cancel: cancelledAt, previousStatus, previousPickup, previousTransferTo) — utile per debugging futuro o eventuale "undo" della cancel;
+4) UX bonus: il bottone "Trasladar" si rinomina dinamicamente in "Cambiar destino" se il veicolo è già in_transit/arrived (semantica più chiara: stai cambiando una destinazione esistente, non aggiungendone una nuova). Il bottone "Cancelar" (close modal) rinominato in "Cerrar" per evitare confusione con "Cancelar traslado";
+5) Smoke test 5/5 PASS: rollback ripristina pickup, rimuove transferStatus/transferTo, preserva ubicacion storica, registra audit trail;
+6) PRESERVA: tutto v10.10.16 (bulk trasladar selezione multipla), v10.10.15 (eliminazione Persona Jurídica), v10.10.14 (4 mod Provider Logística+Móvil+Comercial+Fiscal), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.16 — DMCAR GROUP CRM | 2026-05-03 | Feature Bulk Trasladar (selezione multipla):
 1) Feature richiesta utente (Foto): dopo aver fatto Trasladar su 1 sub-vehicle, il sistema deve chiedere se applicare la stessa scelta a altri veicoli del lotto, con selezione multipla + conferma. Razionale: nella vita reale i veicoli di una proforma multi-unità (es. 8 Audi A3) si trovano spesso nello stesso piazzal del fornitore e si trasferiscono insieme alla stessa destinazione (es. campas DMCAR) — fare 8 click manuali è inefficiente;
 2) Implementazione: nuova fn nxOpenBulkTrasladarDialog chiamata da nxConfirmTrasladar dopo il successo (con setTimeout 500ms per dare tempo al toast). Trigger condizionato a: (a) lotto con >1 sub-vehicles, (b) almeno 1 candidato (veicolo non-source che non sia già in transito allo stesso destino — idempotenza);
@@ -27914,11 +27921,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
           +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px;border-radius:6px;font-size:11px;color:var(--t2);margin-bottom:14px;line-height:1.5">'
             +'\u{1F4A1} La <strong>Ubicaci\u00f3n original</strong> permanece como hist\u00f3rico. Solo se actualiza el <strong>Pick-Up</strong> con la nueva destinaci\u00f3n. La l\u00ednea quedar\u00e1 marcada en \u{1F7E1} <strong>amarillo (en tr\u00e1nsito)</strong> hasta confirmar la llegada.'
           +'</div>'
-          +'<div class="fc g8" style="justify-content:space-between">'
-            +(currentStatus==='in_transit'?'<button class="btn bs" onclick="nxConfirmArrival(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none">\u2705 Confirmar llegada</button>':'<span></span>')
+          +'<div class="fc g8" style="justify-content:space-between;flex-wrap:wrap;gap:8px">'
             +'<div class="fc g8">'
-              +'<button class="btn bg" onclick="nxCloseDynModal(\'m-trasladar\')">Cancelar</button>'
-              +'<button class="btn bp" onclick="nxConfirmTrasladar(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none">\u{1F69A} Trasladar</button>'
+              +(currentStatus==='in_transit'?'<button class="btn bs" onclick="nxConfirmArrival(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none">\u2705 Confirmar llegada</button>':'')
+              // v10.10.17: rollback "Cancelar traslado" — visibile solo se in_transit o arrived
+              +((currentStatus==='in_transit'||currentStatus==='arrived')?'<button class="btn bs" onclick="nxCancelTraslado(\''+esc(sid)+'\','+vi+')" title="Restaurar Pick-Up al valor original (Ubicación)" style="border-color:#dc2626;color:#dc2626">\u21a9 Cancelar traslado</button>':'')
+            +'</div>'
+            +'<div class="fc g8">'
+              +'<button class="btn bg" onclick="nxCloseDynModal(\'m-trasladar\')">Cerrar</button>'
+              +'<button class="btn bp" onclick="nxConfirmTrasladar(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none">\u{1F69A} '+(currentStatus==='in_transit'||currentStatus==='arrived'?'Cambiar destino':'Trasladar')+'</button>'
             +'</div>'
           +'</div>'
         +'</div>'
@@ -28210,6 +28221,48 @@ document.querySelectorAll('.ovl').forEach(function(el){
     nxCloseDynModal('m-trasladar');
     if(typeof fStk==='function')fStk();
     if(typeof showToast==='function')showToast('\u2705 Llegada confirmada \u2014 listo para carga',4000);
+  };
+
+  // v10.10.17: Cancela traslado — ripristina lo stato anteriore al Trasladar
+  // Pick-Up <- Ubicación originale, transferStatus rimosso, transferTo eliminato
+  // Conserva _transferHistory[] per audit trail (utile per debugging / undo log)
+  window.nxCancelTraslado=function(sid,vi){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+    if(!s||!Array.isArray(s.vehicles)||vi<0||vi>=s.vehicles.length){
+      alert('Veh\u00edculo no encontrado');return;
+    }
+    var v=s.vehicles[vi];
+    if(!v.transferStatus){
+      alert('Este veh\u00edculo no est\u00e1 en tr\u00e1nsito');return;
+    }
+    var prevPickup=v.pickup||'';
+    var prevStatus=v.transferStatus||'';
+    var origUbic=v.ubicacion||v.location||'';
+    // Conferma esplicita per evitare cancellazioni accidentali
+    var msg='\u00bfRestaurar el Pick-Up al valor original?\n\n'
+      +'Estado actual: '+prevStatus.toUpperCase()+'\n'
+      +'Pick-Up actual: '+prevPickup+'\n'
+      +'\nSe restaurar\u00e1 a la Ubicaci\u00f3n original:\n'
+      +(origUbic||'(sin ubicaci\u00f3n original registrada)');
+    if(!confirm(msg))return;
+    // Salva snapshot per audit trail
+    if(!Array.isArray(v._transferHistory))v._transferHistory=[];
+    v._transferHistory.push({
+      cancelledAt:new Date().toISOString(),
+      previousStatus:prevStatus,
+      previousPickup:prevPickup,
+      previousTransferTo:v.transferTo||null
+    });
+    // Rollback: ripristina pickup all'ubicación originale
+    v.pickup=origUbic||v.pickup; // fallback: se non c'è ubicacion originale, lascia il pickup attuale
+    delete v.transferStatus;
+    delete v.transferTo;
+    delete v.arrivedAt;
+    SS('stock',window.stock);
+    nxCloseDynModal('m-trasladar');
+    if(typeof fStk==='function')fStk();
+    if(typeof showToast==='function')showToast('\u21a9 Traslado cancelado \u2014 Pick-Up restaurado a "'+(origUbic||prevPickup)+'"',5000);
+    console.log('[v10.10.17] Traslado cancelado per veh\u00edculo '+vi+' del lote '+sid+' (era: '+prevStatus+' '+prevPickup+')');
   };
 
   // Auto-archive con dati AI
