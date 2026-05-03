@@ -1,4 +1,13 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.14 — DMCAR GROUP CRM | 2026-05-03 | Provider schema extension (4 modifiche da report tecnico utente):
+1) Mod 1 — Rinomina "Nombre contacto" → "Nombre Comercial" sul campo principale del Provider (es. "AUTO MAYORAL" in alto nella card). Distinzione semantica: questo è il nome commerciale d'uso corrente, distinto sia dalla Razón Social fiscale sia dai nomi dei contatti staff;
+2) Mod 2 — Rinomina "Razón social" → "Nombre Fiscal" nei Datos Fiscales (con sub-label "razón social oficial"). Allineamento etichetta a contenuto: denominazione legale ufficiale registrata fiscalmente;
+3) Mod 3 — NUOVA sezione collassabile "Logística" (icona camion 🚛) con campo multi-valore [{city, country, isDefault}]: l'utente può aggiungere/modificare/eliminare piazzali di carico abituali del provider; ogni voce ha city + country dropdown (ES/IT/FR/DE/PT/NL/BE/UK/Otros); bottone "★ default" per marcare quello prevalente; uso di datalist NX_CITIES_EU per autocomplete città; INTEGRAZIONE Stock Vivo: il fallback Ubicación di v10.10.11 (post-AI parse) e v10.10.12 (migrazione idempotente) ora preferisce provider.logistica[default].city sopra provider.city fiscale — l'utente dichiara la sede di carico abituale = ground truth più precisa;
+4) Mod 4 — NUOVO campo "Móvil" affiancato al "Teléfono fijo" in ogni riga staff + AI classifier mobile/fisso: nxClassifyPhone(phone) riconosce il tipo via prefisso multi-paese (NX_MOBILE_PREFIXES per ES 6xx/7xx, IT 3xx, FR 06/07, DE 015/016/017, PT 9xx, NL 06, BE 04x, UK 07); validazione live al blur del campo móvil con feedback visivo (border verde se mobile, arancio se fisso, toast warning); icona WhatsApp [WA] verde affiancata al campo con bottone provOpenWhatsAppFromInput che apre wa.me/{number} (predisposto per integrazione futura con rubrica centralizzata); il campo mobile è persistito nel record staff via provCollectStaffFromUI esteso. Smoke test classifier 7/7 PASS (ES/IT/UK mobile vs fisso);
+5) PRESERVA: tutto v10.10.13 (truncate Proveedor cell), v10.10.12 (migrazione Provider fallback per stocks pre-esistenti), v10.10.11 (provider fallback in iHandleResp + badge MOT? sul Modelo + dialog ¿Buscar en web?), v10.10.10 (3 anomalie report fix), v10.10.9 (defense-in-depth accDocs), v10.10.4 (modello Ubicación/Pick-Up). -->
+<!-- NEXO v10.10.13 — DMCAR GROUP CRM | 2026-05-03 | UX Vista Contable Proveedor truncate:
+1) Bug riportato (utente Foto): colonna Proveedor in Vista Contable mostrava "SUPE" invece di "SUPER RENT, S.L". ROOT CAUSE: la cella ha width fissa 130px in colDefs (table-layout:fixed) ma il nome completo non ci sta col font monospace 10.5px. Senza overflow:hidden + ellipsis + tooltip, l'utente non aveva modo di vedere il nome completo. FIX: la cella supplier ora ha (a) overflow:hidden + text-overflow:ellipsis + white-space:nowrap per troncare con "..." (visivamente più chiaro), (b) attributo title="<nome completo>" per tooltip al hover. UX: l'utente vede "SUPER RENT,..." e al hover il nome intero. Fix specifico solo sulla cella Proveedor (la colonna w:130 è ottimizzata per layout 40 colonne, non si tocca);
+2) PRESERVA: tutto v10.10.12 (migrazione Provider fallback per stocks pre-esistenti), v10.10.11 (provider fallback in iHandleResp + badge MOT? sul Modelo + dialog ¿Buscar en web?), v10.10.10 (3 anomalie report fix), v10.10.9 (defense-in-depth accDocs). -->
 <!-- NEXO v10.10.12 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX migrazione Provider fallback per stocks pre-esistenti:
 1) Bug riportato (Foto utente): in v10.10.11 il fallback Provider funzionava nella riga master ("Barcelona (ES)") ma i sub-vehicles del drilldown mostravano tutti "--" / "----" perché il fix v10.10.11 si applicava solo ai NUOVI import (in iHandleResp), non agli stocks già presenti in localStorage. ROOT CAUSE: nessuna migrazione idempotente all'init che applichi il fallback Provider a stocks esistenti + propagazione master→sub. FIX: nuovo blocco di migrazione all'init() che (a) per ogni stock con supplier compilato, cerca provider canonical via nxNormalizeSupplierName, (b) costruisce provLocation dal provider, (c) sostituisce master.pickup/ubicacion/location SE vuoto/blacklist, (d) PROPAGA master→sub-vehicles per ogni v in s.vehicles[] usando il valore master come ground truth. Console log "[v10.10.12] Migrazione Provider fallback: N stock corretti". Smoke test 1/1 PASS (master Praga→Ripollet+Barcelona, 2 sub vuoti ereditano, 1 sub Madrid preservato perché non blacklist);
 2) Aggiunta seconda linea di difesa: render runtime drilldown (riga 7407-7408) ora fa fallback al MASTER se il sub-vehicle è vuoto: vUbic=v.ubicacion||...||item.ubicacion||item.pickup||'--'. UX: l'utente non vede mai "--" nel drilldown se il master ha il dato. Doppia ridondanza per garantire coerenza visiva (Principio 2 utente);
@@ -2567,7 +2576,7 @@ En que te puedo ayudar hoy?</div></div>
         <button type="button" class="btn bp" onclick="provExtractFromPasteInline()" style="width:100%;font-size:12px">&#9889; Procesar y rellenar campos</button>
       </div>
     </div>
-    <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans Müller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
+    <div class="g2 mb10"><div><label>Nombre Comercial <span style="font-size:9px;color:var(--t3)">(uso comercial)</span></label><input type="text" id="pv-name" placeholder="Auto Mayoral"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
@@ -2622,7 +2631,7 @@ En que te puedo ayudar hoy?</div></div>
               <option value="Otro">Otro</option>
             </select>
           </div>
-          <div><label>Raz&oacute;n social</label><input type="text" id="pv-legal-name" placeholder="Denominaci&oacute;n legal completa"></div>
+          <div><label>Nombre Fiscal <span style="font-size:9px;color:var(--t3)">(razón social oficial)</span></label><input type="text" id="pv-legal-name" placeholder="Denominaci&oacute;n legal completa"></div>
         </div>
         <div class="g2 mb10">
           <div><label>VAT / CIF / NIF</label><input type="text" id="pv-vat" placeholder="ES B12345678 / IT12345678901 / ..."></div>
@@ -2639,6 +2648,18 @@ En que te puedo ayudar hoy?</div></div>
           <div><label>SDI / C&oacute;digo destinatario <span style="font-size:9px;color:var(--t3)">(Italia)</span></label><input type="text" id="pv-sdi" placeholder="0000000 (7 caracteres)"></div>
         </div>
         <div class="mb6"><label>PEC <span style="font-size:9px;color:var(--t3)">(Posta elettronica certificata - Italia)</span></label><input type="email" id="pv-pec" placeholder="empresa@pec.empresa.it"></div>
+      </div>
+    </div>
+    <!-- v10.10.14: LOGÍSTICA (collassabile, chiusa di default) — piazzali di carico abituali -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
+      <div onclick="provToggleLogistica()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
+        <div style="font-size:12px;font-weight:600;color:var(--t2)">&#128666; Log&iacute;stica <span style="font-size:10px;color:var(--t3);font-weight:400" id="pv-logistica-count">(0 piazzales)</span></div>
+        <span id="pv-logistica-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
+      </div>
+      <div id="pv-logistica-collapse" style="display:none;padding:0 12px 12px 12px">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">Ciudades / pa&iacute;ses de carga habitual del proveedor. Stock Vivo sugerir&aacute; estos valores cuando se importe un veh&iacute;culo de este proveedor sin Ubicaci&oacute;n especificada.</div>
+        <div id="pv-logistica-list" style="margin-bottom:10px"></div>
+        <button type="button" class="btn bs" onclick="provAddLogisticaItem()" style="width:100%;font-size:11px">+ A&ntilde;adir piazzal de carga</button>
       </div>
     </div>
     <!-- v10.05: DATOS BANCARIOS (collassabile, chiusa di default) -->
@@ -10163,11 +10184,24 @@ function iHandleResp(resp,manualSup){
         var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
         if(pNorm===supNorm)prov=p;
       });
-      if(!prov||!prov.city)return; // no provider o senza city
-      // Costruisci ubicación dal provider
-      var provCity=(prov.city||'').trim();
-      var provProv=(prov.province||'').trim();
-      var provCountry=(prov.country||prov.fiscalCountry||'').trim();
+      if(!prov)return;
+      // v10.10.14: prefer provider.logistica[default] (se presente) sopra provider.city
+      // L'utente dichiara la sede di carico abituale → ground truth più precisa di city fiscale
+      var provCity='',provProv='',provCountry='';
+      if(Array.isArray(prov.logistica)&&prov.logistica.length>0){
+        var defLog=prov.logistica.find(function(it){return it.isDefault;})||prov.logistica[0];
+        if(defLog&&defLog.city){
+          provCity=String(defLog.city).trim();
+          provCountry=String(defLog.country||'').trim();
+        }
+      }
+      // Fallback: se logistica vuota o senza city → usa provider.city / fiscalCountry
+      if(!provCity){
+        provCity=(prov.city||'').trim();
+        provProv=(prov.province||'').trim();
+        provCountry=(prov.country||prov.fiscalCountry||'').trim();
+      }
+      if(!provCity)return; // niente da ereditare
       var provLocation=provCity+(provProv&&provProv!==provCity?' ('+provProv+')':'')+(provCountry&&provCountry!=='Espa\u00f1a'?' '+provCountry:'');
       // Funzione per decidere se sostituire
       function shouldUseProviderFor(currentVal){
@@ -14068,6 +14102,11 @@ function openNewProvider(){
   if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display='none';
   if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML='\u25BC';
   if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
+  // v10.10.14: reset logística
+  window._pvLogistica=[];
+  if(typeof provRenderLogistica==='function')provRenderLogistica([]);
+  if(n('pv-logistica-collapse'))n('pv-logistica-collapse').style.display='none';
+  if(n('pv-logistica-toggle-icon'))n('pv-logistica-toggle-icon').innerHTML='\u25BC';
   // v10.05: reset bank fields
   ['pv-bank-titular','pv-bank-name','pv-bank-iban','pv-bank-bic','pv-bank-country','pv-bank-notes'].forEach(function(id){if(n(id))n(id).value='';});
   if(n('pv-bank-currency'))n('pv-bank-currency').value='EUR';
@@ -14128,6 +14167,12 @@ function editProvider(id){
   if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display=hasStaff?'block':'none';
   if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML=hasStaff?'\u25B2':'\u25BC';
   if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
+  // v10.10.14: Carica logística (lista piazzali abituali del provider)
+  window._pvLogistica=Array.isArray(p.logistica)?JSON.parse(JSON.stringify(p.logistica)):[];
+  if(typeof provRenderLogistica==='function')provRenderLogistica(window._pvLogistica);
+  var hasLogistica=window._pvLogistica.length>0;
+  if(n('pv-logistica-collapse'))n('pv-logistica-collapse').style.display=hasLogistica?'block':'none';
+  if(n('pv-logistica-toggle-icon'))n('pv-logistica-toggle-icon').innerHTML=hasLogistica?'\u25B2':'\u25BC';
   // v10.05: Carica datos bancarios
   if(n('pv-bank-titular'))n('pv-bank-titular').value=p.bankTitular||'';
   if(n('pv-bank-name'))n('pv-bank-name').value=p.bankName||'';
@@ -14189,6 +14234,16 @@ function saveProv(){
     bankCertificate:window._nxBankCertPending||(editId?(providers.find(function(p){return String(p.id)===String(editId);})||{}).bankCertificate||null:null),
     // v10.03: Staff multi-contatto (1\u2192N relazione impresa\u2192contatti)
     staff:provCollectStaffFromUI(),
+    // v10.10.14: Logística (lista piazzali abituali) — leggi inputs prima di salvare
+    logistica:(function(){
+      if(typeof provReadLogisticaInputs==='function')provReadLogisticaInputs();
+      var arr=Array.isArray(window._pvLogistica)?window._pvLogistica:[];
+      // Filtra entries vuote (city richiesta) e garantisci almeno 1 default se ce ne sono
+      var clean=arr.filter(function(it){return it&&String(it.city||'').trim();});
+      var hasDefault=clean.some(function(it){return it.isDefault;});
+      if(!hasDefault&&clean.length>0)clean[0].isDefault=true;
+      return clean;
+    })(),
     updatedAt:new Date().toISOString()
   };
   if(editId){
@@ -14231,6 +14286,15 @@ window.provAddStaffContact=function(data){
   var row=document.createElement('div');
   row.className='nx-staff-row';
   row.style.cssText='border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;background:var(--bg1);position:relative';
+  // v10.10.14: aggiunta campo Móvil con icona WhatsApp + indicator AI classifier
+  var mobileVal=data.mobile||'';
+  var mobileBadge='';
+  if(mobileVal&&typeof window.nxClassifyPhone==='function'){
+    var cls=window.nxClassifyPhone(mobileVal);
+    if(cls.type==='mobile'&&cls.confidence==='high'){
+      mobileBadge='<span title="M\u00f3vil verificado ('+esc(cls.country||'?')+')" style="position:absolute;top:2px;right:2px;font-size:9px;color:#16a34a">\u2713</span>';
+    }
+  }
   row.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr 130px;gap:6px;margin-bottom:6px">'
     +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Nombre contacto</label><input type="text" class="staff-name" value="'+esc(data.name||'')+'" placeholder="Pedro Garc\u00eda" style="font-size:11px;padding:5px"></div>'
     +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Email</label><input type="email" class="staff-email" value="'+esc(data.email||'')+'" placeholder="pedro@empresa.com" style="font-size:11px;padding:5px"></div>'
@@ -14242,12 +14306,51 @@ window.provAddStaffContact=function(data){
       +'<option value="Otro"'+(data.role==='Otro'?' selected':'')+'>Otro</option>'
     +'</select></div>'
   +'</div>'
-  +'<div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end">'
-    +'<input type="text" class="staff-phone" value="'+esc(data.phone||'')+'" placeholder="Tel\u00e9fono" style="font-size:11px;padding:5px">'
+  +'<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end">'
+    +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Tel\u00e9fono fijo</label><input type="text" class="staff-phone" value="'+esc(data.phone||'')+'" placeholder="+34 93 ..." style="font-size:11px;padding:5px;width:100%"></div>'
+    +'<div style="position:relative"><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">M\u00f3vil <span style="font-size:8px;color:#25d366;font-weight:700;letter-spacing:.04em">[WA]</span></label>'
+      +'<div style="display:flex;align-items:center;gap:4px">'
+        +'<input type="text" class="staff-mobile" value="'+esc(mobileVal)+'" placeholder="+34 6XX..." onblur="provValidateMobile(this)" style="font-size:11px;padding:5px;flex:1">'
+        +'<button type="button" class="staff-wa-btn" onclick="provOpenWhatsAppFromInput(this)" title="WhatsApp" style="background:#25d366;color:#fff;border:none;border-radius:4px;padding:5px 8px;font-size:11px;cursor:pointer;font-weight:700;flex-shrink:0">WA</button>'
+      +'</div>'
+      +mobileBadge
+    +'</div>'
     +'<button type="button" class="btn bd" onclick="this.closest(\'.nx-staff-row\').remove();provUpdateStaffCount()" style="font-size:11px;padding:4px 10px" title="Eliminar contacto">&#128465;</button>'
   +'</div>';
   list.appendChild(row);
   provUpdateStaffCount();
+};
+
+// v10.10.14: validazione live + AI classifier al blur del campo móvil
+window.provValidateMobile=function(input){
+  if(!input||typeof window.nxClassifyPhone!=='function')return;
+  var val=input.value.trim();
+  if(!val)return;
+  var cls=window.nxClassifyPhone(val);
+  // Se l'AI lo classifica come "fixed" (fisso), avvisa
+  if(cls.type==='fixed'&&cls.confidence!=='low'){
+    if(typeof showToast==='function')showToast('\u26a0\ufe0f Este n\u00famero parece ser fijo, no m\u00f3vil. Verifica.',5000);
+    input.style.borderColor='#f59e0b';
+  }else if(cls.type==='mobile'){
+    input.style.borderColor='#16a34a';
+  }else{
+    input.style.borderColor='';
+  }
+};
+
+// v10.10.14: apri WhatsApp dal campo móvil staff (predisposto per integrazione futura)
+window.provOpenWhatsAppFromInput=function(btn){
+  var row=btn.closest('.nx-staff-row');
+  if(!row)return;
+  var mobileInp=row.querySelector('.staff-mobile');
+  if(!mobileInp||!mobileInp.value){alert('Introduce primero un n\u00famero m\u00f3vil');return;}
+  var num=mobileInp.value.replace(/[\s\-().]/g,'');
+  if(!num.startsWith('+')&&!num.match(/^\d{10,}$/)){
+    alert('N\u00famero no v\u00e1lido. Usa formato internacional (+34...) o 10+ d\u00edgitos.');return;
+  }
+  var num2=num.replace(/^\+/,'');
+  // Apri WhatsApp web (predisposizione futura: hook a rubrica centralizzata)
+  window.open('https://wa.me/'+num2,'_blank');
 };
 
 window.provUpdateStaffCount=function(){
@@ -14268,9 +14371,10 @@ window.provCollectStaffFromUI=function(){
     var email=(row.querySelector('.staff-email')||{}).value||'';
     var role=(row.querySelector('.staff-role')||{}).value||'';
     var phone=(row.querySelector('.staff-phone')||{}).value||'';
-    name=name.trim();email=email.trim().toLowerCase();phone=phone.trim();
-    if(name||email||phone){
-      staff.push({name:name,email:email,role:role,phone:phone,id:'st_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    var mobile=(row.querySelector('.staff-mobile')||{}).value||''; // v10.10.14
+    name=name.trim();email=email.trim().toLowerCase();phone=phone.trim();mobile=mobile.trim();
+    if(name||email||phone||mobile){
+      staff.push({name:name,email:email,role:role,phone:phone,mobile:mobile,id:'st_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
     }
   });
   return staff;
@@ -14386,6 +14490,157 @@ window.provToggleBancario=function(){
   var hidden=c.style.display==='none';
   c.style.display=hidden?'block':'none';
   if(ic)ic.style.transform=hidden?'rotate(180deg)':'rotate(0deg)';
+};
+
+// ============================================================================
+// v10.10.14: LOGÍSTICA — gestione lista piazzali di carico abituali del provider
+// Schema: provider.logistica = [{city, country, isDefault}]
+// Integrazione Stock Vivo: il fallback Ubicación userà provider.logistica[default] se presente
+// ============================================================================
+window.provToggleLogistica=function(){
+  var c=document.getElementById('pv-logistica-collapse');
+  var ic=document.getElementById('pv-logistica-toggle-icon');
+  if(!c)return;
+  var hidden=c.style.display==='none';
+  c.style.display=hidden?'block':'none';
+  if(ic)ic.style.transform=hidden?'rotate(180deg)':'rotate(0deg)';
+};
+
+window.provRenderLogistica=function(items){
+  var list=document.getElementById('pv-logistica-list');
+  if(!list)return;
+  if(!Array.isArray(items)||items.length===0){
+    list.innerHTML='<div style="font-size:11px;color:var(--t4);padding:8px;text-align:center;font-style:italic">Sin piazzales todav\u00eda</div>';
+    var cnt=document.getElementById('pv-logistica-count');
+    if(cnt)cnt.textContent='(0 piazzales)';
+    return;
+  }
+  var html='';
+  items.forEach(function(item,i){
+    var defaultBadge=item.isDefault?'<span style="background:rgba(16,163,74,.18);color:#15803d;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;margin-left:6px">DEFAULT</span>':'';
+    html+='<div data-idx="'+i+'" style="border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;background:var(--bg1)">'
+      +'<div class="g3" style="display:grid;grid-template-columns:2fr 1fr auto;gap:6px;align-items:end">'
+        +'<div><label style="font-size:10px;color:var(--t3)">Ciudad'+defaultBadge+'</label>'
+          +'<input type="text" class="pv-log-city" data-idx="'+i+'" value="'+esc(item.city||'')+'" list="nx-city-list" placeholder="Ej: Sant Cugat" style="font-size:11px;padding:5px;width:100%"></div>'
+        +'<div><label style="font-size:10px;color:var(--t3)">Pa&iacute;s</label>'
+          +'<select class="pv-log-country" data-idx="'+i+'" style="font-size:11px;padding:5px;width:100%">'
+          +'<option value="Espa\u00f1a"'+(item.country==='Espa\u00f1a'?' selected':'')+'>Espa\u00f1a</option>'
+          +'<option value="Italia"'+(item.country==='Italia'?' selected':'')+'>Italia</option>'
+          +'<option value="Francia"'+(item.country==='Francia'?' selected':'')+'>Francia</option>'
+          +'<option value="Alemania"'+(item.country==='Alemania'?' selected':'')+'>Alemania</option>'
+          +'<option value="Portugal"'+(item.country==='Portugal'?' selected':'')+'>Portugal</option>'
+          +'<option value="Pa\u00edses Bajos"'+(item.country==='Pa\u00edses Bajos'?' selected':'')+'>Pa\u00edses Bajos</option>'
+          +'<option value="B\u00e9lgica"'+(item.country==='B\u00e9lgica'?' selected':'')+'>B\u00e9lgica</option>'
+          +'<option value="UK"'+(item.country==='UK'?' selected':'')+'>UK</option>'
+          +'<option value="Otros"'+(item.country==='Otros'?' selected':'')+'>Otros</option>'
+        +'</select></div>'
+        +'<div class="fc g4">'
+          +'<button type="button" class="btn bs" onclick="provSetLogisticaDefault('+i+')" title="Marcar como default" style="padding:5px 8px;font-size:10px;'+(item.isDefault?'background:#16a34a;color:#fff;border-color:#16a34a':'')+'">'+(item.isDefault?'\u2713':'\u2606')+'</button>'
+          +'<button type="button" class="btn bd" onclick="provRemoveLogisticaItem('+i+')" title="Eliminar" style="padding:5px 8px;font-size:10px">x</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  });
+  list.innerHTML=html;
+  var cnt=document.getElementById('pv-logistica-count');
+  if(cnt)cnt.textContent='('+items.length+' piazzal'+(items.length!==1?'es':'')+')';
+  // Inietta datalist citt\u00e0 per autocomplete (riusa NX_CITIES_EU se presente)
+  if(typeof window.nxBuildCityDatalists==='function'&&!document.getElementById('nx-city-list')){
+    window.nxBuildCityDatalists();
+  }
+};
+
+window.provAddLogisticaItem=function(){
+  if(!Array.isArray(window._pvLogistica))window._pvLogistica=[];
+  // v10.10.14: se è il primo, marcalo automaticamente come default
+  var isFirst=window._pvLogistica.length===0;
+  window._pvLogistica.push({city:'',country:'Espa\u00f1a',isDefault:isFirst});
+  provRenderLogistica(window._pvLogistica);
+  // Focus sul nuovo input
+  setTimeout(function(){
+    var inputs=document.querySelectorAll('.pv-log-city');
+    if(inputs.length>0)inputs[inputs.length-1].focus();
+  },50);
+};
+
+window.provRemoveLogisticaItem=function(idx){
+  if(!Array.isArray(window._pvLogistica))return;
+  var wasDefault=window._pvLogistica[idx]&&window._pvLogistica[idx].isDefault;
+  window._pvLogistica.splice(idx,1);
+  // Se il rimosso era default e ce ne sono altri, marca il primo come default
+  if(wasDefault&&window._pvLogistica.length>0)window._pvLogistica[0].isDefault=true;
+  provRenderLogistica(window._pvLogistica);
+};
+
+window.provSetLogisticaDefault=function(idx){
+  if(!Array.isArray(window._pvLogistica))return;
+  // Salva valori correnti dagli input prima di re-renderizzare
+  provReadLogisticaInputs();
+  window._pvLogistica.forEach(function(it,i){it.isDefault=(i===idx);});
+  provRenderLogistica(window._pvLogistica);
+};
+
+window.provReadLogisticaInputs=function(){
+  if(!Array.isArray(window._pvLogistica))return;
+  document.querySelectorAll('.pv-log-city').forEach(function(inp){
+    var i=parseInt(inp.getAttribute('data-idx'),10);
+    if(window._pvLogistica[i]){
+      var val=String(inp.value||'').trim();
+      // Se è "Ciudad, Región, País" → split
+      var parts=val.split(',').map(function(p){return p.trim();});
+      if(parts.length>=2){
+        window._pvLogistica[i].city=parts[0];
+        if(parts[2]){
+          var coSel=document.querySelector('.pv-log-country[data-idx="'+i+'"]');
+          if(coSel){
+            for(var ci=0;ci<coSel.options.length;ci++){
+              if(coSel.options[ci].value===parts[2]){coSel.selectedIndex=ci;break;}
+            }
+          }
+        }
+      }else{
+        window._pvLogistica[i].city=val;
+      }
+    }
+  });
+  document.querySelectorAll('.pv-log-country').forEach(function(sel){
+    var i=parseInt(sel.getAttribute('data-idx'),10);
+    if(window._pvLogistica[i])window._pvLogistica[i].country=sel.value;
+  });
+};
+
+// ============================================================================
+// v10.10.14: AI Classifier — riconosce numero MOBILE vs FISSO da prefisso
+// Database prefissi mobile per paese (estendibile)
+// ============================================================================
+window.NX_MOBILE_PREFIXES={
+  'ES':[/^\+?34\s?[67]/,/^[67]\d{8}$/],          // Spagna: 6xx, 7xx
+  'IT':[/^\+?39\s?3/,/^3\d{9}$/],                // Italia: 3xx
+  'FR':[/^\+?33\s?[67]/,/^0?[67]\d{8}$/],        // Francia: 06, 07
+  'DE':[/^\+?49\s?1[567]/,/^01[567]\d{7,8}$/],   // Germania: 015x, 016x, 017x
+  'PT':[/^\+?351\s?9/,/^9\d{8}$/],               // Portogallo: 9xx
+  'NL':[/^\+?31\s?6/,/^06\d{8}$/],               // Paesi Bassi: 06
+  'BE':[/^\+?32\s?4[5-9]/,/^04[5-9]\d{7}$/],     // Belgio: 04x
+  'UK':[/^\+?44\s?7/,/^07\d{9}$/]                // UK: 07
+};
+
+window.nxClassifyPhone=function(phone){
+  if(!phone)return {type:'unknown',confidence:'low',cleaned:''};
+  var clean=String(phone).replace(/[\s\-().]/g,'');
+  // Test contro tutti i prefissi mobile
+  for(var country in window.NX_MOBILE_PREFIXES){
+    var patterns=window.NX_MOBILE_PREFIXES[country];
+    for(var i=0;i<patterns.length;i++){
+      if(patterns[i].test(clean)||patterns[i].test(phone)){
+        return {type:'mobile',confidence:'high',country:country,cleaned:clean};
+      }
+    }
+  }
+  // Fallback: se inizia con +XX e non matcha mobile, probabilmente fisso
+  if(/^\+?\d{10,}$/.test(clean)){
+    return {type:'fixed',confidence:'medium',cleaned:clean};
+  }
+  return {type:'unknown',confidence:'low',cleaned:clean};
 };
 
 // Validazione IBAN con checksum mod 97 (algoritmo standard ISO 13616)
@@ -22664,10 +22919,21 @@ document.querySelectorAll('.ovl').forEach(function(el){
           var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
           if(pNorm===supNorm)prov=p;
         });
-        if(prov&&prov.city){
-          var provCity=(prov.city||'').trim();
-          var provProv=(prov.province||'').trim();
-          var provCountry=(prov.country||prov.fiscalCountry||'').trim();
+        // v10.10.14: prefer provider.logistica[default] sopra provider.city
+        var provCity='',provProv='',provCountry='';
+        if(prov&&Array.isArray(prov.logistica)&&prov.logistica.length>0){
+          var defLog=prov.logistica.find(function(it){return it.isDefault;})||prov.logistica[0];
+          if(defLog&&defLog.city){
+            provCity=String(defLog.city).trim();
+            provCountry=String(defLog.country||'').trim();
+          }
+        }
+        if(!provCity&&prov&&prov.city){
+          provCity=(prov.city||'').trim();
+          provProv=(prov.province||'').trim();
+          provCountry=(prov.country||prov.fiscalCountry||'').trim();
+        }
+        if(provCity){
           var provLocation=provCity+(provProv&&provProv!==provCity?' ('+provProv+')':'')+(provCountry&&provCountry!=='Espa\u00f1a'?' '+provCountry:'');
           // Master: applica solo se vuoto/blacklist
           if(shouldUseProvider(s.pickup)){s._pickupOriginal=s.pickup||'';s.pickup=provLocation;s._pickupFromProvider=true;fixed++;}
@@ -25584,7 +25850,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(expLabel,bgReg,';font-weight:600')
         +td(vinHtml,bgReg,';border-right:2px solid var(--border)')
         // COMPRA (7): Proveedor, PF, FT, Pago, Compra, Dep.Date, Dep.\u20ac
-        +td(fmtTxt(r.supplier),bgCompra)
+        // v10.10.13: tooltip su Proveedor con nome completo (la colonna è 130px e i nomi lunghi vengono troncati visivamente)
+        +'<td style="padding:6px 7px;background:'+bgCompra+';font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+rowExtra+'" title="'+esc(r.supplier||'')+'">'+fmtTxt(r.supplier)+'</td>'
         +td(fmtTxt(ext.fornNumPF||''),bgCompra)
         +td(fmtTxt(ext.fornNumFT||''),bgCompra)
         +td(fmtDate(ext.fornDataPag),bgCompra)
