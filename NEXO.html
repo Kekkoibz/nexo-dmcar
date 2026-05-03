@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.9 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX numero proforma su Vista Contable + accDocs save:
+1) Bug Anomalia 2 NON RISOLTA in v10.10.8: dopo upload proforma 8 Audi A3, colonna Nº PF restava vuota in Vista Contable. ROOT CAUSE 1: utente probabilmente ha cliccato "Guardar como N/A temporal" → la fn nxAIDocSaveAsNADo caricava il PDF su SharePoint ma NON chiamava nxWriteAccDoc su nessun stock locale → Vista Contable (che legge da stock[].accDocs) restava vuota; ROOT CAUSE 2: anche con AI Vision, se le lines[] estratte non avevano VIN match perfetto sugli stock, nessun accDoc veniva scritto. FIX duale:
+   (a) FIX in nxAIDocSaveAsNADo: ora itera su parsed.lines[] e per ogni VIN match (anche su stock OWN senza expediente) chiama nxWriteAccDoc + SS('stock') + numbersRenderVista; console log "[v10.10.9] Save as TEMP: scritti N accDocs su stock locali";
+   (b) FIX defense-in-depth in nxNumbersMarkPurchaseCompleted: nuovo parametro parsedDoc, se notif.stockIds[] presente E parsedDoc valido → calcola amount-per-veicolo (totalAmount / num veicoli totale del lotto) → scrive accDocs DIRETTAMENTE sugli stock della notifica usando i VIN locali, NON quelli estratti dall'AI. Ground truth: la notifica purchase conosce gli stock corretti, l'AI può sbagliare l'estrazione VIN ma il match diretto stock→proforma è garantito;
+2) Tutti e 3 i hook updated per passare ctx.parsed (afterAll, SaveAsNADo, ManualAssignDo);
+3) Smoke test 1/1 PASS: 3 vehicles → 3 accDocs scritti con docNumber 26042102 e amount 28000 per veicolo;
+4) PRESERVA: tutto v10.10.8 (notif completion + filename salvage + docType correction), v10.10.7 (AI Vision PDF scansionati + modali bottoni Cancelar fixed), v10.10.6 (cleanup orfane). -->
 <!-- NEXO v10.10.8 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX notifica residua + numero proforma:
 1) Bug Anomalia 1 (utente): dopo upload PDF proforma da bottone "Sí, cargar" sulla notifica purchase, la notifica restava attiva nel dashboard Nexo Numbers. ROOT CAUSE: numbersPurchaseLoadProforma navigava a Vista Contable e apriva l'upload, ma NON memorizzava l'id della notifica → afterAll() upload-completion non sapeva quale notifica marcare come completed. FIX: window._nxPendingPurchaseNotif memorizza notifId al click "Sí, cargar"; nuova fn nxNumbersMarkPurchaseCompleted(notifId, proformaNumber) marca notif.status='completed' + notif.proformaUploaded=true + cascade-elimina task con purchaseNotifId match + aggiorna badge sidebar; hook in afterAll() (modal AI doc principale), nxAIDocSaveAsNADo (TEMP), nxAIDocManualAssignDo (assegnazione manuale). Tutte e 3 le vie di salvataggio chiamano la stessa funzione di completamento;
 2) Bug Anomalia 2 (utente): numero proforma "26042102" presente nel PDF non importato in colonna Nº PF Vista Contable. ROOT CAUSE: doppia: (a) AI Vision Parser potrebbe non estrarre docNumber se il layout è ambiguo; (b) anche estratto, docType='factura_proveedor' (default) invece di 'proforma_proveedor' → fornNumPF (legge solo proforma_proveedor) resta vuoto. FIX duale: (a) fallback regex su filename: pattern /(?:PF|FT|PROFORMA|FACTURA|INVOICE)[\s_.\-]*([\d]{4,}(?:[\-_.\/][\d]+)*)/i estrae 26042102 da "PF_26042102_..." anche con AI silenzioso; (b) docType correction: se filename matcha PROFORMA o ^PF[_-\s] → forza docType='proforma_proveedor'. Applicato sia in nxAIParseScannedPdf (vision) sia in nxAIParseWithClaude (text). Console log "[v10.10.8] docNumber salvage da filename" e "docType corretto a proforma_proveedor" per debug;
@@ -26470,7 +26477,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // v10.10.8: hook notif completion
       if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
         var pfNum=(ctx.parsed&&ctx.parsed.docNumber)||'';
-        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum,ctx.parsed);
         window._nxPendingPurchaseNotif=null;
       }
     });
@@ -26512,6 +26519,29 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(typeof showToast==='function')showToast('\u26a1 Subiendo a __TEMP/'+cc+'/'+subfolder+'...',3000);
     // Estrai i VIN parsati per traccia futura
     var vins=(ctx.parsed&&ctx.parsed.lines||[]).map(function(l){return l.vin;}).filter(Boolean);
+    // v10.10.9: scrivi accDocs anche su Save as N/A temporal (per popolare Nº PF in Vista Contable)
+    // Match VIN su tutti gli stock (inclusi OWN senza expediente)
+    if(ctx.parsed&&ctx.parsed.lines&&ctx.parsed.lines.length){
+      var written=0;
+      ctx.parsed.lines.forEach(function(line){
+        if(!line.vin)return;
+        var vinUp=String(line.vin).toUpperCase();
+        for(var si=0;si<stock.length;si++){
+          var s=stock[si];
+          var match=String(s.vin||'').toUpperCase()===vinUp;
+          if(!match&&s.vehicles)match=s.vehicles.some(function(v){return String(v.vin||'').toUpperCase()===vinUp;});
+          if(match){
+            nxWriteAccDoc(s,line.vin,ctx.parsed,line.amount);
+            written++;
+            break;
+          }
+        }
+      });
+      if(written>0){
+        SS('stock',stock);
+        console.log('[v10.10.9] Save as TEMP: scritti '+written+' accDocs su stock locali');
+      }
+    }
     nxTempUploadDoc({
       companyCode:cc,
       subfolder:subfolder,
@@ -26522,11 +26552,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
     },function(ok,data){
       if(!ok){alert('Error subiendo a TEMP: '+data);return;}
       nxCloseDynModal('m-na-temp');nxCloseDynModal('m-ai-doc');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en __TEMP/'+cc+'/'+subfolder+' \u2014 se migrar\u00e1 cuando se cree el expediente',7000);
       // v10.10.8: hook notif completion
       if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
         var pfNum=(ctx.parsed&&ctx.parsed.docNumber)||'';
-        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum,ctx.parsed);
         window._nxPendingPurchaseNotif=null;
       }
     });
@@ -27187,7 +27218,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // v10.10.8: Marca notifica purchase come "completed" + rimuove task collegati
   // Triggerata dopo upload PDF proforma completato con successo.
-  window.nxNumbersMarkPurchaseCompleted=function(notifId,proformaNumber){
+  window.nxNumbersMarkPurchaseCompleted=function(notifId,proformaNumber,parsedDoc){
     if(!notifId)return;
     var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
     if(!notif||notif.type!=='purchase')return;
@@ -27196,6 +27227,36 @@ document.querySelectorAll('.ovl').forEach(function(el){
     notif.proformaNumber=proformaNumber||'';
     notif.completedAt=new Date().toISOString();
     SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    // v10.10.9: defense in depth — scrivi accDocs direttamente sugli stock della notifica
+    // Anche se l'AI Vision non ha estratto perfettamente i VIN, usiamo notif.stockIds[] come ground truth
+    if(Array.isArray(notif.stockIds)&&notif.stockIds.length>0&&parsedDoc&&proformaNumber){
+      var stocksUpdated=0;
+      // Calcola amount per veicolo (totale / num veicoli totale del lotto)
+      var totalAmount=parsedDoc.totalAmount||0;
+      var totalVeh=0;
+      notif.stockIds.forEach(function(sid){
+        var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+        if(s)totalVeh+=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles.length:1;
+      });
+      var amountPerVeh=totalVeh>0?(totalAmount/totalVeh):0;
+      notif.stockIds.forEach(function(sid){
+        var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+        if(!s)return;
+        if(Array.isArray(s.vehicles)&&s.vehicles.length){
+          s.vehicles.forEach(function(v){
+            if(v.vin)nxWriteAccDoc(s,v.vin,parsedDoc,amountPerVeh);
+          });
+        }else if(s.vin){
+          nxWriteAccDoc(s,s.vin,parsedDoc,amountPerVeh);
+        }
+        stocksUpdated++;
+      });
+      if(stocksUpdated>0){
+        SS('stock',window.stock);
+        if(typeof numbersRenderVista==='function')numbersRenderVista();
+        console.log('[v10.10.9] accDocs scritti su '+stocksUpdated+' stock via notif.stockIds (proforma '+proformaNumber+')');
+      }
+    }
     // Cascade: rimuovi task collegati con purchaseNotifId match
     if(Array.isArray(window.tasks)){
       var beforeT=window.tasks.length;
@@ -27626,7 +27687,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // v10.10.8: se questo upload era stato triggerato da una notifica purchase, marcala completed
       if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
         var pfNum=(p&&p.docNumber)||'';
-        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum,ctx.parsed);
         window._nxPendingPurchaseNotif=null;
       }
     }
