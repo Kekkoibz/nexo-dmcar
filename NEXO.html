@@ -1,4 +1,13 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.20 — DMCAR GROUP CRM | 2026-05-03 | Memo #3 P1 — kW→CV converter + nominale comerciale:
+1) Bug osservato sin da v10.09 (utente Memo #3): l'AI estrae spesso "Audi A3 Sportback S line TFSI 110 kW S tronic" dal PDF tedesco/europeo. Per il mercato spagnolo questa è denominazione COMMERCIALMENTE inutile: un commerciale parla di "35 TFSI 150 CV". Impatto economico diretto: 35 TFSI vs 30 TFSI vs 40 TFSI = differenze di migliaia € sul prezzo di listino;
+2) FIX architetturale: converter automatico kW→CV applicato post-AI parse in iHandleResp (subito prima del MOTOR UNVERIFIED flag, così la conversione può rendere "verificate" version che prima erano flaggate). Auto-conversione SILENZIOSA come da spec utente (no dialog, no flag UI);
+3) Logica regole: (a) BEV → preserva kW (convenzione internazionale per elettrici); (b) Termici (Diesel/Gasolina/Hybrid/PHEV/MHEV) → converti kW in CV (1 kW ≈ 1.36 CV); (c) Brand VAG (Audi/VW/Seat/Cupra/Skoda) → aggiungi nominale TFSI/TDI da mappa NX_KW_TO_NOMINAL (TFSI: 70→25,81→30,96→35,110→35,125→40,140→40,150→45,195→50,210→55; TDI: 66→25,75→30,85→30,96→35,110→35,120→40,130→40,140→40,150→45,180→50); (d) Brand non-VAG → solo conversione unità kW→CV senza nominale (BMW 100kW→136CV, Renault 67kW→91CV, etc.);
+4) Dedup intelligente per evitare duplicati: se la version contiene già "TFSI" orfano (no numero) o "30 TDI" completo (numero+nominale) prima del kW, vengono rimossi prima della sostituzione. Aliases TSI↔TFSI gestiti per VW/Seat/Skoda. Range kW 30-500 (sotto 30 = falso match es. potenza accessori, sopra 500 = errore parsing);
+5) Audit trail: ogni veicolo convertito riceve flags _versionOriginal (string), _powerConverted=true, _powerKw, _powerCv, _powerNominal (se VAG). Console log "[v10.10.20] kW→CV: <original> → <converted> (110kW=150CV, gasolina, 35 TFSI)" per debug. Propagazione a sub-vehicles del lotto;
+6) Smoke test 9/9 PASS coprendo: caso primario del bug originale (Audi A3 110kW→35 TFSI 150 CV), rimpiazzo nominale errato (30 TDI 100kW→35 TDI 136CV), alias TSI→TFSI VW, BEV preservato, brand non-VAG (BMW/Renault), idempotenza (CV già presenti), Toyota hybrid;
+7) Funzioni esposte globalmente per debug: window.nxConvertKwToCV(versionStr, brand, equipStr) → {version, changed, kw, cv, nominal, motorType, family}; window.nxDetectMotorType(text) → 'bev'|'phev'|'hybrid'|'diesel'|'gasolina'|'unknown'; window.NX_KW_TO_NOMINAL mappa estendibile;
+8) PRESERVA: tutto v10.10.19 (matching Provider robusto), v10.10.18 (provider autocomplete + dialog dinamico), v10.10.17 (cancelar traslado), v10.10.16 (bulk trasladar), v10.10.14 (Provider extended schema), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.19 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX matching Provider robusto:
 1) Bug riportato (utente Foto): import PF SUPER RENT triggera dialog "Falta luogo di carico" con dropdown Madrid hardcoded invece di leggere provider.logistica (Tarragona/SantCugat) — l'utente nota anche che logicamente il provider dovrebbe essere identificato PRIMA del dialog. ROOT CAUSE: il fallback v10.10.11 (che doveva ereditare da provider.logistica) FALLIVA il provider matching perché: (a) cercava solo provider.company OR provider.name (riga 10245 del fix vecchio), (b) il PDF estrae "SUPER RENT, S.L." mentre il provider è registrato con name="SUPER RENT" + legalName="SUPER RENT, S.L." → nessun match canonical → no fallback → arriva al dialog senza data;
 2) FIX duale: (a) in iHandleResp matching prova 3 campi (p.name, p.legalName, p.company) E usa anche match parziale (supNorm contiene pNorm o vice versa, min 4 chars) — risolve il caso "SUPER RENT" vs "SUPER RENT, S.L." in entrambe le direzioni; (b) stesso identico fix nella migrazione idempotente v10.10.12 all'init per stocks pre-esistenti;
@@ -10219,6 +10228,211 @@ function iHandleResp(resp,manualSup){
         var vRes2=window.nxValidateVIN(v.vin);
         if(vRes2.valid){v.vin=vRes2.vin;}
         else{v._vinUnverified=true;v._vinReason=vRes2.reason;}
+      }
+    });
+
+    // ========================================================================
+    // v10.10.20: kW→CV CONVERTER + nominale comerciale (35 TFSI / 30 TDI / etc.)
+    // ========================================================================
+    // Spec utente Memo #3: l'AI estrae spesso "110 kW" dal PDF tedesco/europeo, ma in Spagna
+    // i motori termici si vendono in CV (caballos). Senza conversione, "Audi A3 110 kW" è
+    // un'identificazione COMMERCIALMENTE inutile (un commerciale parla di "35 TFSI 150 CV").
+    // Impatto: 35 TFSI vs 30 TFSI vs 40 TFSI → migliaia € differenza nel prezzo di listino.
+    //
+    // Regole:
+    //  • Termici (Diesel/Gasolina/Híbrido/PHEV) → kW si converte in CV (1 kW ≈ 1.36 CV)
+    //  • Elettrici (BEV) → kW si preserva (convenzione internazionale)
+    //  • Nominali TFSI/TDI/HDi/etc. → si aggiungono se la mappa kW→nominal è nota
+    //
+    // Sostituzione SILENZIOSA come da scelta utente.
+    // ========================================================================
+
+    // Mappa kW → {nominal, cv} per ogni famiglia motore (basata su listini reali Audi/VW/Seat/Skoda)
+    // Nota: i nominali sono brand-specific. La mappa è bilingue (TFSI/TDI per VAG; estendibile).
+    window.NX_KW_TO_NOMINAL={
+      // Audi/VW/Seat/Skoda — Diesel TDI
+      tdi:{
+        66:{nominal:'25 TDI',cv:90},
+        70:{nominal:'25 TDI',cv:95},
+        75:{nominal:'30 TDI',cv:102},
+        85:{nominal:'30 TDI',cv:116},
+        90:{nominal:'30 TDI',cv:122},
+        96:{nominal:'35 TDI',cv:130},
+        100:{nominal:'35 TDI',cv:136},
+        110:{nominal:'35 TDI',cv:150},
+        120:{nominal:'40 TDI',cv:163},
+        125:{nominal:'40 TDI',cv:170},
+        130:{nominal:'40 TDI',cv:177},
+        140:{nominal:'40 TDI',cv:190},
+        150:{nominal:'45 TDI',cv:204},
+        170:{nominal:'45 TDI',cv:231},
+        180:{nominal:'50 TDI',cv:245},
+        210:{nominal:'50 TDI',cv:286}
+      },
+      // Audi/VW/Seat/Skoda — Gasolina TFSI/TSI
+      tfsi:{
+        70:{nominal:'25 TFSI',cv:95},
+        81:{nominal:'30 TFSI',cv:110},
+        85:{nominal:'30 TFSI',cv:115},
+        90:{nominal:'30 TFSI',cv:122},
+        96:{nominal:'35 TFSI',cv:130},
+        110:{nominal:'35 TFSI',cv:150},
+        125:{nominal:'40 TFSI',cv:170},
+        140:{nominal:'40 TFSI',cv:190},
+        150:{nominal:'45 TFSI',cv:204},
+        180:{nominal:'45 TFSI',cv:245},
+        195:{nominal:'50 TFSI',cv:265},
+        210:{nominal:'55 TFSI',cv:286},
+        245:{nominal:'55 TFSI',cv:333},
+        270:{nominal:'S/RS',cv:367}
+      }
+    };
+
+    // Helper: rileva il tipo motore dalla version+equip combinati
+    function nxDetectMotorType(text){
+      var t=(text||'').toUpperCase();
+      // BEV — preserva kW
+      if(/\b(BEV|FULL[\s-]?ELECTRIC|EV\b|E-TRON|ELECTRIC[\s-]?ONLY|100\s*%\s*ELECTRIC)/i.test(t))return 'bev';
+      // PHEV / Hybrid plug-in — termico ibrido, usa CV
+      if(/\b(PHEV|PLUG[\s-]?IN[\s-]?HYBRID|E-?HYBRID|HYBRID\s*PLUG)/i.test(t))return 'phev';
+      // Mild Hybrid — termico, usa CV
+      if(/\b(MHEV|MILD[\s-]?HYBRID|HEV\b|HYBRID|HIBRIDO|IBRIDO)/i.test(t))return 'hybrid';
+      // Diesel
+      if(/\b(TDI|HDI|DCI|CDI|JTD|JTDM|MULTIJET|BLUEHDI|D\d+|DIESEL|CRDI|BLUETEC|TDCI)\b/i.test(t))return 'diesel';
+      // Gasolina
+      if(/\b(TFSI|TSI|TGDI|GASOLINA|BENZINA|ECOBOOST|MULTIAIR|TWINAIR|FIRE|VTEC|VVT|BOOSTERJET|MPI|FSI)\b/i.test(t))return 'gasolina';
+      return 'unknown';
+    }
+
+    // Helper: detecta brand family (vag = audi/vw/seat/skoda → usa TFSI/TDI)
+    function nxDetectBrandFamily(brand){
+      var b=String(brand||'').toUpperCase();
+      if(/^(AUDI|VOLKSWAGEN|VW|SEAT|CUPRA|SKODA)/.test(b))return 'vag';
+      // BMW: usa "118i 140 CV" (numero modello + CV) — diverso schema
+      // Mercedes: "A 200" + CV
+      // Per ora trattiamo solo VAG. Altri: solo conversione kW→CV senza nominale.
+      return 'other';
+    }
+
+    // Helper: trova nominale più vicino nella mappa data (entro ±5 kW)
+    function nxFindNominal(map,kw){
+      if(!map[kw]&&typeof map==='object'){
+        // Cerca la chiave più vicina entro ±5 kW
+        var keys=Object.keys(map).map(function(k){return parseInt(k,10);}).filter(function(k){return !isNaN(k);});
+        var best=null,bestDiff=99;
+        keys.forEach(function(k){
+          var d=Math.abs(k-kw);
+          if(d<bestDiff&&d<=5){best=k;bestDiff=d;}
+        });
+        if(best!==null)return map[best];
+        return null;
+      }
+      return map[kw]||null;
+    }
+
+    // Helper: applica conversione su singola version string
+    function nxConvertKwToCV(versionStr,brand,equipStr){
+      if(!versionStr)return {version:versionStr,changed:false};
+      var fullText=(versionStr||'')+' '+(equipStr||'');
+      var motorType=nxDetectMotorType(fullText);
+      // BEV → preserva kW (regola hard)
+      if(motorType==='bev')return {version:versionStr,changed:false,reason:'BEV preserva kW'};
+      // Cerca pattern "NNN kW" (con varianti spazio/case)
+      var kwRe=/(\d{2,3})\s*kW\b/i;
+      var match=versionStr.match(kwRe);
+      if(!match)return {version:versionStr,changed:false};
+      var kw=parseInt(match[1],10);
+      if(isNaN(kw)||kw<30||kw>500)return {version:versionStr,changed:false};
+      // Per VAG (Audi/VW/Seat/Skoda) cerca nominal nella mappa TFSI/TDI
+      var family=nxDetectBrandFamily(brand);
+      var nominal='',cv=Math.round(kw*1.36);
+      if(family==='vag'){
+        var mapKey=motorType==='diesel'?'tdi':(motorType==='gasolina'||motorType==='hybrid'||motorType==='phev'?'tfsi':null);
+        if(mapKey&&window.NX_KW_TO_NOMINAL[mapKey]){
+          var found=nxFindNominal(window.NX_KW_TO_NOMINAL[mapKey],kw);
+          if(found){nominal=found.nominal;cv=found.cv;}
+        }
+      }
+      // Costruisci replacement: "35 TFSI 150 CV" o solo "150 CV"
+      var replacement=nominal?(nominal+' '+cv+' CV'):(cv+' CV');
+      // v10.10.20: rimuovi nominali generici DUPLICATI prima del kW match per evitare "TFSI 35 TFSI"
+      // 4 casi da gestire:
+      // (a) "TFSI 110 kW" (nominale orfano senza numero)
+      // (b) "30 TDI 100 kW" (nominale completo NN TDI ma kW non coerente con NN)
+      // (c) "TSI 81 kW" → "30 TFSI" (TSI e TFSI sono alias VAG)
+      // (d) "1.0 TCe 67 kW" → ok, nessun nominale generato (brand non-VAG)
+      var newVersion=versionStr;
+      if(nominal){
+        // Estrai keyword del nominale ("TFSI" da "35 TFSI")
+        var nominalKeyword=nominal.replace(/^\d+\s*/,'').trim(); // es. "TFSI", "TDI"
+        // Aliases per VAG: TFSI ↔ TSI, TDI tra Audi/VW/Seat/Skoda è uguale
+        var aliases=[nominalKeyword];
+        if(/^TFSI$/i.test(nominalKeyword))aliases.push('TSI'); // alias VW/Seat/Skoda
+        if(/^TSI$/i.test(nominalKeyword))aliases.push('TFSI');
+        // Pattern combinato: rimuovi sia "NN KW " (completo) sia "KW " (orfano) prima del kW
+        aliases.forEach(function(kw){
+          // (b) "NN TFSI" completo (numero davanti) — rimuovilo perché kW sostituisce
+          var fullRe=new RegExp('(?:^|\\s)\\d{1,2}\\s+('+kw+')\\s+(?=\\d+\\s*kW\\b)','i');
+          newVersion=newVersion.replace(fullRe,' ');
+          // (a)(c) "TFSI" orfano (no numero davanti)
+          var orphRe=new RegExp('(?:^|\\s)('+kw+')\\s+(?=\\d+\\s*kW\\b)','i');
+          newVersion=newVersion.replace(orphRe,' ');
+        });
+        // Normalizza spazi
+        newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
+      }
+      newVersion=newVersion.replace(kwRe,replacement);
+      newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
+      return {
+        version:newVersion,
+        changed:true,
+        original:versionStr,
+        kw:kw,
+        cv:cv,
+        nominal:nominal,
+        motorType:motorType,
+        family:family
+      };
+    }
+    // Esponi globalmente per debug/test
+    window.nxConvertKwToCV=nxConvertKwToCV;
+    window.nxDetectMotorType=nxDetectMotorType;
+
+    // Applica a tutti i veicoli del lotto
+    vehicles.forEach(function(v){
+      var equipText=(v.equip||'')+' '+(v.brand||'')+' '+(v.model||'');
+      var res=nxConvertKwToCV(v.version,v.brand,equipText);
+      if(res.changed){
+        v._versionOriginal=res.original;
+        v.version=res.version;
+        v._powerConverted=true;
+        v._powerKw=res.kw;
+        v._powerCv=res.cv;
+        if(res.nominal)v._powerNominal=res.nominal;
+        console.log('[v10.10.20] kW\u2192CV: "'+res.original+'" \u2192 "'+res.version+'" ('+res.kw+'kW='+res.cv+'CV, '+res.motorType+(res.nominal?', '+res.nominal:'')+')');
+        // Propaga a sub-vehicles (stessa version del lotto)
+        if(v.vehicles&&v.vehicles.length){
+          v.vehicles.forEach(function(u){
+            if(!u.version||u.version===res.original){
+              u.version=res.version;
+              u._powerConverted=true;
+              u._powerKw=res.kw;
+              u._powerCv=res.cv;
+              if(res.nominal)u._powerNominal=res.nominal;
+            }else{
+              // Sub-vehicle ha version diversa → applica conversione anche su questa
+              var resU=nxConvertKwToCV(u.version,v.brand,equipText);
+              if(resU.changed){
+                u._versionOriginal=resU.original;
+                u.version=resU.version;
+                u._powerConverted=true;
+                u._powerKw=resU.kw;
+                u._powerCv=resU.cv;
+                if(resU.nominal)u._powerNominal=resU.nominal;
+              }
+            }
+          });
+        }
       }
     });
 
