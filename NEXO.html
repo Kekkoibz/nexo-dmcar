@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- NEXO v10.10.22.1 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX critico v10.10.21 dialog non appare:
+<!-- NEXO v10.10.23 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX critico v10.10.21 dialog non appare:
 ROOT CAUSE: finishImport calcolava stockCountBefore=(window.stock||[]).length e itera su window.stock, ma addStkItem fa stock.push(item) sulla variabile LOCALE `stock` (var stock=LS('stock',[]) dichiarata a riga 6689 dentro l'IIFE wrapper). window.stock è una reference SEPARATA aggiornata solo da SS('stock',stock) che fa anche window.stock=stock; ma il timing del delta calcolato su window.stock prima/dopo addStkItem dava sempre 0 newStockIds → fallback a flusso classico → dialog v10.10.21 mai mostrato → utente vedeva lotto direttamente in Trading.
-FIX: cambiato window.stock → stock (locale) nel calcolo stockCountBefore + iterazione delta. Aggiunto console.log diagnostico [v10.10.22.1] finishImport: stockBefore=X stockAfter=Y newIds=N per debug futuri.
+FIX: cambiato window.stock → stock (locale) nel calcolo stockCountBefore + iterazione delta. Aggiunto console.log diagnostico [v10.10.23] finishImport: stockBefore=X stockAfter=Y newIds=N per debug futuri.
 PRESERVA: v10.10.22 (status STOCK PROPIO + banner refresh), v10.10.21 (dialog adquisición), v10.10.20 (kW→CV converter), v10.10.19 (matching Provider robusto). -->
 <!-- NEXO v10.10.22 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug report tecnico utente (Foto 17/18/19):
 1) Bug 3 CRITICO (Foto 19) — dopo aver completato workflow OWN (Step1 selettore impresa + Step2a/2b proforma), il lotto restava in tab Trading invece di passare a OWN. ROOT CAUSE: nxOwnEntryStep2aChoice + nxOwnEntryStep2bChoice settavano _ownNotified, _ownPendingProforma, ownerCompany ma OMETTEVANO s.status='STOCK PROPIO' (chiave del filtro tab OWN vs Trading nel render fStk). Workflow completava silenziosamente senza spostare il lotto. FIX: aggiunta s.status='STOCK PROPIO' in tutte e 3 le branch (Step2a 'now', Step2a 'later', Step2b sì/no) + chiamata fStk() post-SS('stock') per refresh immediato della tabella;
@@ -10682,7 +10682,7 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
   function finishImport(){
     var added=0;
     var providerLinked=0;
-    // v10.10.22.1: usa variabile locale `stock` (var stock=LS('stock',[]) riga 6689),
+    // v10.10.23: usa variabile locale `stock` (var stock=LS('stock',[]) riga 6689),
     // NON window.stock — addStkItem fa stock.push(item) sulla locale, window.stock è separato!
     var stockCountBefore=stock.length;
     vehicles.forEach(function(v){
@@ -10697,7 +10697,7 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     for(var i=stockCountBefore;i<stock.length;i++){
       if(stock[i]&&stock[i].id)newStockIds.push(stock[i].id);
     }
-    console.log('[v10.10.22.1] finishImport: stockBefore='+stockCountBefore+' stockAfter='+stock.length+' newIds='+newStockIds.length);
+    console.log('[v10.10.23] finishImport: stockBefore='+stockCountBefore+' stockAfter='+stock.length+' newIds='+newStockIds.length);
     window._currentImportBatch=null;
     SS('lastImportBatch',batchId);
     var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
