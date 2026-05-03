@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.2 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug critici Vista Contable: 1) BUG GRAFICO sfondo nero: causa ROOT era CSS var --bg1 NON DEFINITA in :root (definite solo --bg, --bg2, --bg3, --bg4) → modali con background:var(--bg1) cadevano in fallback transparent → backdrop nero passava attraverso. FIX: aggiunte --bg1:#ffffff e --t1:#0f172a in :root; 2) BUG KMS=20: causa ROOT parsing erroneo es-ES "19.614 avg" interpretato come decimale 19.614 → Math.round=20 invece di 19614. FIX: nxParseEsNum smart parser detecta separatore migliaia "." (1 dot + esattamente 3 cifre dopo = es-ES migliaia) vs decimale + gestisce correttamente "," come decimal separator; 3) BUG Invalid Date: causa ROOT new Date("31/03/2025") non parsabile da Chrome (formato non ISO) → "Invalid Date" mostrato nella colonna 1ª Matr. FIX: fmtDate ora detecta dd/mm/yyyy + dd-mm-yyyy + dd.mm.yyyy + supporto YY 2-digit (>50 = 19YY, <=50 = 20YY); 4) BUG P.Compra vuoto: causa ROOT lettura da s.buyPrice/s.salePrice ma in Stock Vivo i campi reali sono s.buy/s.sell. FIX: nxBuildVistaRecords ora legge da s.buy/s.sell con fallback agli alias buyPrice/salePrice; 5) Patch applicata in nxAccGetExtended (km, damage, firstReg) + nxBuildVistaRecords (sale, buy, margin) + fmtDate global; 6) Smoke test 11/11 PASS su parsing "19.614" "304,68 €" "15.200 €" "1.014" "450,00 €" ecc. PRESERVA: workflow OWN v10.10.1 (modali dinamici + email Contabilidad), aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.1 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX modali OWN workflow: 1) Bug freeze "Más tarde" su Step2a → causa: closeM(id) rimuove la classe 'on' ma i modali dinamici v10.01+ (insertAdjacentHTML) usano style="display:flex" inline, quindi closeM NON funzionava → modal restava in DOM bloccando l'UI; 2) Bug grafico schermo nero → causa: Step1 NON veniva rimosso prima di Step2a/2b, doppio backdrop rgba(0,0,0,.75) sovrapposto = nero opaco illeggibile; 3) FIX: nuovo helper window.nxCloseDynModal(id) che fa parentNode.removeChild() invece di toggle classe, sostituito in tutte le 11 chiamate del workflow (Step1/2a/2b/Decline/Decline2); 4) Effetto collaterale risolto: ora Step1 viene rimosso dal DOM prima di mostrare 2a/2b → niente più doppio backdrop → contrasto WCAG ripristinato come da design system; 5) Test branch coperti: Sì→Cargar ahora, Sì→Más tarde, No→Sí richiedi, No→No suspenso, X→Decline; 6) PRESERVA: Step2aChoice('now') → numbersUploadProveedorDoc, Step2bChoice('si') → nxOwnEntryRequestProforma, ownerCompany persistito su tutti i branch. -->
 <!-- NEXO v10.10 — DMCAR GROUP CRM | 2026-05-03 | Workflow Libre→OWN: 1) Step1 ridisegnato con selettore impresa acquirente (DMCAR GROUP / INNOQUEST SOLUTIONS / IMPEX CONSULTING / MERCEDES SOLUTION via window.NX_OWN_COMPANIES) e template notifica spec: "[Empresa] ha adquirido [N] [Marca Modelo] de [Provider]. Los vehículos han sido cargados en Vista Contable"; 2) Step2b ("No tengo proforma") refactor: invece di "¿Registrar igualmente?" ora chiede "¿Solicitar la proforma al proveedor?" — branch Sì apre email pre-compilata, branch No lascia in suspenso (sempre OWN+N/D in Vista Contable, propagazione obbligatoria come da spec); 3) Nuova fn nxOwnEntryRequestProforma: pesca contatti Rol=Contabilidad da provider.staff[] + fallback su provider.email se role=Contabilidad, costruisce mailto: con subject/body template spec ("Solicitud de proforma – Marca Modelo – N° unidades"); 4) Fallback a 3 livelli: provider non in DB → mailto vuoto, provider senza Contabilidad → riusa nxProvSelectEmailRecipients per scelta manuale, contatti trovati → mailto con tutti i Contabilidad in TO; 5) Persiste s.ownerCompany su ogni stock OWN per traccia multi-impresa (usato in render Vista Contable e re-display Step1 in caso di re-entry); 6) Helper nxOpenMailtoFallback con clipboard fallback se mailto: fallisce. PRESERVA: 10.09 aggregazione lotti subasta intatta, sub-rows VW Taigo funzionanti. -->
 <!-- NEXO v10.09 — DMCAR GROUP CRM | 2026-05-03 | Stock Import: aggregazione lotti per Brand+Model+Version: 1) FIX UX: prima 14 VW Taigo identici venivano importati come 14 lotti separati invece di 1 lotto aggregato con sub-rows. Ora tryNativeBlockParse aggrega per chiave brand+model+version → 1 riga master + drilldown ▼ N per vedere singole unità; 2) Calcoli aggregati per lotto: KMS media (avgKms=true), Daños media (avgDamages=true), Buy unico se tutti uguali altrimenti media, Pickup unique values join " / ", Colors unique values join ", "; 3) Mantiene vehicles[] con ogni unità individuale (kms+color+damage+pickup+reg specifici); 4) Console log "[v10.09] Pre-parser ha aggregato N unidades en M lote(s)"; 5) Compatibile con render esistente: hasD=item.vehicles.length>0 mostra bottone "▼ N" per espandere e vedere unità singole con KMS/colors/daños di ogni veicolo; 6) Header keywords estesi a "faros|matrix" per skip header file subasta. -->
@@ -17,7 +18,8 @@
         onerror="var s=document.createElement('script');s.src='https://unpkg.com/@azure/msal-browser@2.38.4/lib/msal-browser.min.js';s.onerror=function(){var s2=document.createElement('script');s2.src='https://alcdn.msauth.net/browser/2.38.4/js/msal-browser.min.js';document.head.appendChild(s2);};document.head.appendChild(s);"></script>
 <style>
 :root{
-  --bg:#f8fafc;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
+  --bg:#f8fafc;--bg1:#ffffff;--bg2:#ffffff;--bg3:#f1f5f9;--bg4:#e2e8f0;
+  --t1:#0f172a;
   --border:#e2e8f0;--border2:#cbd5e1;
   --blue:#2563eb;--b2:#3b82f6;--acc:#1d4ed8;
   --v:#7c3aed;--v2:#8b5cf6;
@@ -24689,10 +24691,24 @@ document.querySelectorAll('.ovl').forEach(function(el){
       if(totalInv>0&&totalPaid>=totalInv-0.01)pagoStatus='paid';
       else if(totalPaid>0)pagoStatus='partial';
       // Margine
+      // v10.10.2 FIX: i campi reali in Stock Vivo sono s.buy/s.sell (non buyPrice/salePrice)
+      // + parsing es-ES per separatore migliaia "."
+      var nxParseEsNum=function(v){
+        if(v==null||v==='')return null;
+        var raw=String(v).replace(/[^\d.,-]/g,'');
+        if(!raw)return null;
+        if(raw.indexOf(',')>=0){
+          raw=raw.replace(/\./g,'').replace(',','.');
+        }else if((raw.match(/\./g)||[]).length===1&&raw.split('.')[1].length===3){
+          raw=raw.replace(/\./g,'');
+        }
+        var n=parseFloat(raw);
+        return isNaN(n)?null:n;
+      };
+      var sale=nxParseEsNum(s.sell||s.salePrice||s.sellPrice);
+      var buy=nxParseEsNum(s.buy||s.buyPrice);
       var margin=null;
-      var sale=parseFloat(String(s.salePrice||'').replace(/[^\d.,-]/g,'').replace(',','.'))||null;
-      var buy=parseFloat(String(s.buyPrice||'').replace(/[^\d.,-]/g,'').replace(',','.'))||null;
-      if(sale&&buy)margin=sale-buy;
+      if(sale!==null&&buy!==null)margin=sale-buy;
       // Se ha veicoli singoli (lot expanded), creo record per ognuno
       if(hasVehicles){
         s.vehicles.forEach(function(v,idx){
@@ -24959,7 +24975,35 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var sign=positiveColor&&n>0?'+':'';
       return '<span style="color:'+col+';font-weight:'+(positiveColor?'700':'500')+'">'+sign+n.toLocaleString('es-ES',{minimumFractionDigits:0,maximumFractionDigits:0})+'</span>';
     };
-    var fmtDate=function(d){if(!d)return '<span style="color:var(--t4)">\u2014</span>';try{return new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'});}catch(e){return esc(String(d));}};
+    var fmtDate=function(d){
+      if(!d)return '<span style="color:var(--t4)">\u2014</span>';
+      try{
+        // v10.10.2 FIX: formato es-ES "dd/mm/yyyy" o "dd/mm/yy" non parsabile da new Date()
+        // Detecta il formato e lo converte a ISO prima di Date()
+        var s=String(d).trim();
+        // Match dd/mm/yyyy o dd-mm-yyyy o dd.mm.yyyy
+        var m=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+        if(m){
+          var dd=m[1].padStart(2,'0');
+          var mm=m[2].padStart(2,'0');
+          var yy=m[3];
+          if(yy.length===2)yy=(parseInt(yy,10)>50?'19':'20')+yy;
+          // Visualizza direttamente in formato es-ES sintetico
+          return dd+'/'+mm+'/'+yy.slice(-2);
+        }
+        // Match yyyy-mm-dd (ISO già)
+        var iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if(iso){
+          return iso[3]+'/'+iso[2]+'/'+iso[1].slice(-2);
+        }
+        // Fallback: tenta new Date()
+        var dt=new Date(s);
+        if(!isNaN(dt.getTime())){
+          return dt.toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'});
+        }
+        return esc(s);
+      }catch(e){return esc(String(d));}
+    };
     var fmtTxt=function(t){return t?esc(String(t)):'<span style="color:var(--t4)">\u2014</span>';};
     var bgOwn=COL.own.bg,bgReg=COL.reg.bg,bgCompra=COL.compra.bg,bgVenta=COL.venta.bg,bgTrans=COL.transporte.bg,bgVeh=COL.vehiculo.bg,bgBro=COL.broker.bg,bgRes=COL.resultado.bg;
     records.forEach(function(r){
@@ -25132,11 +25176,33 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }
     }
     // Stock 1ª reg + km dal Stock
+    // v10.10.2 FIX: parsing es-ES "19.614" come migliaia (=19614) non come decimale (=19.614→round 20)
     var firstReg=s&&(s.reg||s.firstReg)||'';
     var km=s&&(s.kms||s.km)||0;
-    if(typeof km==='string')km=parseFloat(String(km).replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+    if(typeof km==='string'){
+      // Formato es-ES: "." = migliaia, "," = decimale. Esempi: "19.614" -> 19614, "19.614,5" -> 19614.5
+      var rawKm=String(km).replace(/[^\d.,-]/g,'');
+      if(rawKm.indexOf(',')>=0){
+        // Ha decimale virgola: rimuovi punti (migliaia), poi sostituisci virgola con punto
+        rawKm=rawKm.replace(/\./g,'').replace(',','.');
+      }else if((rawKm.match(/\./g)||[]).length===1&&rawKm.split('.')[1].length===3){
+        // Solo un punto seguito da 3 cifre = separatore migliaia es-ES (es. "19.614")
+        rawKm=rawKm.replace(/\./g,'');
+      }
+      // else: già numero pulito (es. "19614" o "19.5" decimale anglo)
+      km=parseFloat(rawKm)||0;
+    }
     var damage=s&&(s.damage||0);
-    if(typeof damage==='string')damage=parseFloat(String(damage).replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+    if(typeof damage==='string'){
+      // Stesso parsing es-ES per damage (es. "304,68 €" -> 304.68; "1.014 €" -> 1014)
+      var rawDmg=String(damage).replace(/[^\d.,-]/g,'');
+      if(rawDmg.indexOf(',')>=0){
+        rawDmg=rawDmg.replace(/\./g,'').replace(',','.');
+      }else if((rawDmg.match(/\./g)||[]).length===1&&rawDmg.split('.')[1].length===3){
+        rawDmg=rawDmg.replace(/\./g,'');
+      }
+      damage=parseFloat(rawDmg)||0;
+    }
     // Profit Auto
     var profitAuto=null;
     if(r.salePrice!==null&&r.buyPrice!==null)profitAuto=r.salePrice-r.buyPrice;
