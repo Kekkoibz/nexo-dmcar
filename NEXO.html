@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.16 — DMCAR GROUP CRM | 2026-05-03 | Feature Bulk Trasladar (selezione multipla):
+1) Feature richiesta utente (Foto): dopo aver fatto Trasladar su 1 sub-vehicle, il sistema deve chiedere se applicare la stessa scelta a altri veicoli del lotto, con selezione multipla + conferma. Razionale: nella vita reale i veicoli di una proforma multi-unità (es. 8 Audi A3) si trovano spesso nello stesso piazzal del fornitore e si trasferiscono insieme alla stessa destinazione (es. campas DMCAR) — fare 8 click manuali è inefficiente;
+2) Implementazione: nuova fn nxOpenBulkTrasladarDialog chiamata da nxConfirmTrasladar dopo il successo (con setTimeout 500ms per dare tempo al toast). Trigger condizionato a: (a) lotto con >1 sub-vehicles, (b) almeno 1 candidato (veicolo non-source che non sia già in transito allo stesso destino — idempotenza);
+3) Dialog UX: header "🚛 Aplicar mismo destino a otros vehículos?", riepilogo veicolo source (VIN + nuova destinazione) in box arancione, lista checkbox dei candidati con: VIN monospace, badge stato (EN TRÁNSITO / LLEGADO se già processato), Pick-Up attuale. Master checkbox "Seleccionar todos" + count live aggiornato. Bottone Aplicar disabilitato se 0 selezionati;
+4) Nuove funzioni: nxBulkTraslToggleAll(checked) — toggle tutti, nxBulkTraslUpdateCount() — aggiorna counter + abilita/disabilita Aplicar + sync master checkbox, nxApplyBulkTrasladar(sid,transferTo) — itera selected indices, applica v.pickup + v.transferStatus='in_transit' + v.transferTo a ognuno, persiste, render, toast;
+5) Preserva idempotenza: il source veicolo (vi) è skippato dalla lista candidati; veicoli con transferStatus='in_transit' allo stesso pickup sono pure skippati per evitare doppio update;
+6) PRESERVA: tutto v10.10.15 (eliminazione Persona Jurídica), v10.10.14 (4 mod Provider Logística+Móvil+Comercial+Fiscal), v10.10.13 (truncate Proveedor cell), v10.10.12/11 (Provider fallback Ubicación), v10.10.10 (3 anomalie fix), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.15 — DMCAR GROUP CRM | 2026-05-03 | UX Datos Fiscales semplificazione + chiarimento Nombre Fiscal:
 1) Bug riportato (utente Foto): nel campo "Nombre Fiscal" appariva l'indirizzo "Moll d'en Ginesar, 20" invece della denominazione legale "SUPER RENT, S.L.". Confusione utente: i 2 campi "Persona Jurídica" + "Nombre Fiscal" erano ridondanti perché la forma legale (S.L./S.A./GmbH...) è già contenuta dentro il Nombre Fiscal completo (es. "SUPER RENT, S.L." → la "S.L." è implicita). Decisione utente: ELIMINARE Persona Jurídica;
 2) FIX UI: rimosso dropdown "Persona jurídica" (id=pv-legal-form) dal modulo Provider. Il campo "Nombre Fiscal" ora occupa l'intera larghezza con placeholder esplicativo "Ej: SUPER RENT, S.L. — denominación completa con forma legal" e tooltip "Razón social oficial completa, incluyendo la forma legal (S.L., S.A., GmbH...). Es el nombre que aparece en facturas y proformas recibidas". Sub-label aggiornato: "(razón social oficial — el nombre que aparece en proforma/factura)";
@@ -28073,7 +28080,121 @@ document.querySelectorAll('.ovl').forEach(function(el){
     SS('stock',window.stock);
     nxCloseDynModal('m-trasladar');
     if(typeof fStk==='function')fStk();
-    if(typeof showToast==='function')showToast('\u{1F69A} Veh\u00edculo en tr\u00e1nsito \u2192 '+newPickup,5000);
+    if(typeof showToast==='function')showToast('\u{1F69A} Veh\u00edculo en tr\u00e1nsito \u2192 '+newPickup,4000);
+    // v10.10.16: BULK TRASLADAR — se il lotto ha >1 veicoli, chiedi se applicare a altri
+    if(Array.isArray(s.vehicles)&&s.vehicles.length>1){
+      var transferTo={city:city,region:region,country:country,place:place,setAt:new Date().toISOString(),pickupString:newPickup};
+      // Trova candidati: tutti i sub-vehicles ECCETTO quello appena trasladato + che non sono già in transito allo stesso destino
+      var candidates=[];
+      s.vehicles.forEach(function(uv,uvi){
+        if(uvi===vi)return; // skip the one just traslated
+        // Skip se già in transito allo stesso destino (idempotenza)
+        if(uv.transferStatus==='in_transit'&&uv.pickup===newPickup)return;
+        candidates.push({idx:uvi,vehicle:uv});
+      });
+      if(candidates.length>0){
+        // Apri dialog dopo un breve delay per dare tempo al toast di apparire
+        setTimeout(function(){nxOpenBulkTrasladarDialog(sid,vi,transferTo,candidates);},500);
+      }
+    }
+  };
+
+  // v10.10.16: Dialog bulk Trasladar — offre selezione multipla per applicare stessa destinazione
+  window.nxOpenBulkTrasladarDialog=function(sourceSid,sourceVi,transferTo,candidates){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sourceSid);});
+    if(!s)return;
+    var sourceV=s.vehicles[sourceVi];
+    var sourceVin=sourceV?(sourceV.vin||'(sin VIN)'):'?';
+    var brand=esc(s.brand||''),model=esc(s.model||'');
+    var html='<div id="m-bulk-trasl" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-bulk-trasl\')">'
+      +'<div class="modal" style="max-width:580px;max-height:85vh;display:flex;flex-direction:column">'
+        +'<div class="mh"><span>\u{1F69B} Aplicar mismo destino a otros veh\u00edculos?</span><button class="mx" onclick="nxCloseDynModal(\'m-bulk-trasl\')">&times;</button></div>'
+        +'<div class="mb" style="overflow-y:auto;flex:1">'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:12px">'
+            +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:4px">Has trasladado</div>'
+            +'<div style="font-size:12px;font-weight:600;color:var(--t1);font-family:monospace">'+esc(sourceVin)+'</div>'
+            +'<div style="font-size:11px;color:var(--t2);margin-top:4px">\u2192 <strong>'+esc(transferTo.pickupString||'')+'</strong></div>'
+          +'</div>'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:10px;line-height:1.5">\u00bfAplicar el mismo Pick-Up a otros <strong>'+candidates.length+' veh\u00edculo'+(candidates.length!==1?'s':'')+'</strong> del lote <strong>'+brand+' '+model+'</strong>?</p>'
+          +'<div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg2);margin-bottom:10px">'
+            +'<label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--t1);cursor:pointer;padding:4px 6px;border-radius:4px" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+              +'<input type="checkbox" id="bulk-trasl-all" onchange="nxBulkTraslToggleAll(this.checked)" style="cursor:pointer;width:16px;height:16px"> Seleccionar todos ('+candidates.length+')'
+            +'</label>'
+            +'<div style="border-top:1px solid var(--border);margin:6px 0"></div>'
+            +'<div id="bulk-trasl-list" style="max-height:280px;overflow-y:auto">';
+    candidates.forEach(function(c){
+      var v=c.vehicle;
+      var vin=v.vin||'(sin VIN)';
+      var currentPickup=v.pickup||v.location||v.ubicacion||'--';
+      var statusBadge='';
+      if(v.transferStatus==='in_transit')statusBadge=' <span style="font-size:9px;background:rgba(245,158,11,.18);color:#92400e;padding:1px 5px;border-radius:3px;font-weight:700">EN TR\u00c1NSITO</span>';
+      else if(v.transferStatus==='arrived')statusBadge=' <span style="font-size:9px;background:rgba(16,163,74,.18);color:#15803d;padding:1px 5px;border-radius:3px;font-weight:700">LLEGADO</span>';
+      html+='<label style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:4px;cursor:pointer;font-size:11px" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'\'">'
+        +'<input type="checkbox" class="bulk-trasl-item" data-idx="'+c.idx+'" style="cursor:pointer;width:14px;height:14px">'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-family:monospace;font-weight:600;color:var(--t1)">'+esc(vin)+statusBadge+'</div>'
+          +'<div style="color:var(--t3);font-size:10px;margin-top:2px">Actual: '+esc(currentPickup)+'</div>'
+        +'</div>'
+      +'</label>';
+    });
+    html+='</div></div>'
+          +'<div style="font-size:10px;color:var(--t3);font-style:italic;line-height:1.4">\u{1F4A1} Solo se aplicar\u00e1 a los veh\u00edculos seleccionados. Los dem\u00e1s mantendr\u00e1n su Pick-Up actual.</div>'
+        +'</div>'
+        +'<div class="mf fc g8" style="justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--border)">'
+          +'<button class="btn bg" onclick="nxCloseDynModal(\'m-bulk-trasl\')">Cancelar (no aplicar)</button>'
+          +'<button class="btn bp" id="bulk-trasl-apply-btn" onclick="nxApplyBulkTrasladar(\''+esc(sourceSid)+'\','+JSON.stringify(transferTo).replace(/"/g,'&quot;')+')" disabled style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;opacity:.5">\u2713 Aplicar a <span id="bulk-trasl-count">0</span> seleccionados</button>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-bulk-trasl');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    // Bind change events su checkbox singoli per aggiornare count + abilitare button
+    document.querySelectorAll('.bulk-trasl-item').forEach(function(cb){
+      cb.addEventListener('change',nxBulkTraslUpdateCount);
+    });
+  };
+
+  window.nxBulkTraslToggleAll=function(checked){
+    document.querySelectorAll('.bulk-trasl-item').forEach(function(cb){cb.checked=checked;});
+    nxBulkTraslUpdateCount();
+  };
+
+  window.nxBulkTraslUpdateCount=function(){
+    var n=document.querySelectorAll('.bulk-trasl-item:checked').length;
+    var cntEl=document.getElementById('bulk-trasl-count');
+    var btn=document.getElementById('bulk-trasl-apply-btn');
+    if(cntEl)cntEl.textContent=n;
+    if(btn){
+      btn.disabled=n===0;
+      btn.style.opacity=n===0?'.5':'1';
+      btn.style.cursor=n===0?'not-allowed':'pointer';
+    }
+    // Update master checkbox: checked if all selected
+    var allCb=document.getElementById('bulk-trasl-all');
+    var total=document.querySelectorAll('.bulk-trasl-item').length;
+    if(allCb)allCb.checked=(n===total&&total>0);
+  };
+
+  window.nxApplyBulkTrasladar=function(sid,transferTo){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+    if(!s||!Array.isArray(s.vehicles))return;
+    var selected=Array.prototype.map.call(document.querySelectorAll('.bulk-trasl-item:checked'),function(cb){return parseInt(cb.getAttribute('data-idx'),10);});
+    if(selected.length===0){alert('No has seleccionado ning\u00fan veh\u00edculo');return;}
+    var newPickup=transferTo.pickupString||'';
+    var applied=0;
+    selected.forEach(function(idx){
+      var v=s.vehicles[idx];
+      if(!v)return;
+      if(!v.ubicacion)v.ubicacion=v.pickup||v.location||'';
+      v.pickup=newPickup;
+      v.transferStatus='in_transit';
+      v.transferTo={city:transferTo.city,region:transferTo.region,country:transferTo.country,place:transferTo.place,setAt:transferTo.setAt};
+      applied++;
+    });
+    SS('stock',window.stock);
+    nxCloseDynModal('m-bulk-trasl');
+    if(typeof fStk==='function')fStk();
+    if(typeof showToast==='function')showToast('\u{1F69B} Aplicado a '+applied+' veh\u00edculo'+(applied!==1?'s':'')+' \u2192 '+newPickup,5000);
+    console.log('[v10.10.16] Bulk trasladar aplicado a '+applied+' veh\u00edculos del lote '+sid);
   };
 
   // Conferma arrivo: transferStatus <- arrived (verde)
