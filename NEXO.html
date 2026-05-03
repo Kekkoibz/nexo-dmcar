@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.22 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug report tecnico utente (Foto 17/18/19):
+1) Bug 3 CRITICO (Foto 19) — dopo aver completato workflow OWN (Step1 selettore impresa + Step2a/2b proforma), il lotto restava in tab Trading invece di passare a OWN. ROOT CAUSE: nxOwnEntryStep2aChoice + nxOwnEntryStep2bChoice settavano _ownNotified, _ownPendingProforma, ownerCompany ma OMETTEVANO s.status='STOCK PROPIO' (chiave del filtro tab OWN vs Trading nel render fStk). Workflow completava silenziosamente senza spostare il lotto. FIX: aggiunta s.status='STOCK PROPIO' in tutte e 3 le branch (Step2a 'now', Step2a 'later', Step2b sì/no) + chiamata fStk() post-SS('stock') per refresh immediato della tabella;
+2) Bug 1 (Foto 17) — dopo eliminazione lotto, banner "1 vehículo sel." restava visibile sopra la tabella vuota. ROOT CAUSE: delItem e delSel chiamavano stkSel.delete() ma NON updSelBar() che gestisce display:none|block del #sel-bar e il testo #sel-cnt; inoltre stkVehSel (sub-vehicles selezionati) non veniva pulito quando si eliminava il lotto padre. FIX in delItem + delSel: (a) prima di rimuovere il lotto da stock, pulisce stkVehSel di tutti i sub-vehicles del lotto (chiave 'sid_vi'), (b) dopo SS+fStk chiama updSelBar() per nascondere il banner;
+3) Bug 2 (Foto 18) — il dialog "¿Es adquisición para empresa propia?" v10.10.21 ha funzionato correttamente: l'utente ha cliccato Sí, è apparso Step1 con selettore impresa, Step2a/2b con proforma. Il bug riportato (mancanza richieste impresa+proforma) era falso positivo: il workflow ESISTEVA ma falliva sul Bug 3 (status non cambiato). Risolvendo Bug 3, il flusso completo ora funziona end-to-end;
+4) PRESERVA: tutto v10.10.21 (auto-trigger workflow OWN dopo import), v10.10.20 (kW→CV converter), v10.10.19 (matching Provider robusto), v10.10.18 (provider autocomplete), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.21 — DMCAR GROUP CRM | 2026-05-03 | Memo #5 P1 — Auto-trigger workflow OWN dopo import:
 1) Bug osservato (utente Memo #5): finishImport() chiamava solo addStkItem + fStk + renderDash, ma NON triggerava nxOwnEntryWorkflow → il lotto andava SEMPRE in tab Trading di default. Per attivare il workflow OWN (Step1 selettore impresa, Step2 proforma cargo, notifica contable) l'utente doveva manualmente cambiare lo Status di ogni stock a "propio" (riga 8429 hook esistente solo su change manuale dello Status). Workflow inutilizzato per chi importava direttamente da PDF proforma proveedor;
 2) FIX UX (spec utente): nuovo dialog "📥 ¿Es adquisición para empresa propia?" mostrato post-import success (dopo i 1800ms del statusMsg). Dialog contiene: (a) riepilogo veicoli importati con conteggio per brand+modello, (b) provider info (se uniforme), (c) 2 bottoni grandi descrittivi: ✅ Sí → workflow OWN (Step1 selettore impresa, vincola proforma, notifica contable) / ❌ No → trading/venta directa (lotto resta in Trading);
@@ -9298,9 +9303,24 @@ function clrSel(){
 function delSel(){
   var num=stkSel.size;if(!num) return;
   if(!confirm('Eliminar '+num+' entrada'+(num!==1?'s':'')+' seleccionada'+(num!==1?'s':'')+' del Stock?')) return;
+  // v10.10.22 Bug 1 fix: pulisci stkVehSel per sub-vehicles dei lotti eliminati
+  if(typeof stkVehSel!=='undefined'){
+    var deletedIds=Array.from(stkSel);
+    deletedIds.forEach(function(sid){
+      var lot=(stock||[]).find(function(s){return s.id===sid;});
+      if(lot&&Array.isArray(lot.vehicles)){
+        lot.vehicles.forEach(function(v,vi){
+          var key=sid+'_'+vi;
+          if(stkVehSel.has&&stkVehSel.has(key))stkVehSel.delete(key);
+        });
+      }
+    });
+  }
   stock=stock.filter(function(i){return!stkSel.has(i.id);});
   stkSel.clear();
   SS('stock',stock);updBF();fStk();renderDash();
+  // v10.10.22 Bug 1 fix: reset banner sel-bar
+  if(typeof updSelBar==='function')updSelBar();
   // v10.10.6: cascade cleanup notifiche purchase orfane
   if(typeof window.nxCleanOrphanPurchaseNotifs==='function')window.nxCleanOrphanPurchaseNotifs();
   if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
@@ -9577,8 +9597,18 @@ function saveEdit(){
 
 function delItem(id){
   if(!confirm('Eliminar esta entrada?')) return;
+  // v10.10.22 Bug 1 fix: pulisci anche stkVehSel se contiene sub-vehicles del lotto eliminato
+  var lot=(stock||[]).find(function(s){return s.id==id;});
+  if(lot&&Array.isArray(lot.vehicles)&&typeof stkVehSel!=='undefined'){
+    lot.vehicles.forEach(function(v,vi){
+      var key=id+'_'+vi;
+      if(stkVehSel.has&&stkVehSel.has(key))stkVehSel.delete(key);
+    });
+  }
   stock=stock.filter(function(i){return i.id!=id;});
   stkSel.delete(id);SS('stock',stock);updBF();fStk();renderDash();
+  // v10.10.22 Bug 1 fix: reset banner sel-bar
+  if(typeof updSelBar==='function')updSelBar();
   // v10.10.6: cascade cleanup notifiche purchase orfane
   if(typeof window.nxCleanOrphanPurchaseNotifs==='function')window.nxCleanOrphanPurchaseNotifs();
   if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
@@ -27620,9 +27650,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var ownerCompany=ctx.ownerCompany||(coSel?coSel.value:null)||(window.NX_OWN_COMPANIES&&window.NX_OWN_COMPANIES[0])||'DMCAR GROUP';
     ctx.ownerCompany=ownerCompany;
     if(choice==='now'){
-      // Marca come "in attesa proforma" + ownerCompany
-      ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;s.ownerCompany=ownerCompany;});
+      // Marca come "in attesa proforma" + ownerCompany + STOCK PROPIO (v10.10.22 fix Bug 3)
+      ctx.group.stocks.forEach(function(s){
+        s._ownNotified=true;
+        s._ownPendingProforma=true;
+        s.ownerCompany=ownerCompany;
+        s.status='STOCK PROPIO'; // v10.10.22: sposta da Trading a OWN
+      });
       SS('stock',stock);
+      if(typeof fStk==='function')fStk(); // v10.10.22: refresh tab OWN
       nxCloseDynModal('m-own-entry-2');
       // v10.10.3: notifica purchase Caso A (proforma sta per essere caricata)
       // Marca come uploaded perché l'utente ha confermato che la caricherà ora
@@ -27651,8 +27687,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
         s._ownNotified=true;
         s._ownPendingProforma=true;  // mostra OWN+N/D
         s.ownerCompany=ownerCompany;
+        s.status='STOCK PROPIO'; // v10.10.22: sposta da Trading a OWN
       });
       SS('stock',stock);
+      if(typeof fStk==='function')fStk(); // v10.10.22: refresh tab OWN
       nxCloseDynModal('m-own-entry-2');
       // v10.10.3: notifica purchase Caso B (proforma esiste ma non ancora caricata) → crea task in Tareas
       if(typeof window.nxNumbersCreatePurchaseNotification==='function'){
@@ -27702,8 +27740,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       s._ownNotified=true;
       s._ownPendingProforma=true;
       s.ownerCompany=ownerCompany;
+      s.status='STOCK PROPIO'; // v10.10.22: sposta da Trading a OWN
     });
     SS('stock',stock);
+    if(typeof fStk==='function')fStk(); // v10.10.22: refresh tab OWN
     nxCloseDynModal('m-own-entry-3');
     // v10.10.3: notifica purchase Caso B (utente ha detto "no proforma" in Step1)
     // Sia "sí, solicitar al proveedor" sia "no, dejar en suspenso" → proforma assente → crea task Tareas
