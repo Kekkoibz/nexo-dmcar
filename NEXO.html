@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.15 — DMCAR GROUP CRM | 2026-05-03 | UX Datos Fiscales semplificazione + chiarimento Nombre Fiscal:
+1) Bug riportato (utente Foto): nel campo "Nombre Fiscal" appariva l'indirizzo "Moll d'en Ginesar, 20" invece della denominazione legale "SUPER RENT, S.L.". Confusione utente: i 2 campi "Persona Jurídica" + "Nombre Fiscal" erano ridondanti perché la forma legale (S.L./S.A./GmbH...) è già contenuta dentro il Nombre Fiscal completo (es. "SUPER RENT, S.L." → la "S.L." è implicita). Decisione utente: ELIMINARE Persona Jurídica;
+2) FIX UI: rimosso dropdown "Persona jurídica" (id=pv-legal-form) dal modulo Provider. Il campo "Nombre Fiscal" ora occupa l'intera larghezza con placeholder esplicativo "Ej: SUPER RENT, S.L. — denominación completa con forma legal" e tooltip "Razón social oficial completa, incluyendo la forma legal (S.L., S.A., GmbH...). Es el nombre que aparece en facturas y proformas recibidas". Sub-label aggiornato: "(razón social oficial — el nombre que aparece en proforma/factura)";
+3) Cleanup JS: rimosso autofill legalForm da provSyncFiscalFromAnagrafica, rimosso 'pv-legal-form' dalla reset list, rimosso load di p.legalForm in editProvider, hasFiscal check ora usa p.legalName (non p.legalForm), saveProvider preserva p.legalForm dal record originale per backward-compatibility con dati esistenti (se in futuro si volesse riabilitare il campo);
+4) PRESERVA: tutto v10.10.14 (4 modifiche Provider: Nombre Comercial, Nombre Fiscal label, Logística multi-valore con integrazione Stock Vivo, Móvil + AI classifier + WhatsApp), v10.10.13 (truncate Proveedor cell), v10.10.12/v10.10.11 (Provider fallback Ubicación), v10.10.10 (3 anomalie fix), v10.10.9 (defense-in-depth accDocs). -->
 <!-- NEXO v10.10.14 — DMCAR GROUP CRM | 2026-05-03 | Provider schema extension (4 modifiche da report tecnico utente):
 1) Mod 1 — Rinomina "Nombre contacto" → "Nombre Comercial" sul campo principale del Provider (es. "AUTO MAYORAL" in alto nella card). Distinzione semantica: questo è il nome commerciale d'uso corrente, distinto sia dalla Razón Social fiscale sia dai nomi dei contatti staff;
 2) Mod 2 — Rinomina "Razón social" → "Nombre Fiscal" nei Datos Fiscales (con sub-label "razón social oficial"). Allineamento etichetta a contenuto: denominazione legale ufficiale registrata fiscalmente;
@@ -2607,31 +2612,10 @@ En que te puedo ayudar hoy?</div></div>
         <span id="pv-fiscal-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
       </div>
       <div id="pv-fiscal-collapse" style="display:none;padding:0 12px 12px 12px">
-        <div class="g2 mb10">
-          <div><label>Persona jur&iacute;dica</label>
-            <select id="pv-legal-form">
-              <option value="">--</option>
-              <option value="S.L.">S.L. (Espa&ntilde;a)</option>
-              <option value="S.A.">S.A. (Espa&ntilde;a)</option>
-              <option value="Aut&oacute;nomo">Aut&oacute;nomo (Espa&ntilde;a)</option>
-              <option value="S.r.l.">S.r.l. (Italia)</option>
-              <option value="S.p.A.">S.p.A. (Italia)</option>
-              <option value="S.n.c.">S.n.c. (Italia)</option>
-              <option value="Ditta individuale">Ditta individuale (Italia)</option>
-              <option value="GmbH">GmbH (Alemania/Austria)</option>
-              <option value="AG">AG (Alemania/Suiza)</option>
-              <option value="UG">UG (Alemania)</option>
-              <option value="SAS">SAS (Francia)</option>
-              <option value="SARL">SARL (Francia)</option>
-              <option value="EURL">EURL (Francia)</option>
-              <option value="BV">BV (Pa&iacute;ses Bajos)</option>
-              <option value="Ltd">Ltd (Reino Unido)</option>
-              <option value="LLC">LLC</option>
-              <option value="Privado">Persona f&iacute;sica / Privado</option>
-              <option value="Otro">Otro</option>
-            </select>
-          </div>
-          <div><label>Nombre Fiscal <span style="font-size:9px;color:var(--t3)">(razón social oficial)</span></label><input type="text" id="pv-legal-name" placeholder="Denominaci&oacute;n legal completa"></div>
+        <!-- v10.10.15: Persona Jurídica eliminata (l'informazione è implicita nel Nombre Fiscal: "SUPER RENT, S.L." contiene già la S.L.) -->
+        <div class="mb10">
+          <label>Nombre Fiscal <span style="font-size:9px;color:var(--t3)">(razón social oficial — el nombre que aparece en proforma/factura)</span></label>
+          <input type="text" id="pv-legal-name" placeholder="Ej: SUPER RENT, S.L. — denominación completa con forma legal" title="Razón social oficial completa, incluyendo la forma legal (S.L., S.A., GmbH...). Es el nombre que aparece en facturas y proformas recibidas.">
         </div>
         <div class="g2 mb10">
           <div><label>VAT / CIF / NIF</label><input type="text" id="pv-vat" placeholder="ES B12345678 / IT12345678901 / ..."></div>
@@ -14088,7 +14072,7 @@ function openNewProvider(){
   n('m-provider').removeAttribute('data-edit-id');
   if(n('pv-tasks-section'))n('pv-tasks-section').style.display='none';
   // Reset campos fiscales (vacios + collapse cerrado)
-  ['pv-legal-form','pv-legal-name','pv-vat','pv-iban','pv-address','pv-cp','pv-city','pv-province','pv-fiscal-country','pv-sdi','pv-pec'].forEach(function(id){if(n(id))n(id).value='';});
+  ['pv-legal-name','pv-vat','pv-iban','pv-address','pv-cp','pv-city','pv-province','pv-fiscal-country','pv-sdi','pv-pec'].forEach(function(id){if(n(id))n(id).value='';});
   if(n('pv-fiscal-collapse'))n('pv-fiscal-collapse').style.display='none';
   if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML='\u25BC';
   // Reset sezione Pegar info: chiusa, textarea vuota
@@ -14134,7 +14118,8 @@ function editProvider(id){
   n('pv-notes').value=p.notes||'';
   n('pv-labels').value=(p.labels||[]).join(',');
   // Carica campi fiscales (potrebbero essere undefined su provider vecchi)
-  if(n('pv-legal-form'))n('pv-legal-form').value=p.legalForm||'';
+  // v10.10.15: legalForm field rimosso dal modulo Provider (informazione implicita nel Nombre Fiscal)
+  // I record esistenti con p.legalForm sono preservati ma non più editabili dall'UI
   if(n('pv-legal-name'))n('pv-legal-name').value=p.legalName||'';
   if(n('pv-vat'))n('pv-vat').value=p.vat||'';
   if(n('pv-iban'))n('pv-iban').value=p.iban||'';
@@ -14145,8 +14130,8 @@ function editProvider(id){
   if(n('pv-fiscal-country'))n('pv-fiscal-country').value=p.fiscalCountry||'';
   if(n('pv-sdi'))n('pv-sdi').value=p.sdi||'';
   if(n('pv-pec'))n('pv-pec').value=p.pec||'';
-  // Apri sezione fiscale automaticamente se ha gi\u00e0 dati
-  var hasFiscal=p.legalForm||p.vat||p.iban||p.address||p.cp||p.city||p.fiscalCountry||p.sdi||p.pec;
+  // Apri sezione fiscale automaticamente se ha gi\u00e0 dati (v10.10.15: legalName invece di legalForm)
+  var hasFiscal=p.legalName||p.vat||p.iban||p.address||p.cp||p.city||p.fiscalCountry||p.sdi||p.pec;
   if(n('pv-fiscal-collapse'))n('pv-fiscal-collapse').style.display=hasFiscal?'':'none';
   if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML=hasFiscal?'\u25B2':'\u25BC';
   n('m-provider').setAttribute('data-edit-id',p.id);
@@ -14211,8 +14196,8 @@ function saveProv(){
     payment:n('pv-payment').value.trim(),
     notes:n('pv-notes').value.trim(),
     labels:labels,
-    // Datos fiscales
-    legalForm:n('pv-legal-form')?n('pv-legal-form').value.trim():'',
+    // Datos fiscales (v10.10.15: legalForm rimosso da UI; preservato dal record originale per retrocompatibilità)
+    legalForm:editId?((providers.find(function(p){return String(p.id)===String(editId);})||{}).legalForm||''):'',
     legalName:n('pv-legal-name')?n('pv-legal-name').value.trim():'',
     vat:n('pv-vat')?n('pv-vat').value.trim():'',
     iban:n('pv-iban')?n('pv-iban').value.replace(/\s+/g,'').toUpperCase():'',
@@ -14450,26 +14435,7 @@ window.provSyncFiscalFromAnagrafica=function(){
     fiscalCountryEl.style.background='rgba(34,197,94,.06)';
     fiscalCountryEl.title='Auto-rellenado desde Pa\u00eds';
   }
-  // Auto-deduce legalForm da suffix nel nome
-  var legalFormEl=document.getElementById('pv-legal-form');
-  if(legalFormEl&&!legalFormEl.value&&coEl){
-    var co=String(coEl.value).toUpperCase();
-    var detected='';
-    if(/\bS\.?\s*A\.?\b/.test(co))detected='S.A.';
-    else if(/\bS\.?\s*L\.?\b/.test(co))detected='S.L.';
-    else if(/\bGMBH\b/.test(co))detected='GmbH';
-    else if(/\bSARL\b/.test(co))detected='SARL';
-    else if(/\bSAS\b/.test(co))detected='SAS';
-    else if(/\bLTD\b/.test(co))detected='Ltd';
-    else if(/\bS\.?R\.?L\.?\b/.test(co))detected='S.r.l.';
-    else if(/\bSPA\b/.test(co)||/\bS\.?P\.?A\.?\b/.test(co))detected='S.p.A.';
-    else if(/\bBV\b/.test(co))detected='BV';
-    else if(/\bAG\b/.test(co))detected='AG';
-    if(detected){
-      var opts=legalFormEl.options;
-      for(var i=0;i<opts.length;i++){if(opts[i].value===detected){legalFormEl.value=detected;legalFormEl.style.background='rgba(34,197,94,.06)';break;}}
-    }
-  }
+  // v10.10.15: legalForm autofill rimosso (campo Persona Jurídica eliminato)
 };
 
 window.provBindAutofillListeners=function(){
