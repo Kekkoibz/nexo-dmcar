@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10 — DMCAR GROUP CRM | 2026-05-03 | Workflow Libre→OWN: 1) Step1 ridisegnato con selettore impresa acquirente (DMCAR GROUP / INNOQUEST SOLUTIONS / IMPEX CONSULTING / MERCEDES SOLUTION via window.NX_OWN_COMPANIES) e template notifica spec: "[Empresa] ha adquirido [N] [Marca Modelo] de [Provider]. Los vehículos han sido cargados en Vista Contable"; 2) Step2b ("No tengo proforma") refactor: invece di "¿Registrar igualmente?" ora chiede "¿Solicitar la proforma al proveedor?" — branch Sì apre email pre-compilata, branch No lascia in suspenso (sempre OWN+N/D in Vista Contable, propagazione obbligatoria come da spec); 3) Nuova fn nxOwnEntryRequestProforma: pesca contatti Rol=Contabilidad da provider.staff[] + fallback su provider.email se role=Contabilidad, costruisce mailto: con subject/body template spec ("Solicitud de proforma – Marca Modelo – N° unidades"); 4) Fallback a 3 livelli: provider non in DB → mailto vuoto, provider senza Contabilidad → riusa nxProvSelectEmailRecipients per scelta manuale, contatti trovati → mailto con tutti i Contabilidad in TO; 5) Persiste s.ownerCompany su ogni stock OWN per traccia multi-impresa (usato in render Vista Contable e re-display Step1 in caso di re-entry); 6) Helper nxOpenMailtoFallback con clipboard fallback se mailto: fallisce. PRESERVA: 10.09 aggregazione lotti subasta intatta, sub-rows VW Taigo funzionanti. -->
 <!-- NEXO v10.09 — DMCAR GROUP CRM | 2026-05-03 | Stock Import: aggregazione lotti per Brand+Model+Version: 1) FIX UX: prima 14 VW Taigo identici venivano importati come 14 lotti separati invece di 1 lotto aggregato con sub-rows. Ora tryNativeBlockParse aggrega per chiave brand+model+version → 1 riga master + drilldown ▼ N per vedere singole unità; 2) Calcoli aggregati per lotto: KMS media (avgKms=true), Daños media (avgDamages=true), Buy unico se tutti uguali altrimenti media, Pickup unique values join " / ", Colors unique values join ", "; 3) Mantiene vehicles[] con ogni unità individuale (kms+color+damage+pickup+reg specifici); 4) Console log "[v10.09] Pre-parser ha aggregato N unidades en M lote(s)"; 5) Compatibile con render esistente: hasD=item.vehicles.length>0 mostra bottone "▼ N" per espandere e vedere unità singole con KMS/colors/daños di ogni veicolo; 6) Header keywords estesi a "faros|matrix" per skip header file subasta. -->
 <html lang="es">
 <head>
@@ -25980,25 +25981,62 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
 
   // STEP 1: notifica iniziale + chiede se ha proforma
+  // v10.10: Template spec ufficiale + selettore impresa acquirente (multi-impresa)
+  window.NX_OWN_COMPANIES=window.NX_OWN_COMPANIES||['DMCAR GROUP','INNOQUEST SOLUTIONS','IMPEX CONSULTING','MERCEDES SOLUTION'];
   window.nxOwnEntryShowStep1=function(group,onDone){
     var totalUnits=group.stocks.reduce(function(a,s){return a+(s.vehicles?s.vehicles.length:1);},0);
+    // v10.10: prefill impresa - se tutti gli stock hanno gi\u00e0 ownerCompany coerente, usalo
+    var presetCompany='';
+    var existingCompanies={};
+    group.stocks.forEach(function(s){if(s.ownerCompany)existingCompanies[s.ownerCompany]=true;});
+    var existingKeys=Object.keys(existingCompanies);
+    if(existingKeys.length===1)presetCompany=existingKeys[0];
+    if(!presetCompany)presetCompany=window.NX_OWN_COMPANIES[0]; // default DMCAR GROUP
+    var companyOptions=window.NX_OWN_COMPANIES.map(function(c){
+      return '<option value="'+esc(c)+'"'+(c===presetCompany?' selected':'')+'>'+esc(c)+'</option>';
+    }).join('');
     var html='<div id="m-own-entry" class="modal-bg" style="display:flex" onclick="event.target===this&&closeM(\'m-own-entry\')">'
-      +'<div class="modal" style="max-width:520px">'
+      +'<div class="modal" style="max-width:560px">'
         +'<div class="mh"><span>\u{1F4E5} Nuevos veh\u00edculos en OWN</span><button class="mx" onclick="nxOwnEntryDecline()">&times;</button></div>'
         +'<div class="mb">'
-          +'<div style="background:rgba(251,191,36,.1);border-left:4px solid #fbbf24;padding:14px;border-radius:6px;margin-bottom:14px">'
-            +'<div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:6px">Han entrado <strong style="color:#92400e">'+totalUnits+'</strong> '+esc(group.brand+' '+group.model)+'</div>'
-            +'<div style="font-size:12px;color:var(--t2)">Proveedor: <strong>'+esc(group.supplier)+'</strong></div>'
+          +'<div style="margin-bottom:14px">'
+            +'<label style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);font-weight:700;margin-bottom:6px;display:block">Empresa adquirente</label>'
+            +'<select id="own-entry-company" style="width:100%;padding:8px 10px;font-size:13px;font-weight:600;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--t1)">'
+              +companyOptions
+            +'</select>'
+            +'<div style="font-size:10px;color:var(--t4);margin-top:4px;font-style:italic">Selecciona la empresa del grupo que ha realizado la compra</div>'
           +'</div>'
-          +'<div style="font-size:13px;color:var(--t1);margin-bottom:14px;font-weight:500">\u00bfTienes la proforma del proveedor?</div>'
+          +'<div style="background:rgba(251,191,36,.1);border-left:4px solid #fbbf24;padding:14px;border-radius:6px;margin-bottom:14px">'
+            +'<div id="own-entry-msg" style="font-size:13px;line-height:1.55;color:var(--t1)">'
+              +'<strong style="color:#92400e">'+esc(presetCompany)+'</strong> ha adquirido '
+              +'<strong style="color:#92400e">'+totalUnits+'</strong> '+esc(group.brand+' '+group.model)+' '
+              +'de <strong>'+esc(group.supplier)+'</strong>. '
+              +'Los veh\u00edculos han sido cargados en <strong>Vista Contable</strong>.'
+            +'</div>'
+          +'</div>'
+          +'<div style="font-size:13px;color:var(--t1);margin-bottom:14px;font-weight:500">\u00bfTienes la proforma para cargar?</div>'
           +'<div class="fc g8" style="justify-content:flex-end">'
-            +'<button class="btn bg" onclick="nxOwnEntryAnswer(\'no\')">No, no tengo</button>'
-            +'<button class="btn bp" onclick="nxOwnEntryAnswer(\'si\')" style="background:var(--green);color:#fff;border:none">\u2713 S\u00ed, tengo</button>'
+            +'<button class="btn bg" onclick="nxOwnEntryAnswer(\'no\')">No</button>'
+            +'<button class="btn bp" onclick="nxOwnEntryAnswer(\'si\')" style="background:var(--green);color:#fff;border:none">\u2713 S\u00ed</button>'
           +'</div>'
         +'</div>'
       +'</div></div>';
     var old=document.getElementById('m-own-entry');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
+    // Live update del messaggio quando cambia l'impresa
+    var sel=document.getElementById('own-entry-company');
+    if(sel){
+      sel.addEventListener('change',function(){
+        var newCo=this.value;
+        var msg=document.getElementById('own-entry-msg');
+        if(msg){
+          msg.innerHTML='<strong style="color:#92400e">'+esc(newCo)+'</strong> ha adquirido '
+            +'<strong style="color:#92400e">'+totalUnits+'</strong> '+esc(group.brand+' '+group.model)+' '
+            +'de <strong>'+esc(group.supplier)+'</strong>. '
+            +'Los veh\u00edculos han sido cargados en <strong>Vista Contable</strong>.';
+        }
+      });
+    }
     window._nxOwnCtx={group:group,onDone:onDone};
   };
 
@@ -26033,9 +26071,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   window.nxOwnEntryStep2aChoice=function(choice){
     var ctx=window._nxOwnCtx;if(!ctx)return;
+    // v10.10: cattura ownerCompany scelto in Step1 (potrebbe essere stato gi\u00e0 chiuso il modale, fallback su ctx)
+    var coSel=document.getElementById('own-entry-company');
+    var ownerCompany=ctx.ownerCompany||(coSel?coSel.value:null)||(window.NX_OWN_COMPANIES&&window.NX_OWN_COMPANIES[0])||'DMCAR GROUP';
+    ctx.ownerCompany=ownerCompany;
     if(choice==='now'){
-      // Marca come "in attesa proforma"
-      ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;});
+      // Marca come "in attesa proforma" + ownerCompany
+      ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;s.ownerCompany=ownerCompany;});
       SS('stock',stock);
       closeM('m-own-entry-2');
       // Apri direttamente l'upload doc proveedor (Vista Contable AI parser)
@@ -26055,6 +26097,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       ctx.group.stocks.forEach(function(s){
         s._ownNotified=true;
         s._ownPendingProforma=true;  // mostra OWN+N/D
+        s.ownerCompany=ownerCompany;
       });
       SS('stock',stock);
       closeM('m-own-entry-2');
@@ -26066,17 +26109,22 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   window.nxOwnEntryShowStep2b=function(){
     var ctx=window._nxOwnCtx;if(!ctx)return;
+    // v10.10: cattura impresa scelta in step1 prima di chiudere il modale
+    var coSel=document.getElementById('own-entry-company');
+    var ownerCompany=coSel?coSel.value:(window.NX_OWN_COMPANIES&&window.NX_OWN_COMPANIES[0])||'DMCAR GROUP';
+    ctx.ownerCompany=ownerCompany;
     var html='<div id="m-own-entry-3" class="modal-bg" style="display:flex">'
-      +'<div class="modal" style="max-width:480px">'
-        +'<div class="mh"><span>\u{1F914} \u00bfRegistrar igualmente?</span><button class="mx" onclick="nxOwnEntryDecline2()">&times;</button></div>'
+      +'<div class="modal" style="max-width:500px">'
+        +'<div class="mh"><span>\u{1F4E7} \u00bfSolicitar la proforma al proveedor?</span><button class="mx" onclick="nxOwnEntryDecline2()">&times;</button></div>'
         +'<div class="mb">'
-          +'<p style="font-size:13px;color:var(--t2);margin-bottom:14px">No tienes la proforma. \u00bfQuieres registrar los veh\u00edculos en <strong>Vista Contable</strong> de todos modos? Aparecer\u00e1n con expediente <code>N/D</code> hasta que recibas la proforma.</p>'
-          +'<div style="background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:var(--t2)">'
-            +'\u26a0\ufe0f Si seleccionas "No", los veh\u00edculos quedar\u00e1n solo en Stock Vivo (OWN) sin propagaci\u00f3n a Vista Contable hasta que cargues la proforma.'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">Los veh\u00edculos quedan registrados en <strong>Vista Contable</strong> con expediente <code style="background:var(--bg2);padding:1px 5px;border-radius:3px">N/D</code>.</p>'
+          +'<p style="font-size:13px;color:var(--t2);margin-bottom:14px">\u00bfQuieres <strong>solicitar la proforma</strong> directamente al proveedor por email?</p>'
+          +'<div style="background:rgba(59,130,246,.08);border-left:3px solid #3b82f6;padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:var(--t2);line-height:1.5">'
+            +'\u{1F4A1} Si seleccionas <strong>S\u00ed</strong>, NEXO abrir\u00e1 un email pre-rellenado dirigido al contacto con rol <strong>Contabilidad</strong> de <strong>'+esc(ctx.group.supplier)+'</strong>.'
           +'</div>'
           +'<div class="fc g8" style="justify-content:flex-end">'
-            +'<button class="btn bg" onclick="nxOwnEntryStep2bChoice(\'no\')">No, solo Stock</button>'
-            +'<button class="btn bp" onclick="nxOwnEntryStep2bChoice(\'si\')" style="background:var(--acc);color:#fff;border:none">\u2713 S\u00ed, registrar con N/D</button>'
+            +'<button class="btn bg" onclick="nxOwnEntryStep2bChoice(\'no\')">No, dejar en suspenso</button>'
+            +'<button class="btn bp" onclick="nxOwnEntryStep2bChoice(\'si\')" style="background:var(--acc);color:#fff;border:none">\u2709\ufe0f S\u00ed, solicitar al proveedor</button>'
           +'</div>'
         +'</div>'
       +'</div></div>';
@@ -26087,25 +26135,26 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   window.nxOwnEntryStep2bChoice=function(choice){
     var ctx=window._nxOwnCtx;if(!ctx)return;
+    var ownerCompany=ctx.ownerCompany||(window.NX_OWN_COMPANIES&&window.NX_OWN_COMPANIES[0])||'DMCAR GROUP';
+    // v10.10: in entrambi i casi, registra OWN+N/D in Vista Contable (spec: la propagazione \u00e8 sempre at change of state)
+    ctx.group.stocks.forEach(function(s){
+      s._ownNotified=true;
+      s._ownPendingProforma=true;
+      s.ownerCompany=ownerCompany;
+    });
+    SS('stock',stock);
+    closeM('m-own-entry-3');
+    if(typeof numbersRenderVista==='function')numbersRenderVista();
     if(choice==='si'){
-      ctx.group.stocks.forEach(function(s){
-        s._ownNotified=true;
-        s._ownPendingProforma=true;  // visibile in Vista Contable con N/D
-      });
-      SS('stock',stock);
-      closeM('m-own-entry-3');
-      if(typeof numbersRenderVista==='function')numbersRenderVista();
-      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos en Vista Contable con N/D');
+      // Apri email precompilata al Contabile del provider
+      if(typeof window.nxOwnEntryRequestProforma==='function'){
+        window.nxOwnEntryRequestProforma(ctx.group,ownerCompany);
+      }else{
+        if(typeof showToast==='function')showToast('\u26a0\ufe0f Funci\u00f3n de email no disponible',4000);
+      }
     }else{
-      // Solo Stock: marca come notificato per non chiedere di nuovo MA NON propaga
-      ctx.group.stocks.forEach(function(s){
-        s._ownNotified=true;
-        s._ownPendingProforma=false;  // NON in Vista Contable
-      });
-      SS('stock',stock);
-      closeM('m-own-entry-3');
-      if(typeof numbersRenderVista==='function')numbersRenderVista();
-      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos solo en Stock Vivo (OWN)');
+      // Lascia in sospeso
+      if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos en Vista Contable con N/D \u2014 en suspenso');
     }
     if(ctx.onDone)ctx.onDone();
   };
@@ -26124,6 +26173,113 @@ document.querySelectorAll('.ovl').forEach(function(el){
     SS('stock',stock);
     closeM('m-own-entry-2');closeM('m-own-entry-3');
     if(ctx.onDone)ctx.onDone();
+  };
+
+  // ========================================================================
+  // v10.10: nxOwnEntryRequestProforma
+  // Apre email pre-compilata al contatto Rol=Contabilidad del provider
+  // (template spec: "Solicitud de proforma \u2013 [Marca Modelo] \u2013 [N\u00b0 unidades]")
+  // ========================================================================
+  window.nxOwnEntryRequestProforma=function(group,ownerCompany){
+    if(!group||!group.stocks||!group.stocks.length){
+      if(typeof showToast==='function')showToast('\u26a0\ufe0f No hay datos del grupo para solicitar proforma');
+      return;
+    }
+    // 1. Trova il provider in providers[] tramite supplier name (canonical match)
+    var supplierName=group.supplier||'';
+    var providersArr=window.providers||[];
+    var provider=null;
+    var supplierNorm=(typeof nxNormalizeSupplierName==='function')?nxNormalizeSupplierName(supplierName):supplierName.toLowerCase().trim();
+    for(var i=0;i<providersArr.length;i++){
+      var p=providersArr[i];
+      var pName=p.company||p.name||'';
+      var pNorm=(typeof nxNormalizeSupplierName==='function')?nxNormalizeSupplierName(pName):pName.toLowerCase().trim();
+      if(pNorm===supplierNorm){provider=p;break;}
+    }
+    // 2. Calcola unit\u00e0 totali e info veicoli
+    var totalUnits=group.stocks.reduce(function(a,s){return a+(s.vehicles?s.vehicles.length:1);},0);
+    var modelStr=(group.brand||'')+' '+(group.model||'');
+    var version=group.stocks[0]&&group.stocks[0].version?group.stocks[0].version:'';
+    // 3. Costruisci subject e body (template spec)
+    var subject='Solicitud de proforma \u2013 '+modelStr+' \u2013 '+totalUnits+' unidad'+(totalUnits!==1?'es':'');
+    var bodyLines=[
+      'Estimados,',
+      '',
+      'Solicitamos el env\u00edo de la proforma relativa a la adquisici\u00f3n de',
+      totalUnits+' unidad'+(totalUnits!==1?'es':'')+' '+modelStr+(version?' '+version:'')+' por parte de '+ownerCompany+'.',
+      '',
+      'Quedamos a la espera de su gentil respuesta.',
+      '',
+      'Saludos cordiales,',
+      ownerCompany
+    ];
+    var body=bodyLines.join('\r\n');
+    // 4. Cerca contatti Rol=Contabilidad nel provider
+    var contabRecipients=[];
+    if(provider){
+      // Check email principale del provider se ruolo \u00e8 Contabilidad
+      if(provider.email&&(provider.role||'').toLowerCase()==='contabilidad'){
+        contabRecipients.push({name:provider.name||provider.company||'Contacto principal',email:provider.email,role:'Contabilidad'});
+      }
+      // Check staff con ruolo Contabilidad
+      (provider.staff||[]).forEach(function(s){
+        if(s.email&&(s.role||'').toLowerCase()==='contabilidad'){
+          contabRecipients.push({name:s.name||'(sin nombre)',email:s.email,role:'Contabilidad'});
+        }
+      });
+    }
+    // 5. Branch in base ai contatti trovati
+    if(!provider){
+      // Provider non trovato in DB: fallback prompt
+      if(confirm('Proveedor "'+supplierName+'" no encontrado en la lista de Providers.\n\n\u00bfQuieres abrir tu cliente de email con el mensaje pre-rellenado para que lo env\u00edes manualmente?')){
+        nxOpenMailtoFallback('',subject,body);
+      }
+      return;
+    }
+    if(contabRecipients.length===0){
+      // Provider trovato ma senza contatti Contabilidad
+      var msg='El proveedor "'+(provider.company||provider.name)+'" no tiene contactos con rol "Contabilidad".\n\n';
+      msg+='\u00bfQuieres abrir el selector de destinatarios para elegir manualmente?';
+      if(confirm(msg)){
+        if(typeof window.nxProvSelectEmailRecipients==='function'){
+          window.nxProvSelectEmailRecipients(provider,function(emails){
+            if(emails&&emails.length){
+              nxOpenMailtoFallback(emails.join(','),subject,body);
+            }
+          });
+        }else{
+          // Fallback hard: mailto vuoto
+          nxOpenMailtoFallback('',subject,body);
+        }
+      }
+      return;
+    }
+    // 6. Caso ottimale: apri mailto con tutti i contatti Contabilidad in TO
+    var toAddresses=contabRecipients.map(function(c){return c.email;}).join(',');
+    nxOpenMailtoFallback(toAddresses,subject,body);
+    if(typeof showToast==='function'){
+      var who=contabRecipients.map(function(c){return c.name;}).join(', ');
+      showToast('\u2709\ufe0f Email pre-rellenado para '+who,5000);
+    }
+  };
+
+  // Helper: apre mailto: con encoding corretto
+  window.nxOpenMailtoFallback=function(to,subject,body){
+    var url='mailto:'+encodeURIComponent(to||'')
+      +'?subject='+encodeURIComponent(subject||'')
+      +'&body='+encodeURIComponent(body||'');
+    // Limite mailto: ~2000 char in alcuni client; il body \u00e8 corto, dovrebbe stare dentro
+    try{
+      window.location.href=url;
+    }catch(e){
+      console.error('[nxOpenMailtoFallback] Error opening mailto:',e);
+      // Fallback: copia negli appunti
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText('To: '+to+'\nSubject: '+subject+'\n\n'+body).then(function(){
+          if(typeof showToast==='function')showToast('\u2713 Email copiado al portapapeles',4000);
+        });
+      }
+    }
   };
 
   // Auto-archive con dati AI
