@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.27 — DMCAR GROUP CRM | 2026-05-03 | Integrazione re-import overwrite con dialog v10.07 esistente:
+1) Bug osservato (utente Foto): re-import dello stesso PDF mostrava il dialog v10.07 "Reporte de importación" pre-esistente con 3 bottoni (Cancelar / Importar todo / Saltar duplicados) MA NESSUNO faceva l'OVERWRITE intelligente di v10.10.26. Il dialog v10.07 intercetta i VIN duplicati PRIMA di chiamare proceedToImport+finishImport, quindi nxApplyReimportOverwrite non veniva mai eseguito sui duplicati. Risultato: o l'utente sceglieva "Saltar" (i dati esistenti restano vuoti senza update) o "Importar todo" (creando lotti redundanti).
+2) FIX: aggiunto QUARTO bottone "🔄 Actualizar datos" come default consigliato (verde, posizione primary, vs "Saltar duplicados" ora secondary, "Importar todo" ora rosso/sconsigliato). Action='overwrite' nel callback:
+   (a) Costruisce dupOnly array con SOLO i sub-vehicles duplicati (raggruppati per lotto sorgente)
+   (b) Chiama window.nxApplyReimportOverwrite(dupOnly, stock) per applicare overwrite intelligente sui lotti esistenti (preserva status/ownerCompany/_ownNotified/accDocs, sovrascrive KMS/REG/Daños/Equip)
+   (c) SS('stock',stock) per persistere
+   (d) Rimuove i duplicati da vehicles[] e procede con proceedToImport solo per i RIMANENTI nuovi
+   (e) Se vehicles[] vuoto dopo cleanup → toast "Datos actualizados, no hay nuevos vehículos que importar" e termina senza chiamare proceedToImport
+3) UX: legenda dialog aggiornata con descrizione chiara di ogni opzione. "Actualizar datos" marcato come "(recomendado)". "Importar todo" marcato come "(⚠️ NO recomendado)".
+4) Compatibilità: skipDups e all continuano a funzionare come prima per backward compat.
+5) PRESERVA: tutto v10.10.26 (re-import functions a global scope), v10.10.25 (VIN dialog), v10.10.24 (review dati), v10.10.23 (workflow OWN). -->
 <!-- NEXO v10.10.26 — DMCAR GROUP CRM | 2026-05-03 | Re-import detection + OVERWRITE intelligente:
 1) Spec utente: caso d'uso comune nel settore auto è importare prima la PROFORMA (dati parziali), poi la FACTURA (dati completi). Senza re-import detection si creavano duplicati nel database. Spec scelta utente:
    - Strategia: OVERWRITE intelligente (campi commerciali sovrascritti, workflow flags preservati)
@@ -10817,12 +10828,60 @@ function iHandleResp(resp,manualSup){
           n('i-btn').disabled=false;
           return;
         }
-        if(action==='skipDups'){
-          // Filtra fuori i veicoli con VIN duplicati
+        if(action==='overwrite'){
+          // v10.10.27: OVERWRITE INTELLIGENTE dei VIN duplicati
+          // Esegui nxApplyReimportOverwrite SOLO sui veicoli duplicati (filtrali) → aggiorna stock esistente
+          // Poi rimuovi i duplicati da vehicles[] e procedi con import dei rimanenti (i nuovi)
           var dupSet={};report.duplicateVins.forEach(function(d){dupSet[d.vin]=true;});
+          // Costruisci array dei SOLI duplicati per passarli al overwrite
+          var dupOnly=[];
+          vehicles.forEach(function(v){
+            if(v.vehicles&&v.vehicles.length){
+              var dupSubs=v.vehicles.filter(function(u){return dupSet[String(u.vin||'').toUpperCase().trim()];});
+              if(dupSubs.length>0){
+                dupOnly.push({brand:v.brand,model:v.model,version:v.version,supplier:v.supplier,vehicles:dupSubs});
+              }
+            }
+          });
+          // Esegui overwrite sui duplicati
+          if(typeof window.nxApplyReimportOverwrite==='function'){
+            var ovrStats=window.nxApplyReimportOverwrite(dupOnly,stock);
+            console.log('[v10.10.27] Overwrite via dialog: '+ovrStats.matched+' updated, '+ovrStats.skipped+' unchanged');
+            if(ovrStats.matched>0||ovrStats.skipped>0){
+              SS('stock',stock);
+            }
+          }else{
+            console.warn('[v10.10.27] nxApplyReimportOverwrite not available, falling back to skipDups behavior');
+          }
+          // Rimuovi i duplicati da vehicles e procedi con i nuovi (se ce ne sono)
           vehicles.forEach(function(v){
             if(v.vehicles&&v.vehicles.length){
               v.vehicles=v.vehicles.filter(function(u){return !dupSet[String(u.vin||'').toUpperCase().trim()];});
+              if(v.units)v.units=v.vehicles.length;
+            }
+          });
+          vehicles=vehicles.filter(function(v){return !v.vehicles||v.vehicles.length>0||(!v.vin);});
+          // Se non ci sono più veicoli da importare, mostra toast e termina
+          if(vehicles.length===0){
+            window._currentImportBatch=null;
+            if(typeof showToast==='function')showToast('\u2713 Datos actualizados, no hay nuevos veh\u00edculos que importar',5000);
+            n('i-status').textContent='Datos actualizados (sin nuevos)';
+            n('i-btn').disabled=false;
+            // Refresh UI
+            if(typeof fStk==='function')fStk();
+            if(typeof renderDash==='function')renderDash();
+            // Chiudi modal Import dopo breve delay
+            setTimeout(function(){closeM('m-import');},1500);
+            return;
+          }
+          // Procedi normalmente con i veicoli rimanenti (sono i "nuovi")
+        }
+        if(action==='skipDups'){
+          // Filtra fuori i veicoli con VIN duplicati
+          var dupSet2={};report.duplicateVins.forEach(function(d){dupSet2[d.vin]=true;});
+          vehicles.forEach(function(v){
+            if(v.vehicles&&v.vehicles.length){
+              v.vehicles=v.vehicles.filter(function(u){return !dupSet2[String(u.vin||'').toUpperCase().trim()];});
               if(v.units)v.units=v.vehicles.length;
             }
           });
@@ -10889,14 +10948,17 @@ window.stkShowImportReport=function(report,callback){
   // Actions
   html+='<div style="background:rgba(59,130,246,.06);border-left:3px solid var(--acc);padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:var(--t2)">'
     +'<strong>\u00bfQu\u00e9 hacer?</strong><br>'
-    +'\u2022 <strong>Saltar duplicados</strong>: importa solo los '+report.ok+' veh\u00edculos nuevos<br>'
-    +'\u2022 <strong>Importar todo</strong>: incluye VIN duplicados (puede crear lotes redundantes)<br>'
+    +(report.duplicateVins.length>0?'\u2022 <strong>\u{1F504} Actualizar datos</strong>: <em>(recomendado)</em> sobrescribe los datos comerciales (KMS, da\u00f1os, equipamiento\u2026) de los veh\u00edculos duplicados <strong>preservando</strong> el estado del workflow (OWN, propietario, notif). Sin crear duplicados.<br>':'')
+    +'\u2022 <strong>Saltar duplicados</strong>: importa solo los '+report.ok+' veh\u00edculos nuevos, deja los duplicados intactos<br>'
+    +'\u2022 <strong>Importar todo</strong>: incluye VIN duplicados <span style="color:#dc2626">(\u26a0\ufe0f crea lotes redundantes \u2014 NO recomendado)</span><br>'
     +'\u2022 <strong>Cancelar</strong>: no importa nada'
   +'</div>';
-  html+='<div class="fc g8" style="justify-content:flex-end">'
-    +'<button class="btn bg" onclick="stkImportReportClose(\'cancel\')">Cancelar</button>'
-    +(report.duplicateVins.length>0?'<button class="btn bs" onclick="stkImportReportClose(\'all\')">Importar todo</button>':'')
-    +'<button class="btn bp" onclick="stkImportReportClose(\''+(report.duplicateVins.length>0?'skipDups':'all')+'\')" style="background:var(--green);color:#fff;border:none">\u2713 '+(report.duplicateVins.length>0?'Saltar duplicados':'Importar')+'</button>'
+  html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
+    +'<button class="btn bg" onclick="stkImportReportClose(\'cancel\')" style="font-size:12px">Cancelar</button>'
+    +(report.duplicateVins.length>0?'<button class="btn bs" onclick="stkImportReportClose(\'all\')" style="font-size:12px;color:#dc2626" title="Crea lotes redundantes \u2014 NO recomendado">Importar todo</button>':'')
+    +(report.duplicateVins.length>0?'<button class="btn bg" onclick="stkImportReportClose(\'skipDups\')" style="font-size:12px">\u23ed\ufe0f Saltar duplicados</button>':'')
+    // v10.10.27: bottone "Actualizar datos" — fa OVERWRITE intelligente
+    +(report.duplicateVins.length>0?'<button class="btn bp" onclick="stkImportReportClose(\'overwrite\')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;font-size:13px" title="Recomendado">\u{1F504} Actualizar datos</button>':'<button class="btn bp" onclick="stkImportReportClose(\'all\')" style="background:var(--green);color:#fff;border:none;font-size:13px">\u2713 Importar</button>')
   +'</div>';
   html+='</div></div></div>';
   var old=document.getElementById('m-import-report');if(old)old.parentNode.removeChild(old);
