@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.03 — DMCAR GROUP CRM | 2026-05-03 | Provider Multi-Contatto + Auto-fill Datos Fiscales: 1) Estensione campo Rol con valori Comercial/Contabilidad/Logistica + Director/Stock manager/Otro (Comercial gestione vendita, Contabilidad emissione PF/FT, Logistica spedizioni); 2) Sezione "Staff de la empresa" multi-contatto 1→N (un'impresa può avere N contatti con ruoli diversi); ogni contatto ha name/email/role/phone; UI con add/remove + collapse + counter; persistenza in provider.staff[]; 3) Auto-fill Datos Fiscales da campi anagrafica: blur su pv-co (Empresa) → riempie pv-legal-name (Razón Social) se vuoto; blur su pv-country (País) → riempie pv-fiscal-country; auto-deduce Persona Jurídica da suffix nel nome (S.A./S.L./GmbH/SARL/Ltd/SRL/SpA/BV/AG); visual hint sfondo verde sui campi auto-rellenati; 4) Email recipient selector (nxProvSelectEmailRecipients): dato un provider mostra modal con tutti i contatti raggruppati per ruolo (Comercial/Contabilidad/Logistica), checkbox "Todo el staff" + checkbox singoli, badge PRINCIPAL su contatto primario, callback restituisce emails[] + names[] selezionati; pronto per uso da Vista Contable / Stock Vivo. -->
+<!-- NEXO v10.04 — DMCAR GROUP CRM | 2026-05-03 | Provider parser fix + Staff paste: 1) FIX BUG paese: parser ora rileva paese da KEYWORD nel testo (España, Italia, Alemania ecc) PRIMA che da prefisso telefonico/TLD - "España" nel testo → País=España (era erroneamente Alemania); 2) Auto-prefisso telefonico: nxAddPhonePrefix mappa País→prefisso (+34/+39/+33/+49/+44/+351/+48/+41/+43...); telefono "937208953" + país="España" → "+34 937208953"; pulisce zero iniziali; 3) Estrazione Datos Fiscales dal testo: VAT/CIF/NIF (regex multi-formato A60344140/B12345678/IT12345678901), IBAN, CP+Ciudad, Provincia, Dirección (Calle/Via/Strasse/Avenue), URL Web; auto-fill di pv-vat/pv-iban/pv-address/pv-cp/pv-city/pv-province/pv-legal-name/pv-fiscal-country; auto-apre sezione Datos fiscales se trova qualcosa; 4) Pegar info nel section Staff: textarea + button "Procesar y añadir contacto" - parsa firma email/biglietto e crea contatto staff con name/email/phone/role + auto-prefix tel; mapping ruolo da keyword (contabil→Contabilidad, log→Logistica, sales→Comercial, manager→Director); 5) Fix typo: "A\u00f1adir" letterale in HTML statico sostituito con HTML entity &ntilde; per rendering corretto. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2500,9 +2500,16 @@ En que te puedo ayudar hoy?</div></div>
         <span id="pv-staff-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
       </div>
       <div id="pv-staff-collapse" style="display:none;padding:0 12px 12px 12px">
-        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">A\u00f1ade contactos adicionales con sus roles. Cada contacto puede tener su propio email, tel\u00e9fono y rol espec\u00edfico (Comercial, Contabilidad, Log\u00edstica). Al enviar emails podr\u00e1s elegir a qui\u00e9n notificar.</div>
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">A&ntilde;ade contactos adicionales con sus roles. Cada contacto puede tener su propio email, tel&eacute;fono y rol espec&iacute;fico (Comercial, Contabilidad, Log&iacute;stica). Al enviar emails podr&aacute;s elegir a qui&eacute;n notificar.</div>
+        <!-- v10.04: Pegar info per staff -->
+        <div style="border:1px dashed var(--border);border-radius:6px;background:var(--bg1);padding:8px;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">&#128203; Pegar info contacto staff <span style="font-weight:400;color:var(--t3);font-size:10px">(firma email, tarjeta...)</span></div>
+          <textarea id="pv-staff-paste" rows="3" placeholder="Ej: Pedro Garc&iacute;a&#10;Contabilidad - Superwagen&#10;pedro.garcia@superwagen.es&#10;+34 600 123 456" style="font-size:11px;font-family:monospace;width:100%;padding:6px"></textarea>
+          <button type="button" class="btn bs" onclick="provExtractStaffFromPaste()" style="width:100%;font-size:11px;margin-top:6px">&#9889; Procesar y a&ntilde;adir contacto</button>
+          <div id="pv-staff-paste-status" style="font-size:10px;margin-top:4px;min-height:14px"></div>
+        </div>
         <div id="pv-staff-list" style="margin-bottom:10px"></div>
-        <button type="button" class="btn bs" onclick="provAddStaffContact()" style="width:100%;font-size:11px">+ A\u00f1adir contacto staff</button>
+        <button type="button" class="btn bs" onclick="provAddStaffContact()" style="width:100%;font-size:11px">+ A&ntilde;adir contacto staff (manual)</button>
       </div>
     </div>
     <!-- DATOS FISCALES (collassabile, chiusa di default) -->
@@ -13455,6 +13462,52 @@ window.provLoadStaffToUI=function(staffArr){
   provUpdateStaffCount();
 };
 
+// v10.04: Pegar info su staff - parsa testo libero e crea contatto
+window.provExtractStaffFromPaste=function(){
+  var raw=(document.getElementById('pv-staff-paste')||{}).value||'';
+  raw=String(raw).trim();
+  var statusEl=document.getElementById('pv-staff-paste-status');
+  if(!raw){
+    if(statusEl){statusEl.textContent='Pega primero el texto.';statusEl.style.color='var(--red)';}
+    return;
+  }
+  // Riusa provParseText per parsing
+  var parsed=provParseText(raw);
+  if(!parsed.name&&!parsed.email&&!parsed.phone){
+    if(statusEl){statusEl.textContent='No se han podido extraer datos. Comprueba el texto.';statusEl.style.color='var(--red)';}
+    return;
+  }
+  // Auto-prefisso telefono se pa\u00eds c'\u00e8
+  var phone=parsed.phone||'';
+  if(phone){
+    // usa pa\u00eds del provider corrente se non rilevato
+    var providerCountry=parsed.country||(document.getElementById('pv-country')||{}).value||'';
+    if(providerCountry&&!/^\+/.test(phone)&&!/^00/.test(phone)){
+      phone=nxAddPhonePrefix(phone,providerCountry);
+    }
+  }
+  // Mappa ruolo testo → opzioni select
+  var role=parsed.role||'';
+  var t=String(role).toLowerCase();
+  var roleMapped='Comercial';
+  if(/contabil|amministrazion|administraci|account/i.test(raw)||/contabil/.test(t))roleMapped='Contabilidad';
+  else if(/log\u00edstic|logistic|spediz|shipping/i.test(raw)||/log/.test(t))roleMapped='Logistica';
+  else if(/director|gerente|manager|jefe|head|chief/i.test(t))roleMapped='Director';
+  else if(/comercial|sales|venta|remarketing/i.test(t))roleMapped='Comercial';
+  else if(role)roleMapped='Otro';
+  provAddStaffContact({
+    name:parsed.name||'',
+    email:parsed.email||'',
+    role:roleMapped,
+    phone:phone
+  });
+  // Pulisci textarea
+  document.getElementById('pv-staff-paste').value='';
+  var fields=[parsed.name?'nombre':null,parsed.email?'email':null,phone?'tel\u00e9fono':null,role?'rol':null].filter(Boolean);
+  if(statusEl){statusEl.textContent='\u2713 Contacto a\u00f1adido ('+fields.join(', ')+')';statusEl.style.color='var(--green)';}
+  setTimeout(function(){if(statusEl)statusEl.textContent='';},3500);
+};
+
 // v10.03: Auto-fill datos fiscales da campi anagrafica
 window.provSyncFiscalFromAnagrafica=function(){
   var legalNameEl=document.getElementById('pv-legal-name');
@@ -13783,13 +13836,53 @@ var PROV_PHONE_TO_COUNTRY={
   '386':'Eslovenia','385':'Croacia','421':'Eslovaquia','30':'Grecia',
   '90':'Turqu\u00eda'
 };
-// Mappa TLD email -> Pa\u00edse
+// v10.04: Mappa inversa País -> prefisso (per auto-prepend telefono senza prefisso)
+var PROV_COUNTRY_TO_PHONE={
+  'espa\u00f1a':'+34','spain':'+34','italia':'+39','italy':'+39','alemania':'+49','germany':'+49','deutschland':'+49',
+  'francia':'+33','france':'+33','b\u00e9lgica':'+32','belgium':'+32','belgique':'+32',
+  'pa\u00edses bajos':'+31','holanda':'+31','netherlands':'+31','portugal':'+351',
+  'rep. checa':'+420','rep\u00fablica checa':'+420','czechia':'+420','polonia':'+48','poland':'+48',
+  'rumania':'+40','romania':'+40','bulgaria':'+359','hungr\u00eda':'+36','hungary':'+36',
+  'austria':'+43','suiza':'+41','switzerland':'+41','reino unido':'+44','uk':'+44','united kingdom':'+44',
+  'irlanda':'+353','ireland':'+353','dinamarca':'+45','denmark':'+45',
+  'suecia':'+46','sweden':'+46','noruega':'+47','norway':'+47','finlandia':'+358','finland':'+358',
+  'eslovenia':'+386','croacia':'+385','eslovaquia':'+421','grecia':'+30','greece':'+30','turqu\u00eda':'+90','turkey':'+90'
+};
+// v10.04: Keyword paese da rilevare nel testo libero
+var PROV_COUNTRY_KEYWORDS=[
+  ['espa\u00f1a','Espa\u00f1a'],['spain','Espa\u00f1a'],['italia','Italia'],['italy','Italia'],
+  ['alemania','Alemania'],['germany','Alemania'],['deutschland','Alemania'],
+  ['francia','Francia'],['france','Francia'],['portugal','Portugal'],
+  ['b\u00e9lgica','B\u00e9lgica'],['belgique','B\u00e9lgica'],['belgium','B\u00e9lgica'],
+  ['pa\u00edses bajos','Pa\u00edses Bajos'],['holanda','Pa\u00edses Bajos'],['netherlands','Pa\u00edses Bajos'],
+  ['austria','Austria'],['suiza','Suiza'],['switzerland','Suiza'],
+  ['reino unido','Reino Unido'],['united kingdom','Reino Unido'],
+  ['polonia','Polonia'],['poland','Polonia'],['rumania','Rumania'],['romania','Rumania'],
+  ['bulgaria','Bulgaria'],['hungr\u00eda','Hungr\u00eda'],['hungary','Hungr\u00eda'],
+  ['rep\u00fablica checa','Rep. Checa'],['rep. checa','Rep. Checa'],['czech republic','Rep. Checa']
+];
+// v10.04: Mappa TLD email -> País
 var PROV_TLD_TO_COUNTRY={
   'es':'Espa\u00f1a','it':'Italia','de':'Alemania','fr':'Francia',
   'be':'B\u00e9lgica','nl':'Pa\u00edses Bajos','pt':'Portugal','cz':'Rep. Checa',
   'pl':'Polonia','ro':'Rumania','bg':'Bulgaria','hu':'Hungr\u00eda',
   'at':'Austria','ch':'Suiza','uk':'Reino Unido','co.uk':'Reino Unido',
   'dk':'Dinamarca','se':'Suecia','no':'Noruega','fi':'Finlandia'
+};
+
+// v10.04: Helper - aggiunge prefisso internazionale a numero senza
+window.nxAddPhonePrefix=function(phone,country){
+  if(!phone)return phone;
+  var clean=String(phone).trim();
+  // Se ha già un + o 00, lascia così
+  if(/^\+/.test(clean)||/^00/.test(clean))return clean;
+  // Cerca prefisso da paese
+  var k=String(country||'').toLowerCase().trim();
+  var prefix=PROV_COUNTRY_TO_PHONE[k];
+  if(!prefix)return clean;
+  // Pulisce eventuali zero iniziali (formato locale)
+  var stripped=clean.replace(/^0+/,'');
+  return prefix+' '+stripped;
 };
 
 function provExtractFromPasteInline(){
@@ -13805,17 +13898,47 @@ function provExtractFromPasteInline(){
   if(parsed.company)n('pv-co').value=parsed.company;
   if(parsed.country)n('pv-country').value=parsed.country;
   if(parsed.role)n('pv-role').value=parsed.role;
-  if(parsed.phone)n('pv-phone').value=parsed.phone;
+  // v10.04: auto-prefisso telefono se mancante
+  if(parsed.phone){
+    var finalPhone=parsed.phone;
+    // Se il phone non ha + né 00 e c'è un país riconosciuto → prepend prefisso
+    if(parsed.country&&!/^\+/.test(finalPhone)&&!/^00/.test(finalPhone)){
+      finalPhone=nxAddPhonePrefix(finalPhone,parsed.country);
+    }
+    n('pv-phone').value=finalPhone;
+  }
   if(parsed.email)n('pv-email').value=parsed.email;
   if(parsed.providerType)n('pv-ptype').value=parsed.providerType;
+  // v10.04: auto-fill datos fiscales dai dati estratti dal testo
+  if(parsed.vat&&n('pv-vat'))n('pv-vat').value=parsed.vat;
+  if(parsed.iban&&n('pv-iban'))n('pv-iban').value=parsed.iban;
+  if(parsed.address&&n('pv-address'))n('pv-address').value=parsed.address;
+  if(parsed.cp&&n('pv-cp'))n('pv-cp').value=parsed.cp;
+  if(parsed.city&&n('pv-city'))n('pv-city').value=parsed.city;
+  if(parsed.province&&n('pv-province'))n('pv-province').value=parsed.province;
+  // Auto-fill razón social + país fiscal se vuoti
+  if(parsed.company&&n('pv-legal-name')&&!n('pv-legal-name').value)n('pv-legal-name').value=parsed.company;
+  if(parsed.country&&n('pv-fiscal-country')&&!n('pv-fiscal-country').value)n('pv-fiscal-country').value=parsed.country;
+  // Trigger anche autofill (per dedurre persona jurídica)
+  if(typeof provSyncFiscalFromAnagrafica==='function')provSyncFiscalFromAnagrafica();
+  // Auto-apri datos fiscales se abbiamo trovato qualcosa
+  var hasFiscalParsed=parsed.vat||parsed.iban||parsed.address||parsed.cp||parsed.city;
+  if(hasFiscalParsed&&n('pv-fiscal-collapse')&&n('pv-fiscal-collapse').style.display==='none'){
+    n('pv-fiscal-collapse').style.display='block';
+    if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML='\u25B2';
+  }
   // Notas: append se gi\u00e0 presente, altrimenti scrivi
-  if(parsed.notes){
+  var notesExtras=[];
+  if(parsed.notes)notesExtras.push(parsed.notes);
+  if(parsed.web)notesExtras.push('Web: '+parsed.web);
+  if(notesExtras.length){
     var current=(n('pv-notes').value||'').trim();
-    n('pv-notes').value=current?current+'\n'+parsed.notes:parsed.notes;
+    var addNotes=notesExtras.join('\n');
+    n('pv-notes').value=current?current+'\n'+addNotes:addNotes;
   }
   // Conta quanti campi sono stati riempiti per feedback
-  var filled=['name','company','country','phone','email','providerType'].filter(function(k){return parsed[k];}).length;
-  n('pp-status-msg').textContent='\u2713 '+filled+' campos rellenados. Verifica y guarda.';
+  var filled=['name','company','country','phone','email','providerType','vat','iban','address','cp','city','province'].filter(function(k){return parsed[k];}).length;
+  n('pp-status-msg').textContent='\u2713 '+filled+' campos rellenados (incluyendo datos fiscales). Verifica y guarda.';
   n('pp-status-msg').style.color='var(--green)';
   // Pulisci textarea per il prossimo uso
   n('pp-text').value='';
@@ -13885,12 +14008,20 @@ function provParseText(raw){
     }
   }
 
-  // 3. PAESE (prima da prefisso telefonico, fallback da TLD email)
-  if(out.phone){
+  // 3. PAESE - Priorità: (a) keyword nel testo, (b) prefisso telefono, (c) TLD email
+  // v10.04: prima cerca keyword esplicita nel testo (più affidabile per formato firma)
+  var rawLower=raw.toLowerCase();
+  for(var pk=0;pk<PROV_COUNTRY_KEYWORDS.length;pk++){
+    var entry=PROV_COUNTRY_KEYWORDS[pk];
+    // Match con word boundary per evitare falsi positivi (es. "italo" → Italia)
+    var rx=new RegExp('\\b'+entry[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');
+    if(rx.test(rawLower)){out.country=entry[1];break;}
+  }
+  // Fallback su prefisso telefonico (solo se ancora vuoto)
+  if(!out.country&&out.phone){
     var cleanPhone=out.phone.replace(/[^0-9+]/g,'');
     if(cleanPhone.charAt(0)==='+')cleanPhone=cleanPhone.slice(1);
     else if(cleanPhone.indexOf('00')===0)cleanPhone=cleanPhone.slice(2);
-    // Prova prefissi 3, 2, 1 cifre
     for(var len=3;len>=1;len--){
       var pref=cleanPhone.slice(0,len);
       if(PROV_PHONE_TO_COUNTRY[pref]){out.country=PROV_PHONE_TO_COUNTRY[pref];break;}
@@ -14018,6 +14149,58 @@ function provParseText(raw){
   if(notesParts.length){
     out.notes=notesParts.slice(0,3).join(' \u2022 ');
   }
+
+  // v10.04: 8. ESTRAZIONE DATOS FISCALES dal testo
+  // CIF/NIF/VAT - regex copre formati ES (CIF: A12345678), IT (P.IVA 12345678901), DE (DE123456789), generico
+  var vatMatch=raw.match(/(?:CIF|NIF|VAT|P\.?\s*IVA|TVA|UID|VAT-ID|C\.F\.)\s*[:\-]?\s*([A-Z]{0,2}\s*[A-Z0-9][A-Z0-9\s\-]{6,15})/i);
+  if(vatMatch){
+    out.vat=String(vatMatch[1]).replace(/\s+/g,'').toUpperCase();
+  }else{
+    // Fallback: pattern che inizia con lettera ES (es. A60344140) o con ES/IT/DE prefix
+    var vatFallback=raw.match(/\b([A-Z]\d{8}|[A-Z]{2}\d{8,11}|\d{11})\b/);
+    if(vatFallback)out.vat=vatFallback[1];
+  }
+  // IBAN
+  var ibanMatch=raw.match(/\b([A-Z]{2}\d{2}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{0,16})\b/);
+  if(ibanMatch)out.iban=ibanMatch[1].replace(/\s+/g,'').toUpperCase();
+  // CP + Ciudad - es. "08205 Sabadell" o "(08205)" o "28001 Madrid"
+  // Match CP 4-5 cifre seguito o preceduto da nome città
+  var cpMatch=raw.match(/(?:\()?\b(\d{4,5})\b(?:\))?\s*([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)*)/);
+  if(!cpMatch){
+    // Pattern alternativo: "Madrid (28001)" con CP tra parentesi
+    cpMatch=raw.match(/([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)*)\s*\(\s*(\d{4,5})\s*\)/);
+    if(cpMatch){var t=cpMatch[1];cpMatch[1]=cpMatch[2];cpMatch[2]=t;}
+  }
+  if(cpMatch){
+    out.cp=cpMatch[1];
+    // città: scarta keyword paesi
+    var cityCandidate=cpMatch[2].trim();
+    // Se contiene una keyword paese, prendi solo la parte prima
+    var cleanCity=cityCandidate.split(/[,;]/)[0].trim();
+    var lcCity=cleanCity.toLowerCase();
+    var isCountryName=PROV_COUNTRY_KEYWORDS.some(function(e){return e[0]===lcCity;});
+    if(!isCountryName)out.city=cleanCity;
+  }
+  // Provincia: cerca pattern "Sabadell, Barcelona" - secondo elemento dopo virgola, prima del CP
+  var provinceMatch=raw.match(/[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+\s*,\s*([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)/);
+  if(provinceMatch){
+    var pCandidate=provinceMatch[1].trim();
+    // Skip se è un paese
+    var isCountry2=PROV_COUNTRY_KEYWORDS.some(function(e){return e[0]===pCandidate.toLowerCase();});
+    if(!isCountry2)out.province=pCandidate;
+  }
+  // Direzione: cerca riga con numero civico (Via/Calle/etc) - es. "Raimon Casellas, 130"
+  var addressRegex=/((?:Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|V\u00eda|Carrer|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s+[^,\n]+,?\s*\d+[A-Za-z]?)/i;
+  var addrM=raw.match(addressRegex);
+  if(!addrM){
+    // Fallback: pattern "Nome Cognome, NUM" tipo "Raimon Casellas, 130"
+    var addrM2=raw.match(/([A-Z][^,\n]{4,50},\s*\d+[A-Za-z]?)/);
+    if(addrM2)addrM=addrM2;
+  }
+  if(addrM)out.address=String(addrM[0]||'').trim();
+  // Web URL (per notes)
+  var webMatch=raw.match(/(?:www\.|https?:\/\/)[\w\-]+(?:\.[\w\-]+)+(?:\/[\w\-\.\/?#%=&]*)?/i);
+  if(webMatch)out.web=webMatch[0];
 
   return out;
 }
