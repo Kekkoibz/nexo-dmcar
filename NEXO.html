@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.10 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 anomalie report tecnico utente:
+1) Bug Anomalia 1 utente — "Respuesta no parseable" su AI Lookup MOT? (Foto 11): l'AI rispondeva con \`\`\`json\n{...}\n\`\`\` ma il regex di strip era /\`\`\`json|\`\`\`/g che lasciava newline intermedie + se c'era testo prima/dopo, JSON.parse falliva. ROOT CAUSE: parser fragile non robusto a varianti di output AI. FIX: nuovo parser robusto in nxLookupVehicleVersion: (a) replace fence tollerante newline /^\`\`\`(?:json)?\\s*\\n?/i e /\\n?\\s*\`\`\`\\s*$/; (b) estrai PRIMO oggetto JSON via indexOf('{') + lastIndexOf('}') anche se ci sono testi extra. Smoke test 4/4 PASS;
+2) Bug Anomalia 2 utente — "VIN no reconocido" fuorviante (Foto 12, Principio 3 utente): il messaggio rosso "VIN no reconocido" appariva quando i VIN del PDF (es. WAUZZZGY...) non matchavano i VIN dello Stock Vivo (es. WAUZZZ8Y... — diversi per OCR errori). FIX: messaggio sostituito con info chiara "VIN del documento no coinciden con Stock Vivo" + lista dei 3 motivi possibili (OCR diff, lotto diverso, VIN non importati ancora) + se _nxPendingPurchaseNotif presente → mostra bottone "🔗 Vincular N veh\u00edculos a este documento" che bypassa matching VIN e usa notif.stockIds[] come ground truth. Nuova fn nxAIDocLinkToNotif: scrive accDocs su tutti i sub-vehicles dei stockIds della notif + upload SharePoint TEMP + marca notif completed (proforma 26042102 ora arriva in Vista Contable anche se OCR Stock vs PDF differisce);
+3) Bug Anomalia 3 utente — Conflitto PF vs FT (Foto 13, Principio 4 utente): la colonna Nº FT mostrava lo stesso numero della Nº PF (26042102 in entrambe). ROOT CAUSE: Vista Contable e CSV/XLSX export usavano fallback ext.fornNumFT||ext.fornFt — l'alias ext.fornFt era populato dall'OR fra factura+proforma in nxAccGetExtended, quindi se c'era solo la PF, la cella FT mostrava la PF. FIX: rimosso fallback ext.fornFt dalle 3 occorrenze (cella FT, export XLSX, export CSV); ora la colonna FT mostra SOLO documenti type=='factura_proveedor' come da regola di business "PF e FT non possono coesistere nella stessa fase". La definizione fornFt nel ritorno è preservata per retrocompatibilità ma non più usata in render;
+4) PRESERVA: tutto v10.10.9 (defense-in-depth accDocs via notif.stockIds + AccDoc su SaveAsNADo), v10.10.8 (notif completion + filename salvage), v10.10.7 (PDF scansionati AI vision + modali Cancelar). -->
 <!-- NEXO v10.10.9 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX numero proforma su Vista Contable + accDocs save:
 1) Bug Anomalia 2 NON RISOLTA in v10.10.8: dopo upload proforma 8 Audi A3, colonna Nº PF restava vuota in Vista Contable. ROOT CAUSE 1: utente probabilmente ha cliccato "Guardar como N/A temporal" → la fn nxAIDocSaveAsNADo caricava il PDF su SharePoint ma NON chiamava nxWriteAccDoc su nessun stock locale → Vista Contable (che legge da stock[].accDocs) restava vuota; ROOT CAUSE 2: anche con AI Vision, se le lines[] estratte non avevano VIN match perfetto sugli stock, nessun accDoc veniva scritto. FIX duale:
    (a) FIX in nxAIDocSaveAsNADo: ora itera su parsed.lines[] e per ogni VIN match (anche su stock OWN senza expediente) chiama nxWriteAccDoc + SS('stock') + numbersRenderVista; console log "[v10.10.9] Save as TEMP: scritti N accDocs su stock locali";
@@ -25466,7 +25471,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
         // COMPRA (7): Proveedor, PF, FT, Pago, Compra, Dep.Date, Dep.\u20ac
         +td(fmtTxt(r.supplier),bgCompra)
         +td(fmtTxt(ext.fornNumPF||''),bgCompra)
-        +td(fmtTxt(ext.fornNumFT||ext.fornFt||''),bgCompra)
+        +td(fmtTxt(ext.fornNumFT||''),bgCompra)
         +td(fmtDate(ext.fornDataPag),bgCompra)
         +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgCompra)
         +td(fmtDate(ext.fornAccDate),bgCompra)
@@ -25740,7 +25745,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
           // COMPRA
           r.supplier||'',
           ext.fornNumPF||'',
-          ext.fornNumFT||ext.fornFt||'',
+          ext.fornNumFT||'',
           ext.fornDataPag||'',
           r.buyPrice||0,
           ext.fornAccDate||'',
@@ -25827,7 +25832,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
         r.isOwn?'OWN':'',
         r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
         expLabel,r.vin||'',
-        r.supplier||'',ext.fornNumPF||'',ext.fornNumFT||ext.fornFt||'',ext.fornDataPag||'',r.buyPrice||0,ext.fornAccDate||'',ext.fornAccAmount||0,
+        r.supplier||'',ext.fornNumPF||'',ext.fornNumFT||'',ext.fornDataPag||'',r.buyPrice||0,ext.fornAccDate||'',ext.fornAccAmount||0,
         r.clientName||'',r.soldBy||'',ext.cliFt||'',ext.cliDataSaldo||'',r.salePrice||0,ext.cliAccDate||'',ext.cliAccAmount||0,
         ext.traspFornitore||'',ext.traspFtAcq||'',ext.traspAcqAmount||0,ext.traspDataPag||'',ext.traspPFVenta||'',ext.traspFtVend||'',ext.traspVendAmount||0,gT||0,
         r.brand||'',r.model||'',ext.version||'',ext.firstReg||'',ext.km||0,r.color||'',ext.damage||0,gV||0,
@@ -26389,13 +26394,30 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +(inPropriedad.length>0?'\u2022 Cuando se cree expediente para estos VIN, los docs se <strong>migrar\u00e1n autom\u00e1ticamente</strong><br>':'')
       +'\u2022 La Vista Contable se actualizar\u00e1 con: <code>'+esc(parsed.docNumber||'?')+'</code> &middot; '+esc(parsed.docDate||'?')
     +'</div>';
-    // v9.98: Banner avviso quando no VIN match
+    // v10.10.10: messaggio più chiaro quando i VIN del PDF non matchano (Principio 3 utente)
     if(expCount===0&&inPropriedad.length===0){
-      html+='<div style="background:rgba(220,38,38,.08);border-left:4px solid #dc2626;padding:14px;border-radius:6px;margin-bottom:14px">'
-        +'<strong style="color:#dc2626">\u26a0\ufe0f VIN no reconocido</strong><br>'
-        +'<span style="font-size:11px">Ning\u00fan VIN del documento coincide con Stock Vivo, En Propiedad o Expedientes existentes.</span><br>'
-        +'<span style="font-size:11px;color:var(--t3)">Puedes asignar manualmente el documento a un expediente o guardarlo como N/A temporal hasta crear el expediente correspondiente.</span>'
-      +'</div>';
+      var vinList=(parsed.lines||[]).map(function(l){return l.vin;}).filter(Boolean);
+      var pendingNotif=window._nxPendingPurchaseNotif?(window.nxNumbersNotifications||[]).find(function(n){return n.id===window._nxPendingPurchaseNotif;}):null;
+      html+='<div style="background:rgba(245,158,11,.08);border-left:4px solid #f59e0b;padding:14px;border-radius:6px;margin-bottom:14px">'
+        +'<strong style="color:#92400e">\u2139\ufe0f VIN del documento no coinciden con Stock Vivo</strong><br>'
+        +'<span style="font-size:11px;color:var(--t2)">El documento contiene <strong>'+vinList.length+' VIN</strong> ('+esc((vinList[0]||'').slice(0,17))+(vinList.length>1?'...':'')+') que <strong>no coinciden</strong> con los VIN registrados en Stock Vivo.</span><br>'
+        +'<span style="font-size:11px;color:var(--t3);display:block;margin-top:6px">Esto puede deberse a:'
+          +'<ul style="margin:4px 0 0 16px;font-size:11px">'
+            +'<li>Lectura OCR diferente entre los dos PDF (ej. <code>G</code> vs <code>8</code>)</li>'
+            +'<li>El documento es de otro lote</li>'
+            +'<li>Los VIN no han sido importados a\u00fan</li>'
+          +'</ul>'
+        +'</span>';
+      if(pendingNotif){
+        // Caso speciale: l'utente ha cliccato "Sí, cargar" su una notifica purchase
+        // → il documento è SICURAMENTE relativo a quegli stock (link ground-truth)
+        html+='<div style="background:rgba(29,78,216,.08);border-radius:6px;padding:10px;margin-top:10px">'
+          +'<div style="font-size:11px;color:var(--acc);font-weight:700;margin-bottom:4px">\u{1F517} Vinculaci\u00f3n con la notificaci\u00f3n</div>'
+          +'<div style="font-size:11px;color:var(--t2)">Has hecho click en "S\u00ed, cargar" en la notificaci\u00f3n de compra <strong>'+esc((pendingNotif.brand||'')+' '+(pendingNotif.model||''))+' x '+(pendingNotif.quantity||'?')+'</strong>. Puedes <strong>vincular este documento</strong> a esos veh\u00edculos directamente sin matching VIN:</div>'
+          +'<button class="btn bp" style="margin-top:8px;padding:8px 14px;font-size:11px;background:var(--acc);color:#fff;border:none" onclick="nxAIDocLinkToNotif()">\u{1F517} Vincular '+(pendingNotif.quantity||'?')+' veh\u00edculos a este documento</button>'
+        +'</div>';
+      }
+      html+='</div>';
     }
     html+='<div class="fc g8" style="justify-content:flex-end;flex-wrap:wrap">'
       +'<button class="btn bg" onclick="nxCloseDynModal(\'m-ai-doc\')">Cancelar</button>'
@@ -26411,6 +26433,76 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var old=n('m-ai-doc');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
     window._nxAIDocCtx={file:file,parsed:parsed,matchedExps:matchedExps,inPropriedad:inPropriedad,unmatchedLines:unmatchedLines};
+  };
+
+  // v10.10.10: Force-link: documento → stockIds della notifica purchase pendente
+  // Bypassa il matching VIN (utile quando OCR diversi creano mismatch tra Stock e PDF proforma)
+  // Usa notif.stockIds[] come ground truth per scrivere accDocs direttamente sugli stock corretti.
+  window.nxAIDocLinkToNotif=function(){
+    var ctx=window._nxAIDocCtx;
+    if(!ctx){alert('Contexto perdido');return;}
+    var notifId=window._nxPendingPurchaseNotif;
+    if(!notifId){alert('No hay notificaci\u00f3n pendiente');return;}
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif||!Array.isArray(notif.stockIds)||notif.stockIds.length===0){
+      alert('La notificaci\u00f3n no tiene stockIds v\u00e1lidos');return;
+    }
+    // Scrivi accDocs sui stockIds della notifica (ground truth)
+    // amount per veicolo = totalAmount / num veicoli totale
+    var totalAmount=ctx.parsed.totalAmount||0;
+    var totalVeh=0;
+    notif.stockIds.forEach(function(sid){
+      var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+      if(s)totalVeh+=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles.length:1;
+    });
+    var amountPerVeh=totalVeh>0?(totalAmount/totalVeh):0;
+    var stocksUpdated=0;
+    notif.stockIds.forEach(function(sid){
+      var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+      if(!s)return;
+      if(Array.isArray(s.vehicles)&&s.vehicles.length){
+        s.vehicles.forEach(function(v){
+          if(v.vin)nxWriteAccDoc(s,v.vin,ctx.parsed,amountPerVeh);
+        });
+      }else if(s.vin){
+        nxWriteAccDoc(s,s.vin,ctx.parsed,amountPerVeh);
+      }
+      stocksUpdated++;
+    });
+    if(stocksUpdated>0)SS('stock',window.stock);
+    console.log('[v10.10.10] Force-link: scritti accDocs su '+stocksUpdated+' stock via notif.stockIds');
+    // Upload anche su SharePoint TEMP (senza expediente) o expediente se esiste
+    // Per semplicità: usa il flusso TEMP (l'utente potrà creare expediente dopo)
+    var cc='DMCAR'; // default, in futuro inferire da notif.ownerCompany
+    if(notif.ownerCompany){
+      var ocU=String(notif.ownerCompany).toUpperCase();
+      if(ocU.indexOf('INNO')>=0)cc='INNO';
+      else if(ocU.indexOf('IMPEX')>=0)cc='IMPEX';
+      else if(ocU.indexOf('MERCEDES')>=0)cc='MERC';
+    }
+    if(typeof showToast==='function')showToast('\u26a1 Vinculando documento a '+stocksUpdated+' veh\u00edculos\u2026',3000);
+    nxTempUploadDoc({
+      companyCode:cc,
+      subfolder:'PROVEEDOR',
+      fileName:ctx.file.name,
+      blob:ctx.file,
+      vins:notif.stockIds,
+      parsed:ctx.parsed
+    },function(ok,data){
+      nxCloseDynModal('m-ai-doc');
+      if(typeof numbersRenderVista==='function')numbersRenderVista();
+      if(!ok){
+        if(typeof showToast==='function')showToast('\u26a0 SharePoint upload err: '+data+' (accDocs guardados localmente)',6000);
+      }else{
+        if(typeof showToast==='function')showToast('\u2713 Documento vinculado a '+stocksUpdated+' veh\u00edculos en Vista Contable',6000);
+      }
+      // Marca notif completed (passa parsedDoc per defense-in-depth scrittura accDocs già fatta)
+      var pfNum=ctx.parsed.docNumber||'';
+      if(typeof window.nxNumbersMarkPurchaseCompleted==='function'){
+        window.nxNumbersMarkPurchaseCompleted(notifId,pfNum,ctx.parsed);
+      }
+      window._nxPendingPurchaseNotif=null;
+    });
   };
 
   // v9.98: Assegnazione manuale - dialog selettore expediente
@@ -26990,8 +27082,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
         return;
       }
       try{
-        // Strip markdown fences se presenti
-        var clean=String(resp).replace(/```json|```/g,'').trim();
+        // v10.10.10: strip markdown fences robusto + estrai primo blocco JSON dalla risposta
+        var clean=String(resp).trim();
+        // Rimuovi fence ```json ... ``` o ``` ... ```
+        clean=clean.replace(/^```(?:json)?\s*\n?/i,'').replace(/\n?\s*```\s*$/,'').trim();
+        // Se c'è ancora testo prima/dopo, estrai il primo oggetto JSON
+        var firstBrace=clean.indexOf('{');
+        var lastBrace=clean.lastIndexOf('}');
+        if(firstBrace>=0&&lastBrace>firstBrace){
+          clean=clean.substring(firstBrace,lastBrace+1);
+        }
         var obj=JSON.parse(clean);
         var conf=obj.confianza||'baja';
         var confColor=conf==='alta'?'#16a34a':conf==='media'?'#f59e0b':'#dc2626';
