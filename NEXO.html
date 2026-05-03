@@ -1,4 +1,9 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.8 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX notifica residua + numero proforma:
+1) Bug Anomalia 1 (utente): dopo upload PDF proforma da bottone "Sí, cargar" sulla notifica purchase, la notifica restava attiva nel dashboard Nexo Numbers. ROOT CAUSE: numbersPurchaseLoadProforma navigava a Vista Contable e apriva l'upload, ma NON memorizzava l'id della notifica → afterAll() upload-completion non sapeva quale notifica marcare come completed. FIX: window._nxPendingPurchaseNotif memorizza notifId al click "Sí, cargar"; nuova fn nxNumbersMarkPurchaseCompleted(notifId, proformaNumber) marca notif.status='completed' + notif.proformaUploaded=true + cascade-elimina task con purchaseNotifId match + aggiorna badge sidebar; hook in afterAll() (modal AI doc principale), nxAIDocSaveAsNADo (TEMP), nxAIDocManualAssignDo (assegnazione manuale). Tutte e 3 le vie di salvataggio chiamano la stessa funzione di completamento;
+2) Bug Anomalia 2 (utente): numero proforma "26042102" presente nel PDF non importato in colonna Nº PF Vista Contable. ROOT CAUSE: doppia: (a) AI Vision Parser potrebbe non estrarre docNumber se il layout è ambiguo; (b) anche estratto, docType='factura_proveedor' (default) invece di 'proforma_proveedor' → fornNumPF (legge solo proforma_proveedor) resta vuoto. FIX duale: (a) fallback regex su filename: pattern /(?:PF|FT|PROFORMA|FACTURA|INVOICE)[\s_.\-]*([\d]{4,}(?:[\-_.\/][\d]+)*)/i estrae 26042102 da "PF_26042102_..." anche con AI silenzioso; (b) docType correction: se filename matcha PROFORMA o ^PF[_-\s] → forza docType='proforma_proveedor'. Applicato sia in nxAIParseScannedPdf (vision) sia in nxAIParseWithClaude (text). Console log "[v10.10.8] docNumber salvage da filename" e "docType corretto a proforma_proveedor" per debug;
+3) Smoke test 5+5+1 PASS: filename salvage (5/5 patterns), docType correction (5/5 cases), notif completion + cascade task (1/1);
+4) PRESERVA: tutto v10.10.7 (PDF scansionati AI vision, modali bottoni Cancelar fixed), v10.10.6 (cleanup orfane), v10.10.5 (parser PDF, provider picker, autocomplete città). -->
 <!-- NEXO v10.10.7 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX Vista Contable upload + modali bloccati:
 1) Bug Anomalia 1 (Foto 9 utente): Vista Contable → "Subir doc proveedor" sullo stesso PDF Audi A3 funzionante in Stock Vivo dava errore "PDF no contiene texto extraíble". ROOT CAUSE: nxAIAnalyzeDoc usava SOLO pdfjsLib.getTextContent() (estrazione testo locale), che fallisce su PDF scansionati. Stock Vivo invece manda PDF come document base64 a Claude Sonnet (vision). FIX: nuova fn nxAIParseScannedPdf che replica il pattern Stock Vivo: legge file come base64 → callAPIbody con type:'document' source:base64 → AI analizza visualmente → ritorna stesso JSON schema. Trigger automatico quando textTrimmed.trim() vuoto, no più confirm() bloccante. Toast "PDF escaneado detectado — usando AI vision" per UX trasparente;
 2) Bug Anomalia 2 (Foto 10 utente): bottone "Cancelar" del dialog "Asignar a expediente manualmente" non chiudeva il modal. ROOT CAUSE: stesso bug v10.10.1 (modali insertAdjacentHTML con style="display:flex" inline ma chiamavano closeM() che rimuove solo classe 'on'). FIX: 8 chiamate sostituite con nxCloseDynModal su 3 modali dinamici: m-ai-doc (3 close: backdrop, X, Cancelar), m-manual-exp (era già fixato + chiamata cascata), m-na-temp (3 close: backdrop, X, Cancelar) + chiamate cascata in nxAIDocManualAssignDo + nxAIDocSaveAsNADo + afterAll() + nxAIDocManual();
@@ -26115,6 +26120,27 @@ document.querySelectorAll('.ovl').forEach(function(el){
         try{
           var clean=String(resp||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
           var parsed=JSON.parse(clean);
+          // v10.10.8: fallback docNumber dal filename se l'AI non l'ha estratto
+          // Filename pattern: "PF_26042102_..." o "PROFORMA_26042102.pdf" o "FT-12345.pdf"
+          if(!parsed.docNumber||String(parsed.docNumber).trim()===''){
+            var fnameUp=String(file.name||'').toUpperCase();
+            // Cerca pattern numerico lungo (>= 6 cifre) precedeuto da PF/FT/PROFORMA/FACTURA
+            var fmRe=/(?:PF|FT|PROFORMA|PRO[\s_-]?FORMA|FACTURA|INVOICE|N[\s_.\-]*\u00b0?)[\s_.\-]*([\d]{4,}(?:[\-_.\/][\d]+)*)/i;
+            var m=fmRe.exec(fnameUp);
+            if(m){
+              parsed.docNumber=m[1];
+              parsed._docNumberSource='filename_fallback';
+              console.log('[v10.10.8] docNumber salvage da filename: '+parsed.docNumber);
+            }
+          }
+          // Se AI ha messo docType generico ma il filename suggerisce PROFORMA → correggi
+          if(parsed.docType==='factura_proveedor'||!parsed.docType){
+            var fnameUp2=String(file.name||'').toUpperCase();
+            if(/PRO[\s_-]?FORMA|^PF[_\-\s]/i.test(fnameUp2)||(parsed.docNumber&&/^PF/i.test(parsed.docNumber))){
+              parsed.docType='proforma_proveedor';
+              console.log('[v10.10.8] docType corretto a proforma_proveedor (da filename)');
+            }
+          }
           cb(parsed,null);
         }catch(e){
           console.error('[AI Vision Parser] Parse error:',e,'\nResponse:',resp);
@@ -26199,6 +26225,20 @@ document.querySelectorAll('.ovl').forEach(function(el){
         // Pulisci JSON da eventuali fence markdown
         var clean=String(resp||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
         var parsed=JSON.parse(clean);
+        // v10.10.8: stesso fallback docNumber+docType del parser vision
+        if(!parsed.docNumber||String(parsed.docNumber).trim()===''){
+          var fnameUp=String(fileName||'').toUpperCase();
+          var fmRe=/(?:PF|FT|PROFORMA|PRO[\s_-]?FORMA|FACTURA|INVOICE|N[\s_.\-]*\u00b0?)[\s_.\-]*([\d]{4,}(?:[\-_.\/][\d]+)*)/i;
+          var m=fmRe.exec(fnameUp);
+          if(m){parsed.docNumber=m[1];console.log('[v10.10.8] docNumber salvage da filename: '+parsed.docNumber);}
+        }
+        if(parsed.docType==='factura_proveedor'||!parsed.docType){
+          var fnameUp2=String(fileName||'').toUpperCase();
+          if(/PRO[\s_-]?FORMA|^PF[_\-\s]/i.test(fnameUp2)){
+            parsed.docType='proforma_proveedor';
+            console.log('[v10.10.8] docType corretto a proforma_proveedor (da filename)');
+          }
+        }
         cb(parsed,null);
       }catch(e){
         console.error('[AI Parser] Parse error:',e,'\nResponse:',resp);
@@ -26427,6 +26467,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       nxCloseDynModal('m-manual-exp');nxCloseDynModal('m-ai-doc');
       if(typeof numbersRenderVista==='function')numbersRenderVista();
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en '+(exp?exp.fullName:expId),5000);
+      // v10.10.8: hook notif completion
+      if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
+        var pfNum=(ctx.parsed&&ctx.parsed.docNumber)||'';
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window._nxPendingPurchaseNotif=null;
+      }
     });
   };
 
@@ -26477,6 +26523,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       if(!ok){alert('Error subiendo a TEMP: '+data);return;}
       nxCloseDynModal('m-na-temp');nxCloseDynModal('m-ai-doc');
       if(typeof showToast==='function')showToast('\u2713 Documento guardado en __TEMP/'+cc+'/'+subfolder+' \u2014 se migrar\u00e1 cuando se cree el expediente',7000);
+      // v10.10.8: hook notif completion
+      if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
+        var pfNum=(ctx.parsed&&ctx.parsed.docNumber)||'';
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window._nxPendingPurchaseNotif=null;
+      }
     });
   };
 
@@ -27122,6 +27174,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
   window.numbersPurchaseLoadProforma=function(notifId){
     var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
     if(!notif)return;
+    // v10.10.8: memorizza notifId per linkare l'upload completato alla notifica
+    window._nxPendingPurchaseNotif=notifId;
     if(typeof go==='function')go('numbers');
     setTimeout(function(){
       if(typeof numbersGo==='function')numbersGo('vista');
@@ -27129,6 +27183,33 @@ document.querySelectorAll('.ovl').forEach(function(el){
         if(typeof window.numbersUploadProveedorDoc==='function')window.numbersUploadProveedorDoc();
       },400);
     },200);
+  };
+
+  // v10.10.8: Marca notifica purchase come "completed" + rimuove task collegati
+  // Triggerata dopo upload PDF proforma completato con successo.
+  window.nxNumbersMarkPurchaseCompleted=function(notifId,proformaNumber){
+    if(!notifId)return;
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif||notif.type!=='purchase')return;
+    notif.status='completed';
+    notif.proformaUploaded=true;
+    notif.proformaNumber=proformaNumber||'';
+    notif.completedAt=new Date().toISOString();
+    SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    // Cascade: rimuovi task collegati con purchaseNotifId match
+    if(Array.isArray(window.tasks)){
+      var beforeT=window.tasks.length;
+      window.tasks=window.tasks.filter(function(t){
+        return !t||!t.purchaseNotifId||t.purchaseNotifId!==notifId;
+      });
+      if(window.tasks.length!==beforeT){
+        SS('tasks',window.tasks);
+        if(typeof renderTareas==='function')renderTareas();
+      }
+    }
+    if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+    if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
+    console.log('[v10.10.8] Notifica purchase '+notifId+' completed (proforma '+(proformaNumber||'?')+')');
   };
 
   // ========================================================================
@@ -27542,6 +27623,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       if(uploadResults.errs.length>0)msg+=' \u00b7 '+uploadResults.errs.length+' errores';
       if(typeof showToast==='function')showToast(msg,6000);
       if(uploadResults.errs.length>0)console.warn('[AI archive] Errors:',uploadResults.errs);
+      // v10.10.8: se questo upload era stato triggerato da una notifica purchase, marcala completed
+      if(window._nxPendingPurchaseNotif&&typeof window.nxNumbersMarkPurchaseCompleted==='function'){
+        var pfNum=(p&&p.docNumber)||'';
+        window.nxNumbersMarkPurchaseCompleted(window._nxPendingPurchaseNotif,pfNum);
+        window._nxPendingPurchaseNotif=null;
+      }
     }
   };
 
