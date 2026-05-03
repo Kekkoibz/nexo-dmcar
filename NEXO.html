@@ -1,4 +1,22 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.4 — DMCAR GROUP CRM | 2026-05-03 | Estensione workflow OWN + nuovo modello Ubicación/Pick-Up:
+
+PARTE A — Notifica Nexo Numbers con dialog completo (P1):
+1) Bug A3 v10.10.3: il bottone unico "Cargar proforma" non rispettava il wireframe spec che prevede Sì/No + prompt secondario "Reclamar/Esperar". FIX: render notifica purchase ora mostra DUE bottoni (✓ Sí cargar / No) quando proformaUploaded=false; status=waiting_provider mostra "⏳ Reclamada", status=waiting mostra "⏳ En espera";
+2) Nuovo dialog modale m-purchase-secondary (numbersPurchaseAskSecondary): apre su click "No" della notifica, presenta 2 opzioni "Reclamar al proveedor" o "Esperar" come da spec sezione 3;
+3) Branch "Reclamar" (numbersPurchaseClaimProvider): riusa nxOwnEntryRequestProforma con pseudoGroup ricostruito dai stockIds della notifica → apre email Contabilidad pre-rellenado; status notif → 'waiting_provider' (badge blu);
+4) Branch "Esperar" (numbersPurchaseWait): chiude dialog, mantiene memorandum Tareas v10.10.3, status notif → 'waiting' (badge giallo);
+
+PARTE B — Modello dati Ubicación vs Pick-Up (P2):
+5) Migrazione idempotente all'init(): per ogni stock + sub-vehicles, se ubicacion è vuota, copia da pickup||location. Retro-compatibile con dati pre-v10.10.4. Console log "[v10.10.4] Migrazione Ubicación: N stock arricchiti";
+6) Render Stock Vivo sub-row drilldown: aggiunta seconda colonna. "Ubicación" (storico, doppio-click apre Trasladar) + "Pick-Up" (operativo, sfondo colorato in base a transferStatus);
+7) Codice cromatico cella Pick-Up: ⚪ default = stesso ubicación, 🟡 in_transit = giallo+icona 🚚, 🟢 arrived = verde+✅;
+8) Dialog Trasladar (nxOpenTrasladarDialog): trigger ondblclick su .ubic-cell. Form con città* (req), provincia/región, país (dropdown ES/IT/FR/DE/PT/UK/Otros), nome piazzal opzionale. Mostra info veicolo + ubicación storica + pickup attuale + bottone "Confirmar llegada" se già in transito;
+9) nxConfirmTrasladar: aggiorna SOLO v.pickup (NON v.ubicacion → preserva storico), set transferStatus='in_transit', salva v.transferTo={city,region,country,place,setAt}, persist + re-render fStk();
+10) nxConfirmArrival: transferStatus='arrived', v.arrivedAt timestamp;
+
+Smoke test 11/11 PASS: migrazione idempotente, ubicación storica preservata su Trasladar, pickup aggiornato, transferStatus transitions corretti.
+PRESERVA: workflow OWN v10.10.1, fix CSS v10.10.2, dati per-veicolo Vista Contable v10.10.3, notifica purchase + memorandum Tareas v10.10.3, aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.3 — DMCAR GROUP CRM | 2026-05-03 | FIX 4 anomalie report consolidato: 1) Daños AVG in Vista Contable: causa ROOT nxAccGetExtended leggeva s.damage (lotto aggregato es. "304,68 € avg") invece del damage real per-veicolo. FIX: in nxBuildVistaRecords lotto-mode, ogni record ora include _vehKm/_vehDamage/_vehReg/_vehPickup parsati da v.kms/v.damage/v.reg/v.pickup; nxAccGetExtended consuma questi se presenti, fallback a s.* per non-lotto; 2) buy/sell per-veicolo: vehBuy=v.buy||buy, vehSell=v.sell||sale, margin per-vehicle calcolato singolarmente (non più diviso per N); 3) Pickup riga sintesi: causa ROOT join("/") di tutti i piazzali. FIX: detectCountry helper con regex per ES/IT/FR/DE/PT/UK/NL/BE; output spec "España (3 piazzales)" per stesso paese, "España (2), Italia (1)" multi-paese; preservato _pickupListOriginal per drill-down dei sub-rows; 4) Notifica Nexo Numbers purchase: causa ROOT funzionalità mancante. FIX: nuova fn nxNumbersCreatePurchaseNotification con type:"purchase", proformaUploaded boolean, ownerCompany, supplier, brand, model, quantity. Logica spec: N>=2 → "un stock de N modelo", N=1 → "1 vehículo modelo". Render dedicato in numbersRenderNotifs con icone/colori distinti Caso A (verde "completada") vs Caso B (giallo "cargar proforma"). Hook: Step2aChoice('now') → Caso A, Step2aChoice('later') → Caso B, Step2bChoice('si'/'no') → Caso B; 5) Memorandum Tareas: in Caso B crea automaticamente task con title="📄 Cargar proforma — un stock de N marca", priority=high, assignedTo=Contabilidad, link bidirezionale purchaseNotifId+stockIds, aggiorna badge sidebar; 6) numbersPurchaseLoadProforma: click "Cargar proforma" naviga a Vista Contable + apre numbersUploadProveedorDoc; 7) nxParseEsNum promosso a window-scope per riuso. PRESERVA: workflow OWN v10.10.1, fix --bg1/--t1 v10.10.2, parsing es-ES kms/damage v10.10.2, aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.2 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug critici Vista Contable: 1) BUG GRAFICO sfondo nero: causa ROOT era CSS var --bg1 NON DEFINITA in :root (definite solo --bg, --bg2, --bg3, --bg4) → modali con background:var(--bg1) cadevano in fallback transparent → backdrop nero passava attraverso. FIX: aggiunte --bg1:#ffffff e --t1:#0f172a in :root; 2) BUG KMS=20: causa ROOT parsing erroneo es-ES "19.614 avg" interpretato come decimale 19.614 → Math.round=20 invece di 19614. FIX: nxParseEsNum smart parser detecta separatore migliaia "." (1 dot + esattamente 3 cifre dopo = es-ES migliaia) vs decimale + gestisce correttamente "," come decimal separator; 3) BUG Invalid Date: causa ROOT new Date("31/03/2025") non parsabile da Chrome (formato non ISO) → "Invalid Date" mostrato nella colonna 1ª Matr. FIX: fmtDate ora detecta dd/mm/yyyy + dd-mm-yyyy + dd.mm.yyyy + supporto YY 2-digit (>50 = 19YY, <=50 = 20YY); 4) BUG P.Compra vuoto: causa ROOT lettura da s.buyPrice/s.salePrice ma in Stock Vivo i campi reali sono s.buy/s.sell. FIX: nxBuildVistaRecords ora legge da s.buy/s.sell con fallback agli alias buyPrice/salePrice; 5) Patch applicata in nxAccGetExtended (km, damage, firstReg) + nxBuildVistaRecords (sale, buy, margin) + fmtDate global; 6) Smoke test 11/11 PASS su parsing "19.614" "304,68 €" "15.200 €" "1.014" "450,00 €" ecc. PRESERVA: workflow OWN v10.10.1 (modali dinamici + email Contabilidad), aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.1 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX modali OWN workflow: 1) Bug freeze "Más tarde" su Step2a → causa: closeM(id) rimuove la classe 'on' ma i modali dinamici v10.01+ (insertAdjacentHTML) usano style="display:flex" inline, quindi closeM NON funzionava → modal restava in DOM bloccando l'UI; 2) Bug grafico schermo nero → causa: Step1 NON veniva rimosso prima di Step2a/2b, doppio backdrop rgba(0,0,0,.75) sovrapposto = nero opaco illeggibile; 3) FIX: nuovo helper window.nxCloseDynModal(id) che fa parentNode.removeChild() invece di toggle classe, sostituito in tutte le 11 chiamate del workflow (Step1/2a/2b/Decline/Decline2); 4) Effetto collaterale risolto: ora Step1 viene rimosso dal DOM prima di mostrare 2a/2b → niente più doppio backdrop → contrasto WCAG ripristinato come da design system; 5) Test branch coperti: Sì→Cargar ahora, Sì→Más tarde, No→Sí richiedi, No→No suspenso, X→Decline; 6) PRESERVA: Step2aChoice('now') → numbersUploadProveedorDoc, Step2bChoice('si') → nxOwnEntryRequestProforma, ownerCompany persistito su tutti i branch. -->
@@ -7228,7 +7246,9 @@ function renderStkTbl(){
       html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">P.Compra</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">P.Venta</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:right;text-transform:uppercase;color:var(--t3)">Margen</th>';
-      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)">Ubicacion</th>';
+      // v10.10.4: doppia colonna Ubicación (originale) + Pick-Up (effettivo, editabile via Trasladar)
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)" title="Piazzale originale del veh\u00edculo (storico). Doble click para Trasladar.">Ubicaci\u00f3n</th>';
+      html+='<th style="padding:6px 10px;font-size:9px;text-align:left;text-transform:uppercase;color:var(--t3)" title="Piazzale efectivo de carga. Cambia con Trasladar.">Pick-Up</th>';
       html+='<th style="padding:6px 10px;font-size:9px;text-align:center;text-transform:uppercase;color:var(--t3)">Acci&oacute;n</th>';
       html+='</tr></thead><tbody>';
       item.vehicles.forEach(function(v,vi){
@@ -7266,7 +7286,19 @@ function renderStkTbl(){
         html+='<td style="padding:6px 10px;font-size:11px;text-align:right;color:var(--t3);white-space:nowrap">'+buyDisp+'</td>';
         html+='<td style="padding:6px 10px;font-size:11px;text-align:right;font-weight:600;color:'+(vSell?'var(--green)':'var(--t4)')+';white-space:nowrap">'+sellDispEdited+'</td>';
         html+='<td style="padding:6px 10px;font-size:11px;text-align:right;white-space:nowrap">'+marginDisp+'</td>';
-        html+='<td style="padding:6px 10px;font-size:11px;color:var(--t3)">'+esc(v.location||'--')+'</td>';
+        // v10.10.4: doppia cella Ubicación / Pick-Up
+        // - Ubicación: storico, doppio click apre Trasladar dialog
+        // - Pick-Up: effettivo, colore stato: 🟡 in_transit, 🟢 arrived, default
+        var vUbic=v.ubicacion||v.location||v.pickup||'--';
+        var vPickup=v.pickup||v.location||v.ubicacion||'--';
+        var vTransfer=v.transferStatus||'';
+        var pickupBg='transparent';
+        var pickupColor='var(--t3)';
+        var pickupTitle='Pick-Up efectivo';
+        if(vTransfer==='in_transit'){pickupBg='rgba(245,158,11,.18)';pickupColor='#92400e';pickupTitle='\ud83d\udfe1 En tr\u00e1nsito';}
+        else if(vTransfer==='arrived'){pickupBg='rgba(16,163,74,.18)';pickupColor='#15803d';pickupTitle='\ud83d\udfe2 Llegado a destino \u2014 listo para carga';}
+        html+='<td class="ubic-cell" data-sid="'+esc(item.id)+'" data-vi="'+vi+'" style="padding:6px 10px;font-size:11px;color:var(--t3);cursor:pointer;border-right:1px dashed var(--border)" title="Doble click para Trasladar" ondblclick="nxOpenTrasladarDialog(\''+esc(item.id)+'\','+vi+')">'+esc(vUbic)+'</td>';
+        html+='<td style="padding:6px 10px;font-size:11px;background:'+pickupBg+';color:'+pickupColor+';font-weight:'+(vTransfer?'600':'400')+'" title="'+esc(pickupTitle)+'">'+esc(vPickup)+(vTransfer==='arrived'?' \u2705':vTransfer==='in_transit'?' \ud83d\ude9a':'')+'</td>';
         // Bottone Generar Word per singola unit\u00e0
         html+='<td style="padding:6px 10px;text-align:center"><button class="btn bs gen-veh-btn" data-sid="'+esc(item.id)+'" data-vi="'+vi+'" title="Generar oferta solo para esta unidad" style="font-size:10px;padding:3px 8px;background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;font-weight:600;white-space:nowrap">\u26a1 Generar</button></td>';
         html+='</tr>';
@@ -22307,6 +22339,36 @@ document.querySelectorAll('.ovl').forEach(function(el){
 // -- INIT -----------------------------------------------------
 (function init(){
   n('tb-d').textContent=new Date().toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  // v10.10.4: migrazione idempotente Ubicación/Pick-Up
+  // Per ogni stock + ogni veicolo nel sub-array: se manca s.ubicacion, copia da s.pickup
+  // (s.pickup era il "piazzale originale" pre-v10.10.4 -> ora diventa "Ubicación")
+  // Pickup operativo resta identico finché l'utente non fa "Trasladar"
+  try{
+    if(Array.isArray(window.stock)){
+      var migrated=0;
+      window.stock.forEach(function(s){
+        if(s.ubicacion==null||s.ubicacion===''){
+          s.ubicacion=s.pickup||s.location||'';
+          if(s.ubicacion)migrated++;
+        }
+        if(Array.isArray(s.vehicles)){
+          s.vehicles.forEach(function(v){
+            if(v.ubicacion==null||v.ubicacion===''){
+              v.ubicacion=v.pickup||v.location||s.ubicacion||'';
+            }
+            // Anche pickup per-veicolo: se non c'è, eredita da location/ubicacion
+            if(v.pickup==null||v.pickup===''){
+              v.pickup=v.location||v.ubicacion||'';
+            }
+          });
+        }
+      });
+      if(migrated>0){
+        console.log('[v10.10.4] Migrazione Ubicación: '+migrated+' stock arricchiti');
+        SS('stock',window.stock);
+      }
+    }
+  }catch(eMig){console.warn('[v10.10.4] Migrazione Ubicación errore:',eMig);}
   updateApiStatus();
   renderDash();
   renderOfertaHist();
@@ -22580,10 +22642,22 @@ document.querySelectorAll('.ovl').forEach(function(el){
             var titleColor=hasProforma?'#15803d':'#92400e';
             var msgQty=ntf.quantity>=2?'un stock de '+ntf.quantity+' '+(ntf.brand||'')+' '+(ntf.model||''):'1 veh\u00edculo '+(ntf.brand||'')+' '+(ntf.model||'');
             var msg=(ntf.ownerCompany||'DMCAR')+' ha comprado '+msgQty+' de '+(ntf.supplier||'(sin proveedor)')+'. ';
-            msg+=hasProforma?'La proforma ya ha sido cargada.':'Proforma ausente — \u00bfcargar?';
-            var actionBtn=hasProforma
-              ?'<span style="font-size:11px;color:#16a34a;font-weight:600;padding:6px 14px;background:rgba(16,163,74,.1);border-radius:6px;white-space:nowrap">\u2713 Completada</span>'
-              :'<button class="btn bp" style="font-size:11px;padding:6px 14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;white-space:nowrap" onclick="event.stopPropagation();numbersPurchaseLoadProforma(\''+esc(ntf.id)+'\')">\u{1F4C4} Cargar proforma</button>';
+            msg+=hasProforma?'La proforma ya ha sido cargada.':'\u00bfTienes la proforma para cargar?';
+            // v10.10.4: pulsantiera con S\u00ed/No (No apre prompt secondario "Reclamar/Esperar")
+            // o "Completada" se gi\u00e0 chiusa (Caso A)
+            var actionBtn;
+            if(hasProforma){
+              actionBtn='<span style="font-size:11px;color:#16a34a;font-weight:600;padding:6px 14px;background:rgba(16,163,74,.1);border-radius:6px;white-space:nowrap">\u2713 Completada</span>';
+            }else if(ntf.status==='waiting_provider'){
+              actionBtn='<span style="font-size:11px;color:#3b82f6;font-weight:600;padding:6px 14px;background:rgba(59,130,246,.1);border-radius:6px;white-space:nowrap">\u23f3 Reclamada al proveedor</span>';
+            }else if(ntf.status==='waiting'){
+              actionBtn='<span style="font-size:11px;color:#f59e0b;font-weight:600;padding:6px 14px;background:rgba(245,158,11,.1);border-radius:6px;white-space:nowrap">\u23f3 En espera</span>';
+            }else{
+              actionBtn='<div class="fc g6" style="white-space:nowrap">'
+                +'<button class="btn bp" style="font-size:11px;padding:6px 12px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none" onclick="event.stopPropagation();numbersPurchaseLoadProforma(\''+esc(ntf.id)+'\')">\u2713 S\u00ed, cargar</button>'
+                +'<button class="btn bg" style="font-size:11px;padding:6px 12px" onclick="event.stopPropagation();numbersPurchaseAskSecondary(\''+esc(ntf.id)+'\')">No</button>'
+                +'</div>';
+            }
             return '<div style="padding:14px;background:'+bgColor+';border-radius:8px;margin-bottom:8px;border-left:4px solid '+borderColor+';transition:all .15s">'
               +'<div class="fbet" style="align-items:flex-start">'
                 +'<div style="flex:1">'
@@ -26550,6 +26624,190 @@ document.querySelectorAll('.ovl').forEach(function(el){
         if(typeof window.numbersUploadProveedorDoc==='function')window.numbersUploadProveedorDoc();
       },400);
     },200);
+  };
+
+  // ========================================================================
+  // v10.10.4: Prompt secondario "¿Reclamamos al proveedor o esperamos?"
+  // Trigger: click "No" sulla notifica purchase senza proforma
+  // Branch:
+  //   - Reclamar al proveedor → apre email Contabilidad (riusa nxOwnEntryRequestProforma)
+  //                              + status notif → 'waiting_provider'
+  //   - Esperar              → chiude dialog, status notif → 'waiting'
+  //                              (memorandum Tareas già esistente da v10.10.3)
+  // ========================================================================
+  window.numbersPurchaseAskSecondary=function(notifId){
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif)return;
+    var html='<div id="m-purchase-secondary" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-purchase-secondary\')">'
+      +'<div class="modal" style="max-width:520px">'
+        +'<div class="mh"><span>\u{1F914} \u00bfReclamamos al proveedor o esperamos?</span><button class="mx" onclick="nxCloseDynModal(\'m-purchase-secondary\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:12px;color:var(--t2);line-height:1.5">Compra registrada: <strong>'+esc(notif.quantity>=2?'stock de '+notif.quantity:'1 veh\u00edculo')+' '+esc((notif.brand||'')+' '+(notif.model||''))+'</strong> de <strong>'+esc(notif.supplier||'')+'</strong>.</div>'
+            +'<div style="font-size:11px;color:var(--t3);margin-top:6px">Proforma a\u00fan no recibida.</div>'
+          +'</div>'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">Elige c\u00f3mo proceder:</p>'
+          +'<div class="fc g8" style="flex-direction:column;align-items:stretch">'
+            +'<button class="btn bp" style="padding:12px 16px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;border:none;text-align:left" onclick="numbersPurchaseClaimProvider(\''+esc(notif.id)+'\')">'
+              +'<div style="font-weight:700;font-size:13px">\u2709\ufe0f Reclamar al proveedor</div>'
+              +'<div style="font-size:11px;opacity:.85;margin-top:3px;font-weight:400">Abre email pre-rellenado para el contacto Contabilidad</div>'
+            +'</button>'
+            +'<button class="btn bg" style="padding:12px 16px;text-align:left" onclick="numbersPurchaseWait(\''+esc(notif.id)+'\')">'
+              +'<div style="font-weight:700;font-size:13px;color:var(--t1)">\u23f3 Esperar</div>'
+              +'<div style="font-size:11px;color:var(--t3);margin-top:3px;font-weight:400">Memorandum activo en Tareas hasta carga de proforma</div>'
+            +'</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-purchase-secondary');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+  };
+
+  // Reclamar al proveedor: apre email Contabilidad usando il flusso esistente
+  window.numbersPurchaseClaimProvider=function(notifId){
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif){nxCloseDynModal('m-purchase-secondary');return;}
+    nxCloseDynModal('m-purchase-secondary');
+    // Ricostruisci il "group" come si aspetta nxOwnEntryRequestProforma
+    var stocks=(window.stock||[]).filter(function(s){return (notif.stockIds||[]).indexOf(s.id)>=0;});
+    if(!stocks.length){
+      // fallback: stock potrebbe esser stato cancellato; usa info da notif
+      stocks=[{
+        id:notif.stockIds&&notif.stockIds[0]||'unknown',
+        brand:notif.brand,model:notif.model,version:'',
+        supplier:notif.supplier,vehicles:[]
+      }];
+    }
+    var pseudoGroup={
+      brand:notif.brand||'',model:notif.model||'',
+      supplier:notif.supplier||'',
+      stocks:stocks
+    };
+    if(typeof window.nxOwnEntryRequestProforma==='function'){
+      window.nxOwnEntryRequestProforma(pseudoGroup,notif.ownerCompany||'DMCAR GROUP');
+    }else{
+      alert('Funci\u00f3n de email no disponible.');
+      return;
+    }
+    // Aggiorna status notifica
+    notif.status='waiting_provider';
+    notif.claimedAt=new Date().toISOString();
+    SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    if(typeof numbersRenderNotifs==='function')numbersRenderNotifs();
+    if(typeof showToast==='function')showToast('\u2709\ufe0f Reclamada \u2014 a la espera de respuesta del proveedor',5000);
+  };
+
+  // Esperar: chiude dialog, mantiene memorandum Tareas
+  window.numbersPurchaseWait=function(notifId){
+    var notif=(window.nxNumbersNotifications||[]).find(function(n){return n.id===notifId;});
+    if(!notif){nxCloseDynModal('m-purchase-secondary');return;}
+    nxCloseDynModal('m-purchase-secondary');
+    notif.status='waiting';
+    notif.waitSetAt=new Date().toISOString();
+    SS('nxNumbersNotifications',window.nxNumbersNotifications);
+    if(typeof numbersRenderNotifs==='function')numbersRenderNotifs();
+    if(typeof showToast==='function')showToast('\u23f3 En espera \u2014 memorandum activo en Tareas',4500);
+  };
+
+  // ========================================================================
+  // v10.10.4: TRASLADAR DIALOG — sposta veicolo a nuovo Pick-Up
+  // Trigger: doppio click su cella Ubicación in sub-row drilldown Stock Vivo
+  // Logica:
+  //   - Ubicación resta IMMUTATA (storico)
+  //   - Pick-Up viene aggiornato con la nuova destinazione
+  //   - transferStatus = 'in_transit' (giallo)
+  //   - Conferma arrivo successiva → transferStatus = 'arrived' (verde)
+  // ========================================================================
+  window.nxOpenTrasladarDialog=function(sid,vi){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+    if(!s||!Array.isArray(s.vehicles)||vi<0||vi>=s.vehicles.length){
+      alert('Veh\u00edculo no encontrado');return;
+    }
+    var v=s.vehicles[vi];
+    var currentUbic=v.ubicacion||v.location||v.pickup||'';
+    var currentPickup=v.pickup||v.location||v.ubicacion||'';
+    var currentStatus=v.transferStatus||'';
+    var html='<div id="m-trasladar" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-trasladar\')">'
+      +'<div class="modal" style="max-width:560px">'
+        +'<div class="mh"><span>\u{1F69A} Trasladar veh\u00edculo</span><button class="mx" onclick="nxCloseDynModal(\'m-trasladar\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(99,102,241,.06);border-left:3px solid #6366f1;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Veh\u00edculo</div>'
+            +'<div style="font-size:13px;color:var(--t1);font-weight:600">'+esc((s.brand||'')+' '+(s.model||''))+(v.color?' \u2014 '+esc(v.color):'')+(v.kms?' \u2014 '+esc(v.kms)+' km':'')+'</div>'
+            +'<div style="font-size:11px;color:var(--t3);margin-top:4px">Ubicaci\u00f3n original (no se modifica): <strong>'+esc(currentUbic||'\u2014')+'</strong></div>'
+            +(currentPickup&&currentPickup!==currentUbic?'<div style="font-size:11px;color:var(--t3);margin-top:2px">Pick-Up actual: <strong>'+esc(currentPickup)+'</strong>'+(currentStatus==='in_transit'?' <span style="color:#92400e">(en tr\u00e1nsito)</span>':currentStatus==='arrived'?' <span style="color:#15803d">(llegado)</span>':'')+'</div>':'')
+          +'</div>'
+          +'<div class="g3 mb10">'
+            +'<div><label>Ciudad *</label><input type="text" id="trasl-city" placeholder="Ej: San Cugat" autocomplete="off" style="width:100%;padding:8px"></div>'
+            +'<div><label>Provincia / Regi\u00f3n</label><input type="text" id="trasl-region" placeholder="Ej: Barcelona" autocomplete="off" style="width:100%;padding:8px"></div>'
+            +'<div><label>Pa\u00eds</label><select id="trasl-country" style="width:100%;padding:8px">'
+              +'<option value="Espa\u00f1a" selected>Espa\u00f1a</option>'
+              +'<option value="Italia">Italia</option>'
+              +'<option value="Francia">Francia</option>'
+              +'<option value="Alemania">Alemania</option>'
+              +'<option value="Portugal">Portugal</option>'
+              +'<option value="UK">UK</option>'
+              +'<option value="Otros">Otros</option>'
+            +'</select></div>'
+          +'</div>'
+          +'<div class="mb10">'
+            +'<label>Nombre piazzal de destino (opcional)</label>'
+            +'<input type="text" id="trasl-place" placeholder="Ej: Centro log\u00edstico DMCAR" autocomplete="off" style="width:100%;padding:8px">'
+          +'</div>'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px;border-radius:6px;font-size:11px;color:var(--t2);margin-bottom:14px;line-height:1.5">'
+            +'\u{1F4A1} La <strong>Ubicaci\u00f3n original</strong> permanece como hist\u00f3rico. Solo se actualiza el <strong>Pick-Up</strong> con la nueva destinaci\u00f3n. La l\u00ednea quedar\u00e1 marcada en \u{1F7E1} <strong>amarillo (en tr\u00e1nsito)</strong> hasta confirmar la llegada.'
+          +'</div>'
+          +'<div class="fc g8" style="justify-content:space-between">'
+            +(currentStatus==='in_transit'?'<button class="btn bs" onclick="nxConfirmArrival(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none">\u2705 Confirmar llegada</button>':'<span></span>')
+            +'<div class="fc g8">'
+              +'<button class="btn bg" onclick="nxCloseDynModal(\'m-trasladar\')">Cancelar</button>'
+              +'<button class="btn bp" onclick="nxConfirmTrasladar(\''+esc(sid)+'\','+vi+')" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none">\u{1F69A} Trasladar</button>'
+            +'</div>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-trasladar');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    setTimeout(function(){var c=document.getElementById('trasl-city');if(c)c.focus();},80);
+  };
+
+  // Conferma trasferimento: Pick-Up <- nuova destinazione, transferStatus <- in_transit
+  window.nxConfirmTrasladar=function(sid,vi){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+    if(!s||!Array.isArray(s.vehicles)||vi<0||vi>=s.vehicles.length){
+      alert('Veh\u00edculo no encontrado');return;
+    }
+    var city=String((document.getElementById('trasl-city')||{}).value||'').trim();
+    var region=String((document.getElementById('trasl-region')||{}).value||'').trim();
+    var country=String((document.getElementById('trasl-country')||{}).value||'').trim();
+    var place=String((document.getElementById('trasl-place')||{}).value||'').trim();
+    if(!city){alert('La ciudad es obligatoria');return;}
+    var newPickup=(place?place+' \u2014 ':'')+city+(region?' ('+region+')':'')+(country&&country!=='Espa\u00f1a'?' '+country:'');
+    var v=s.vehicles[vi];
+    // Garantisce che Ubicación storica sia preservata
+    if(!v.ubicacion){v.ubicacion=v.pickup||v.location||'';}
+    v.pickup=newPickup;
+    v.transferStatus='in_transit';
+    v.transferTo={city:city,region:region,country:country,place:place,setAt:new Date().toISOString()};
+    SS('stock',window.stock);
+    nxCloseDynModal('m-trasladar');
+    if(typeof fStk==='function')fStk();
+    if(typeof showToast==='function')showToast('\u{1F69A} Veh\u00edculo en tr\u00e1nsito \u2192 '+newPickup,5000);
+  };
+
+  // Conferma arrivo: transferStatus <- arrived (verde)
+  window.nxConfirmArrival=function(sid,vi){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(sid);});
+    if(!s||!Array.isArray(s.vehicles)||vi<0||vi>=s.vehicles.length){
+      alert('Veh\u00edculo no encontrado');return;
+    }
+    var v=s.vehicles[vi];
+    v.transferStatus='arrived';
+    v.arrivedAt=new Date().toISOString();
+    SS('stock',window.stock);
+    nxCloseDynModal('m-trasladar');
+    if(typeof fStk==='function')fStk();
+    if(typeof showToast==='function')showToast('\u2705 Llegada confirmada \u2014 listo para carga',4000);
   };
 
   // Auto-archive con dati AI
