@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.04 — DMCAR GROUP CRM | 2026-05-03 | Provider parser fix + Staff paste: 1) FIX BUG paese: parser ora rileva paese da KEYWORD nel testo (España, Italia, Alemania ecc) PRIMA che da prefisso telefonico/TLD - "España" nel testo → País=España (era erroneamente Alemania); 2) Auto-prefisso telefonico: nxAddPhonePrefix mappa País→prefisso (+34/+39/+33/+49/+44/+351/+48/+41/+43...); telefono "937208953" + país="España" → "+34 937208953"; pulisce zero iniziali; 3) Estrazione Datos Fiscales dal testo: VAT/CIF/NIF (regex multi-formato A60344140/B12345678/IT12345678901), IBAN, CP+Ciudad, Provincia, Dirección (Calle/Via/Strasse/Avenue), URL Web; auto-fill di pv-vat/pv-iban/pv-address/pv-cp/pv-city/pv-province/pv-legal-name/pv-fiscal-country; auto-apre sezione Datos fiscales se trova qualcosa; 4) Pegar info nel section Staff: textarea + button "Procesar y añadir contacto" - parsa firma email/biglietto e crea contatto staff con name/email/phone/role + auto-prefix tel; mapping ruolo da keyword (contabil→Contabilidad, log→Logistica, sales→Comercial, manager→Director); 5) Fix typo: "A\u00f1adir" letterale in HTML statico sostituito con HTML entity &ntilde; per rendering corretto. -->
+<!-- NEXO v10.05 — DMCAR GROUP CRM | 2026-05-03 | Datos Bancarios provider: 1) Nuova sezione "Datos Bancarios" collassabile nel modal Provider con campi: Titular cuenta, Banco/Entidad, IBAN, BIC/SWIFT, Moneda (EUR/USD/GBP/CHF/JPY/CNY/Otra), País cuenta, Notas bancarias; 2) Modalità "Pegar info" - parser provParseBankText estrae IBAN (regex paese+22-32 alfanum), BIC (8 o 11 char), Banco (keyword Banco/Banca/Bank/Caixa + lista banche), Titular (keyword Titular/Holder/Beneficiario), Moneda (EUR/USD/GBP/CHF/JPY + simboli €$£¥), País (auto-deduzione da prefisso IBAN); 3) Modalità Upload certificato bancario (PDF/JPG/PNG) con AI extraction via Claude Haiku 4.5 (provAIExtractBankCert) - prompt strutturato JSON, base64 inline come document/image; 4) Validazione IBAN con algoritmo MOD-97 (ISO 13616) - nxValidateIBAN controlla lunghezza per paese (ES:24, IT:27, DE:22, FR:27...), checksum mod 97 = 1; UI feedback verde/rosso accanto al campo IBAN; 5) Persistenza certificato come allegato base64 nel provider.bankCertificate (name, type, size, base64, uploadedAt); 6) UI: bottoni Ver (download), ✖ (remove); 7) Auto-apertura sezione Datos Bancarios se provider ha già IBAN/banca/certificato; 8) saveProv aggiornato con bankTitular/Name/Iban/Bic/Currency/Country/Notes/Certificate. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2560,6 +2560,41 @@ En que te puedo ayudar hoy?</div></div>
           <div><label>SDI / C&oacute;digo destinatario <span style="font-size:9px;color:var(--t3)">(Italia)</span></label><input type="text" id="pv-sdi" placeholder="0000000 (7 caracteres)"></div>
         </div>
         <div class="mb6"><label>PEC <span style="font-size:9px;color:var(--t3)">(Posta elettronica certificata - Italia)</span></label><input type="email" id="pv-pec" placeholder="empresa@pec.empresa.it"></div>
+      </div>
+    </div>
+    <!-- v10.05: DATOS BANCARIOS (collassabile, chiusa di default) -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
+      <div onclick="provToggleBancario()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
+        <div style="font-size:12px;font-weight:600;color:var(--t2)">&#127974; Datos bancarios <span style="font-size:10px;color:var(--t3);font-weight:400">(opcional &mdash; cuenta para pagos)</span></div>
+        <span id="pv-banca-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
+      </div>
+      <div id="pv-banca-collapse" style="display:none;padding:0 12px 12px 12px">
+        <!-- Pegar info bancarios -->
+        <div style="border:1px dashed var(--border);border-radius:6px;background:var(--bg1);padding:8px;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">&#128203; Pegar coordenadas bancarias <span style="font-weight:400;color:var(--t3);font-size:10px">(IBAN, BIC, banco...)</span></div>
+          <textarea id="pv-banca-paste" rows="3" placeholder="Ej: IBAN: ES12 3456 7890 1234 5678 9012&#10;BIC: BSABESBB&#10;Banco: Banco Sabadell&#10;Titular: SUPERWAGEN S.A." style="font-size:11px;font-family:monospace;width:100%;padding:6px"></textarea>
+          <button type="button" class="btn bs" onclick="provExtractBankFromPaste()" style="width:100%;font-size:11px;margin-top:6px">&#9889; Procesar y rellenar</button>
+          <div id="pv-banca-paste-status" style="font-size:10px;margin-top:4px;min-height:14px"></div>
+        </div>
+        <!-- Upload certificato bancario -->
+        <div style="border:1px dashed var(--border);border-radius:6px;background:var(--bg1);padding:8px;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:6px">&#128206; Subir certificado bancario <span style="font-weight:400;color:var(--t3);font-size:10px">(PDF / JPG / PNG)</span></div>
+          <input type="file" id="pv-banca-file" accept=".pdf,.jpg,.jpeg,.png" style="font-size:11px;width:100%;padding:6px;border:1px solid var(--border);border-radius:4px;background:var(--bg1)" onchange="provUploadBankCert(this)">
+          <div id="pv-banca-upload-status" style="font-size:10px;margin-top:4px;min-height:14px"></div>
+          <div id="pv-banca-attachment" style="margin-top:8px;display:none;padding:6px;background:var(--bg2);border-radius:4px;font-size:11px"></div>
+        </div>
+        <!-- Form campi bancarios -->
+        <div class="g2 mb10">
+          <div><label>Titular cuenta</label><input type="text" id="pv-bank-titular" placeholder="Raz&oacute;n social titular"></div>
+          <div><label>Banco / Entidad</label><input type="text" id="pv-bank-name" placeholder="Banco Sabadell"></div>
+        </div>
+        <div class="mb10"><label>IBAN <span id="pv-bank-iban-valid" style="font-size:10px;margin-left:6px"></span></label><input type="text" id="pv-bank-iban" placeholder="ES12 3456 7890 1234 5678 9012" style="font-family:monospace;font-size:11px;text-transform:uppercase" oninput="provValidateBankIBAN()"></div>
+        <div class="g3 mb10" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label>BIC / SWIFT</label><input type="text" id="pv-bank-bic" placeholder="BSABESBB" style="font-family:monospace;font-size:11px;text-transform:uppercase"></div>
+          <div><label>Moneda</label><select id="pv-bank-currency"><option value="EUR">EUR</option><option value="USD">USD</option><option value="GBP">GBP</option><option value="CHF">CHF</option><option value="JPY">JPY</option><option value="CNY">CNY</option><option value="OTRA">Otra</option></select></div>
+          <div><label>Pa&iacute;s cuenta</label><input type="text" id="pv-bank-country" placeholder="Espa&ntilde;a"></div>
+        </div>
+        <div class="mb6"><label>Notas bancarias <span style="font-size:9px;color:var(--t3)">(condiciones especiales, IBAN secundario...)</span></label><input type="text" id="pv-bank-notes" placeholder=""></div>
       </div>
     </div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openProvLabelsManagerForProvider()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="pv-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openProvLabelsManagerForProvider()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="pv-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="pv-labels"></div>
@@ -13279,6 +13314,14 @@ function openNewProvider(){
   if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display='none';
   if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML='\u25BC';
   if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
+  // v10.05: reset bank fields
+  ['pv-bank-titular','pv-bank-name','pv-bank-iban','pv-bank-bic','pv-bank-country','pv-bank-notes'].forEach(function(id){if(n(id))n(id).value='';});
+  if(n('pv-bank-currency'))n('pv-bank-currency').value='EUR';
+  if(n('pv-banca-collapse'))n('pv-banca-collapse').style.display='none';
+  if(n('pv-banca-toggle-icon'))n('pv-banca-toggle-icon').innerHTML='\u25BC';
+  if(n('pv-bank-iban-valid'))n('pv-bank-iban-valid').textContent='';
+  if(typeof provRenderBankCertificate==='function')provRenderBankCertificate(null);
+  window._nxBankCertPending=null;
   openM('m-provider');
 }
 
@@ -13331,6 +13374,21 @@ function editProvider(id){
   if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display=hasStaff?'block':'none';
   if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML=hasStaff?'\u25B2':'\u25BC';
   if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
+  // v10.05: Carica datos bancarios
+  if(n('pv-bank-titular'))n('pv-bank-titular').value=p.bankTitular||'';
+  if(n('pv-bank-name'))n('pv-bank-name').value=p.bankName||'';
+  if(n('pv-bank-iban'))n('pv-bank-iban').value=p.bankIban||'';
+  if(n('pv-bank-bic'))n('pv-bank-bic').value=p.bankBic||'';
+  if(n('pv-bank-currency'))n('pv-bank-currency').value=p.bankCurrency||'EUR';
+  if(n('pv-bank-country'))n('pv-bank-country').value=p.bankCountry||'';
+  if(n('pv-bank-notes'))n('pv-bank-notes').value=p.bankNotes||'';
+  if(typeof provValidateBankIBAN==='function')provValidateBankIBAN();
+  // Render certificato attaccato se presente
+  var hasBank=p.bankIban||p.bankName||p.bankCertificate;
+  if(n('pv-banca-collapse'))n('pv-banca-collapse').style.display=hasBank?'block':'none';
+  if(n('pv-banca-toggle-icon'))n('pv-banca-toggle-icon').innerHTML=hasBank?'\u25B2':'\u25BC';
+  if(typeof provRenderBankCertificate==='function')provRenderBankCertificate(p.bankCertificate);
+  window._nxBankCertPending=null;
   openM('m-provider');
 }
 
@@ -13366,6 +13424,15 @@ function saveProv(){
     fiscalCountry:n('pv-fiscal-country')?n('pv-fiscal-country').value.trim():'',
     sdi:n('pv-sdi')?n('pv-sdi').value.trim().toUpperCase():'',
     pec:n('pv-pec')?n('pv-pec').value.trim().toLowerCase():'',
+    // v10.05: Datos bancarios
+    bankTitular:n('pv-bank-titular')?n('pv-bank-titular').value.trim():'',
+    bankName:n('pv-bank-name')?n('pv-bank-name').value.trim():'',
+    bankIban:n('pv-bank-iban')?n('pv-bank-iban').value.replace(/\s+/g,'').toUpperCase():'',
+    bankBic:n('pv-bank-bic')?n('pv-bank-bic').value.replace(/\s+/g,'').toUpperCase():'',
+    bankCurrency:n('pv-bank-currency')?n('pv-bank-currency').value:'EUR',
+    bankCountry:n('pv-bank-country')?n('pv-bank-country').value.trim():'',
+    bankNotes:n('pv-bank-notes')?n('pv-bank-notes').value.trim():'',
+    bankCertificate:window._nxBankCertPending||(editId?(providers.find(function(p){return String(p.id)===String(editId);})||{}).bankCertificate||null:null),
     // v10.03: Staff multi-contatto (1\u2192N relazione impresa\u2192contatti)
     staff:provCollectStaffFromUI(),
     updatedAt:new Date().toISOString()
@@ -13387,6 +13454,7 @@ function saveProv(){
     SS('provCnt',provCnt);
   }
   SS('providers',providers);
+  window._nxBankCertPending=null; // v10.05 reset pending bank cert
   closeM('m-provider');
   renderProv();
   if(typeof showToast==='function')showToast('\u2713 Provider guardado');
@@ -13551,6 +13619,290 @@ window.provBindAutofillListeners=function(){
   var countryEl=document.getElementById('pv-country');
   if(coEl&&!coEl._fillBound){coEl.addEventListener('blur',provSyncFiscalFromAnagrafica);coEl._fillBound=true;}
   if(countryEl&&!countryEl._fillBound){countryEl.addEventListener('blur',provSyncFiscalFromAnagrafica);countryEl._fillBound=true;}
+};
+
+// ===========================================================================
+// v10.05: DATOS BANCARIOS - toggle, parser, validazione IBAN, upload certificato
+// ===========================================================================
+
+window.provToggleBancario=function(){
+  var c=document.getElementById('pv-banca-collapse');
+  var ic=document.getElementById('pv-banca-toggle-icon');
+  if(!c)return;
+  var hidden=c.style.display==='none';
+  c.style.display=hidden?'block':'none';
+  if(ic)ic.style.transform=hidden?'rotate(180deg)':'rotate(0deg)';
+};
+
+// Validazione IBAN con checksum mod 97 (algoritmo standard ISO 13616)
+window.nxValidateIBAN=function(iban){
+  if(!iban)return {valid:false,reason:'IBAN vac\u00edo'};
+  var clean=String(iban).replace(/\s+/g,'').toUpperCase();
+  // Lunghezza standard tra 15 e 34
+  if(clean.length<15||clean.length>34)return {valid:false,reason:'Longitud incorrecta ('+clean.length+' caracteres, esperado 15-34)'};
+  // Solo lettere e cifre
+  if(!/^[A-Z0-9]+$/.test(clean))return {valid:false,reason:'Caracteres no v\u00e1lidos'};
+  // Inizia con 2 lettere paese
+  if(!/^[A-Z]{2}/.test(clean))return {valid:false,reason:'Debe empezar con 2 letras del pa\u00eds'};
+  // Lunghezze attese per paese (campione principale)
+  var lengthByCountry={
+    'ES':24,'IT':27,'DE':22,'FR':27,'PT':25,'NL':18,'BE':16,'GB':22,'CH':21,
+    'AT':20,'IE':22,'PL':28,'CZ':24,'SK':24,'RO':24,'HU':28,'BG':22,'GR':27,
+    'DK':18,'SE':24,'NO':15,'FI':18,'LU':20,'MT':31,'CY':28,'LV':21,'LT':20,
+    'EE':20,'SI':19,'HR':21
+  };
+  var cc=clean.slice(0,2);
+  if(lengthByCountry[cc]&&clean.length!==lengthByCountry[cc]){
+    return {valid:false,reason:'Para '+cc+' se esperan '+lengthByCountry[cc]+' caracteres, encontrados '+clean.length};
+  }
+  // Algoritmo MOD-97
+  // Sposta i primi 4 caratteri alla fine
+  var rearranged=clean.slice(4)+clean.slice(0,4);
+  // Converti lettere in numeri (A=10, B=11, ..., Z=35)
+  var numeric='';
+  for(var i=0;i<rearranged.length;i++){
+    var c=rearranged.charAt(i);
+    if(/[A-Z]/.test(c))numeric+=String(c.charCodeAt(0)-55);
+    else numeric+=c;
+  }
+  // Calcola mod 97 in chunk per evitare overflow
+  var rem=0;
+  for(var j=0;j<numeric.length;j+=7){
+    var chunk=String(rem)+numeric.substring(j,j+7);
+    rem=parseInt(chunk,10)%97;
+  }
+  if(rem!==1)return {valid:false,reason:'Checksum no v\u00e1lido (esperado mod-97 = 1)'};
+  return {valid:true,country:cc,length:clean.length};
+};
+
+window.provValidateBankIBAN=function(){
+  var ibanEl=document.getElementById('pv-bank-iban');
+  var validEl=document.getElementById('pv-bank-iban-valid');
+  if(!ibanEl||!validEl)return;
+  var v=ibanEl.value.trim();
+  if(!v){validEl.innerHTML='';ibanEl.style.borderColor='';return;}
+  var res=nxValidateIBAN(v);
+  if(res.valid){
+    validEl.innerHTML='<span style="color:var(--green);font-weight:600">\u2713 V\u00e1lido ('+res.country+', '+res.length+' caracteres)</span>';
+    ibanEl.style.borderColor='var(--green)';
+  }else{
+    validEl.innerHTML='<span style="color:var(--red);font-weight:600">\u26a0\ufe0f '+esc(res.reason)+'</span>';
+    ibanEl.style.borderColor='var(--red)';
+  }
+};
+
+// Parser testo libero per dati bancari
+window.provExtractBankFromPaste=function(){
+  var raw=(document.getElementById('pv-banca-paste')||{}).value||'';
+  raw=String(raw).trim();
+  var statusEl=document.getElementById('pv-banca-paste-status');
+  if(!raw){
+    if(statusEl){statusEl.textContent='Pega primero las coordenadas.';statusEl.style.color='var(--red)';}
+    return;
+  }
+  var parsed=provParseBankText(raw);
+  var filled=[];
+  if(parsed.iban){
+    var ibanEl=document.getElementById('pv-bank-iban');
+    if(ibanEl){ibanEl.value=parsed.iban;filled.push('IBAN');}
+  }
+  if(parsed.bic){
+    var bicEl=document.getElementById('pv-bank-bic');
+    if(bicEl){bicEl.value=parsed.bic;filled.push('BIC');}
+  }
+  if(parsed.bankName){
+    var bnEl=document.getElementById('pv-bank-name');
+    if(bnEl&&!bnEl.value){bnEl.value=parsed.bankName;filled.push('banco');}
+  }
+  if(parsed.titular){
+    var ttEl=document.getElementById('pv-bank-titular');
+    if(ttEl&&!ttEl.value){ttEl.value=parsed.titular;filled.push('titular');}
+  }
+  if(parsed.currency){
+    var cuEl=document.getElementById('pv-bank-currency');
+    if(cuEl){cuEl.value=parsed.currency;filled.push('moneda');}
+  }
+  if(parsed.country){
+    var coEl=document.getElementById('pv-bank-country');
+    if(coEl&&!coEl.value){coEl.value=parsed.country;filled.push('pa\u00eds');}
+  }
+  if(typeof provValidateBankIBAN==='function')provValidateBankIBAN();
+  if(filled.length===0){
+    if(statusEl){statusEl.textContent='No se han podido extraer datos. Comprueba el formato.';statusEl.style.color='var(--red)';}
+    return;
+  }
+  document.getElementById('pv-banca-paste').value='';
+  if(statusEl){statusEl.textContent='\u2713 '+filled.length+' campos rellenados ('+filled.join(', ')+'). Verifica antes de guardar.';statusEl.style.color='var(--green)';}
+  setTimeout(function(){if(statusEl)statusEl.textContent='';},5000);
+};
+
+// Parser bancario - estrae IBAN/BIC/banca/titolare da testo
+window.provParseBankText=function(raw){
+  var out={iban:'',bic:'',bankName:'',titular:'',currency:'',country:''};
+  if(!raw)return out;
+  // IBAN: pattern paese+22-32 alfanum (con possibili spazi)
+  var ibanMatch=raw.match(/\b([A-Z]{2}[0-9]{2}[\s]?(?:[A-Z0-9][\s]?){10,30})\b/i);
+  if(ibanMatch){
+    var clean=ibanMatch[1].replace(/\s+/g,'').toUpperCase();
+    // Format con spazi ogni 4 caratteri per leggibilit\u00e0
+    out.iban=clean.replace(/(.{4})/g,'$1 ').trim();
+    // Deduce paese
+    var countryCode=clean.slice(0,2);
+    var countryMap={ES:'Espa\u00f1a',IT:'Italia',DE:'Alemania',FR:'Francia',PT:'Portugal',NL:'Pa\u00edses Bajos',BE:'B\u00e9lgica',GB:'Reino Unido',CH:'Suiza',AT:'Austria',IE:'Irlanda',PL:'Polonia',CZ:'Rep. Checa'};
+    if(countryMap[countryCode])out.country=countryMap[countryCode];
+  }
+  // BIC/SWIFT: 8 o 11 caratteri alfanumerici
+  var bicMatch=raw.match(/(?:BIC|SWIFT|SWIFT-?BIC)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/i);
+  if(!bicMatch){
+    // Pattern stand-alone
+    bicMatch=raw.match(/\b([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b/);
+  }
+  if(bicMatch)out.bic=String(bicMatch[1]).toUpperCase();
+  // Banca: pattern "Banco/Banca/Bank/Entidad: <nome>"
+  var bankMatch=raw.match(/(?:Banco|Banca|Bank|Entidad|Caja|Sparkasse|Bankhaus)\s*[:\-]?\s*([^\n,]+)/i);
+  if(bankMatch){out.bankName=bankMatch[0].trim().replace(/^[^:]+:\s*/,'');}
+  if(!out.bankName){
+    // Fallback: cerca riga con keyword bancarie
+    var lines=raw.split(/\r?\n/);
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i].trim();
+      if(/(banco|banca|bank|caixa|caja|sabadell|santander|bbva|unicredit|intesa|deutsche|commerzbank|bnp|cred|raiffeisen|sparkasse)/i.test(l)&&l.length<60){
+        out.bankName=l;break;
+      }
+    }
+  }
+  // Titular: pattern "Titular/Holder/Beneficiario: <nome>"
+  var ttMatch=raw.match(/(?:Titular|Holder|Beneficiario|Cuentahabiente|Account holder|Intestatario)\s*[:\-]?\s*([^\n,]+)/i);
+  if(ttMatch)out.titular=ttMatch[1].trim();
+  // Currency: cerca codici ISO 4217 o simboli
+  if(/\bEUR\b|€/i.test(raw))out.currency='EUR';
+  else if(/\bUSD\b|\$/.test(raw))out.currency='USD';
+  else if(/\bGBP\b|£/i.test(raw))out.currency='GBP';
+  else if(/\bCHF\b/i.test(raw))out.currency='CHF';
+  else if(/\bJPY\b|¥/i.test(raw))out.currency='JPY';
+  return out;
+};
+
+// Upload + AI extraction certificato bancario
+window.provUploadBankCert=function(input){
+  var file=input&&input.files&&input.files[0];
+  if(!file)return;
+  var statusEl=document.getElementById('pv-banca-upload-status');
+  // Valida formato
+  var ext=String(file.name).split('.').pop().toLowerCase();
+  var isPdf=ext==='pdf',isImg=/^(jpe?g|png)$/.test(ext);
+  if(!isPdf&&!isImg){
+    if(statusEl){statusEl.textContent='Formato no soportado. Usa PDF, JPG o PNG.';statusEl.style.color='var(--red)';}
+    return;
+  }
+  // Salva file in pending (verr\u00e0 persistito al save)
+  var reader=new FileReader();
+  reader.onload=function(e){
+    window._nxBankCertPending={
+      name:file.name,
+      type:file.type,
+      size:file.size,
+      base64:e.target.result.split(',')[1],
+      uploadedAt:new Date().toISOString()
+    };
+    if(statusEl){statusEl.textContent='\u26a1 Procesando con IA...';statusEl.style.color='var(--acc)';}
+    provRenderBankCertificate(window._nxBankCertPending);
+    // Estrazione AI
+    provAIExtractBankCert(file,function(parsed,err){
+      if(err){
+        if(statusEl){statusEl.textContent='\u26a0\ufe0f Error AI: '+err+' \u2014 rellena manualmente.';statusEl.style.color='var(--red)';}
+        return;
+      }
+      var filled=[];
+      if(parsed.iban&&document.getElementById('pv-bank-iban')){document.getElementById('pv-bank-iban').value=parsed.iban;filled.push('IBAN');}
+      if(parsed.bic&&document.getElementById('pv-bank-bic')){document.getElementById('pv-bank-bic').value=parsed.bic;filled.push('BIC');}
+      if(parsed.bankName&&document.getElementById('pv-bank-name')&&!document.getElementById('pv-bank-name').value){document.getElementById('pv-bank-name').value=parsed.bankName;filled.push('banco');}
+      if(parsed.titular&&document.getElementById('pv-bank-titular')&&!document.getElementById('pv-bank-titular').value){document.getElementById('pv-bank-titular').value=parsed.titular;filled.push('titular');}
+      if(parsed.currency&&document.getElementById('pv-bank-currency')){document.getElementById('pv-bank-currency').value=parsed.currency;filled.push('moneda');}
+      if(parsed.country&&document.getElementById('pv-bank-country')&&!document.getElementById('pv-bank-country').value){document.getElementById('pv-bank-country').value=parsed.country;filled.push('pa\u00eds');}
+      if(typeof provValidateBankIBAN==='function')provValidateBankIBAN();
+      if(filled.length===0){
+        if(statusEl){statusEl.textContent='\u26a0\ufe0f No se extrajeron datos. Rellena manualmente.';statusEl.style.color='var(--orange)';}
+      }else{
+        if(statusEl){statusEl.textContent='\u2713 Certificado procesado: '+filled.length+' campos rellenados ('+filled.join(', ')+').';statusEl.style.color='var(--green)';}
+      }
+    });
+  };
+  reader.readAsDataURL(file);
+};
+
+// Rendering anteprima certificato attaccato
+window.provRenderBankCertificate=function(cert){
+  var box=document.getElementById('pv-banca-attachment');
+  if(!box)return;
+  if(!cert){box.style.display='none';box.innerHTML='';return;}
+  var sizeKb=Math.round((cert.size||0)/1024);
+  var icon=/pdf/i.test(cert.type||cert.name)?'\ud83d\udcc4':'\ud83d\uddbc\ufe0f';
+  box.style.display='block';
+  box.innerHTML='<div style="display:flex;align-items:center;gap:8px">'
+    +'<div style="font-size:16px">'+icon+'</div>'
+    +'<div style="flex:1"><strong>'+esc(cert.name)+'</strong><div style="color:var(--t3);font-size:10px">'+sizeKb+' KB &middot; '+esc((cert.uploadedAt||'').slice(0,10))+'</div></div>'
+    +'<button type="button" class="btn bs" onclick="provDownloadBankCert()" style="font-size:10px;padding:3px 8px">\u2b07 Ver</button>'
+    +'<button type="button" class="btn bd" onclick="provRemoveBankCert()" style="font-size:10px;padding:3px 8px">\u2716</button>'
+  +'</div>';
+};
+
+window.provDownloadBankCert=function(){
+  var cert=window._nxBankCertPending;
+  if(!cert){
+    var editId=n('m-provider').getAttribute('data-edit-id');
+    if(editId){var p=providers.find(function(pr){return String(pr.id)===String(editId);});if(p&&p.bankCertificate)cert=p.bankCertificate;}
+  }
+  if(!cert||!cert.base64){alert('No certificate available');return;}
+  var byteChars=atob(cert.base64);
+  var byteNumbers=new Array(byteChars.length);
+  for(var i=0;i<byteChars.length;i++)byteNumbers[i]=byteChars.charCodeAt(i);
+  var byteArray=new Uint8Array(byteNumbers);
+  var blob=new Blob([byteArray],{type:cert.type||'application/octet-stream'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download=cert.name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(url);document.body.removeChild(a);},500);
+};
+
+window.provRemoveBankCert=function(){
+  if(!confirm('\u00bfEliminar el certificado bancario adjunto?'))return;
+  window._nxBankCertPending=null;
+  // Se editing, marca per rimozione (impostato a null al save)
+  provRenderBankCertificate(null);
+  var input=document.getElementById('pv-banca-file');if(input)input.value='';
+};
+
+// AI extraction certificato bancario via Claude Haiku
+window.provAIExtractBankCert=function(file,cb){
+  if(!getKey()){
+    cb(null,'No API key Anthropic configurada');return;
+  }
+  var ext=String(file.name).split('.').pop().toLowerCase();
+  var isPdf=ext==='pdf';
+  var sysPrompt='Eres un parser de certificados bancarios. Extrae datos estructurados y devuelve SOLO JSON v\u00e1lido sin markdown ni texto extra.\n\n'
+    +'SCHEMA:\n{\n  "iban": "IBAN con espacios cada 4 caracteres",\n  "bic": "BIC/SWIFT en may\u00fasculas",\n  "bankName": "nombre del banco",\n  "titular": "titular de la cuenta",\n  "currency": "EUR | USD | GBP | etc",\n  "country": "pa\u00eds del banco (ej. Espa\u00f1a)"\n}\n\n'
+    +'Si un campo no se encuentra, usa null. Para IBAN respeta el formato con espacios.';
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var b64=e.target.result.split(',')[1];
+    var content;
+    if(isPdf){
+      content=[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extrae datos bancarios del certificado.'}];
+    }else{
+      var mt='image/'+(ext==='jpg'?'jpeg':ext);
+      content=[{type:'image',source:{type:'base64',media_type:mt,data:b64}},{type:'text',text:'Extrae datos bancarios del certificado.'}];
+    }
+    callAPIbody({model:'claude-haiku-4-5-20251001',max_tokens:1500,system:sysPrompt,messages:[{role:'user',content:content}]},function(resp,err){
+      if(err){cb(null,err);return;}
+      try{
+        var clean=String(resp||'').replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
+        var parsed=JSON.parse(clean);
+        cb(parsed,null);
+      }catch(ex){cb(null,'JSON parse error: '+ex.message);}
+    });
+  };
+  reader.onerror=function(){cb(null,'FileReader error');};
+  reader.readAsDataURL(file);
 };
 
 function delProvider(id){
