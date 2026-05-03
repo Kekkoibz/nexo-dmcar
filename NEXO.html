@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.1 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX modali OWN workflow: 1) Bug freeze "Más tarde" su Step2a → causa: closeM(id) rimuove la classe 'on' ma i modali dinamici v10.01+ (insertAdjacentHTML) usano style="display:flex" inline, quindi closeM NON funzionava → modal restava in DOM bloccando l'UI; 2) Bug grafico schermo nero → causa: Step1 NON veniva rimosso prima di Step2a/2b, doppio backdrop rgba(0,0,0,.75) sovrapposto = nero opaco illeggibile; 3) FIX: nuovo helper window.nxCloseDynModal(id) che fa parentNode.removeChild() invece di toggle classe, sostituito in tutte le 11 chiamate del workflow (Step1/2a/2b/Decline/Decline2); 4) Effetto collaterale risolto: ora Step1 viene rimosso dal DOM prima di mostrare 2a/2b → niente più doppio backdrop → contrasto WCAG ripristinato come da design system; 5) Test branch coperti: Sì→Cargar ahora, Sì→Más tarde, No→Sí richiedi, No→No suspenso, X→Decline; 6) PRESERVA: Step2aChoice('now') → numbersUploadProveedorDoc, Step2bChoice('si') → nxOwnEntryRequestProforma, ownerCompany persistito su tutti i branch. -->
 <!-- NEXO v10.10 — DMCAR GROUP CRM | 2026-05-03 | Workflow Libre→OWN: 1) Step1 ridisegnato con selettore impresa acquirente (DMCAR GROUP / INNOQUEST SOLUTIONS / IMPEX CONSULTING / MERCEDES SOLUTION via window.NX_OWN_COMPANIES) e template notifica spec: "[Empresa] ha adquirido [N] [Marca Modelo] de [Provider]. Los vehículos han sido cargados en Vista Contable"; 2) Step2b ("No tengo proforma") refactor: invece di "¿Registrar igualmente?" ora chiede "¿Solicitar la proforma al proveedor?" — branch Sì apre email pre-compilata, branch No lascia in suspenso (sempre OWN+N/D in Vista Contable, propagazione obbligatoria come da spec); 3) Nuova fn nxOwnEntryRequestProforma: pesca contatti Rol=Contabilidad da provider.staff[] + fallback su provider.email se role=Contabilidad, costruisce mailto: con subject/body template spec ("Solicitud de proforma – Marca Modelo – N° unidades"); 4) Fallback a 3 livelli: provider non in DB → mailto vuoto, provider senza Contabilidad → riusa nxProvSelectEmailRecipients per scelta manuale, contatti trovati → mailto con tutti i Contabilidad in TO; 5) Persiste s.ownerCompany su ogni stock OWN per traccia multi-impresa (usato in render Vista Contable e re-display Step1 in caso di re-entry); 6) Helper nxOpenMailtoFallback con clipboard fallback se mailto: fallisce. PRESERVA: 10.09 aggregazione lotti subasta intatta, sub-rows VW Taigo funzionanti. -->
 <!-- NEXO v10.09 — DMCAR GROUP CRM | 2026-05-03 | Stock Import: aggregazione lotti per Brand+Model+Version: 1) FIX UX: prima 14 VW Taigo identici venivano importati come 14 lotti separati invece di 1 lotto aggregato con sub-rows. Ora tryNativeBlockParse aggrega per chiave brand+model+version → 1 riga master + drilldown ▼ N per vedere singole unità; 2) Calcoli aggregati per lotto: KMS media (avgKms=true), Daños media (avgDamages=true), Buy unico se tutti uguali altrimenti media, Pickup unique values join " / ", Colors unique values join ", "; 3) Mantiene vehicles[] con ogni unità individuale (kms+color+damage+pickup+reg specifici); 4) Console log "[v10.09] Pre-parser ha aggregato N unidades en M lote(s)"; 5) Compatibile con render esistente: hasD=item.vehicles.length>0 mostra bottone "▼ N" per espandere e vedere unità singole con KMS/colors/daños di ogni veicolo; 6) Header keywords estesi a "faros|matrix" per skip header file subasta. -->
 <html lang="es">
@@ -25952,6 +25953,14 @@ document.querySelectorAll('.ovl').forEach(function(el){
   //   Step 2a (Sì): "Hai la proforma da caricare?" [Sì→upload / No→accetta senza]
   //   Step 2b (No): "Vuoi caricarle ugualmente?" [Sì→Vista N/D / No→solo Stock]
   // ========================================================================
+  // v10.10.1 FIX: helper per chiudere modali dinamici (insertAdjacentHTML)
+  // Bug v10.01-v10.10: closeM() rimuove la classe 'on' ma i modali dinamici usano
+  // style="display:flex" inline -> closeM non funzionava -> freeze + doppio backdrop nero.
+  window.nxCloseDynModal=function(id){
+    var el=document.getElementById(id);
+    if(!el)return;
+    if(el.parentNode)el.parentNode.removeChild(el);
+  };
   window.nxOwnEntryWorkflow=function(stockIds){
     if(!stockIds||!stockIds.length)return;
     // Filtra solo gli stock che sono effettivamente OWN E non già notificati
@@ -26066,7 +26075,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'</div></div>';
     var old=document.getElementById('m-own-entry-2');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
-    closeM('m-own-entry');
+    nxCloseDynModal('m-own-entry');
   };
 
   window.nxOwnEntryStep2aChoice=function(choice){
@@ -26079,7 +26088,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // Marca come "in attesa proforma" + ownerCompany
       ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=true;s.ownerCompany=ownerCompany;});
       SS('stock',stock);
-      closeM('m-own-entry-2');
+      nxCloseDynModal('m-own-entry-2');
       // Apri direttamente l'upload doc proveedor (Vista Contable AI parser)
       if(typeof showToast==='function')showToast('\u2728 Carga la proforma desde Vista Contable',5000);
       // Naviga a Vista Contable
@@ -26100,7 +26109,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
         s.ownerCompany=ownerCompany;
       });
       SS('stock',stock);
-      closeM('m-own-entry-2');
+      nxCloseDynModal('m-own-entry-2');
       if(typeof numbersRenderVista==='function')numbersRenderVista();
       if(typeof showToast==='function')showToast('\u2713 Veh\u00edculos registrados en Vista Contable con N/D - carga proforma cuando tengas',5500);
       if(ctx.onDone)ctx.onDone();
@@ -26130,7 +26139,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'</div></div>';
     var old=document.getElementById('m-own-entry-3');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
-    closeM('m-own-entry');
+    nxCloseDynModal('m-own-entry');
   };
 
   window.nxOwnEntryStep2bChoice=function(choice){
@@ -26143,7 +26152,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       s.ownerCompany=ownerCompany;
     });
     SS('stock',stock);
-    closeM('m-own-entry-3');
+    nxCloseDynModal('m-own-entry-3');
     if(typeof numbersRenderVista==='function')numbersRenderVista();
     if(choice==='si'){
       // Apri email precompilata al Contabile del provider
@@ -26161,17 +26170,17 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // Decline (chiudi senza fare niente, marca come notificato per non riapparire)
   window.nxOwnEntryDecline=function(){
-    var ctx=window._nxOwnCtx;if(!ctx){closeM('m-own-entry');return;}
+    var ctx=window._nxOwnCtx;if(!ctx){nxCloseDynModal('m-own-entry');return;}
     ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=false;});
     SS('stock',stock);
-    closeM('m-own-entry');
+    nxCloseDynModal('m-own-entry');
     if(ctx.onDone)ctx.onDone();
   };
   window.nxOwnEntryDecline2=function(){
-    var ctx=window._nxOwnCtx;if(!ctx){closeM('m-own-entry-2');closeM('m-own-entry-3');return;}
+    var ctx=window._nxOwnCtx;if(!ctx){nxCloseDynModal('m-own-entry-2');nxCloseDynModal('m-own-entry-3');return;}
     ctx.group.stocks.forEach(function(s){s._ownNotified=true;s._ownPendingProforma=false;});
     SS('stock',stock);
-    closeM('m-own-entry-2');closeM('m-own-entry-3');
+    nxCloseDynModal('m-own-entry-2');nxCloseDynModal('m-own-entry-3');
     if(ctx.onDone)ctx.onDone();
   };
 
