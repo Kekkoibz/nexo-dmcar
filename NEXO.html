@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.11 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 2 problematiche report tecnico utente:
+1) Problematica 1 utente — Ubicación errata "Praha/Praga" (Foto 14): il PDF non specifica luogo di carico, l'AI deduceva erroneamente la sede del CLIENTE (DMCAR SRO = Praga). Spec utente: Ubicación deve ereditare dal Provider, non dal cliente. ROOT CAUSE: nessuna logica di fallback Provider → Stock. FIX: nuovo blocco post-AI parse in iHandleResp che (a) cerca provider canonical via nxNormalizeSupplierName, (b) costruisce provLocation = city + (province) + country (escluso España default), (c) sostituisce v.pickup + v.vehicles[].pickup + v.vehicles[].ubicacion + v.vehicles[].location SE: vuoto/placeholder OPPURE matcha blacklist /^(praha|prague|praga)/i (sedi clienti note, estendibile). Preserva _pickupOriginal per audit + flag _pickupFromProvider/_ubicacionFromProvider. Smoke test 8/8 PASS;
+2) Problematica 2 utente — badge ⚠ MOT? sul Modelo invece di Versión + dialog Sí/No (Foto 14): l'utente vuole che il badge incompleto stia nella colonna semanticamente corretta (Modelo è chiave indicizzazione, non Versión) e che apra un dialog "¿Buscar en web?" invece di partire direttamente con AI lookup. FIX: (a) badge spostato dalla cella Versión alla cella Modelo (class motor-verify-btn → modelo-verify-btn, label "⚠" semplificato), (b) nuova fn nxAskModeloLookup mostra modal con 2 opzioni grandi: "✅ Sí, buscar con AI" (avvia nxLookupVehicleVersion esistente) / "❌ No, ya está bien" (rimuove flag _motorUnverified + setta _motorUserAcknowledged + toast "Aviso eliminado — gestionado manualmente"); preserva tutta la logica AI lookup esistente di v10.10.5;
+3) PRESERVA: tutto v10.10.10 (3 anomalie report fix), v10.10.9 (defense-in-depth accDocs), v10.10.8 (notif completion), v10.10.7 (PDF scansionati). -->
 <!-- NEXO v10.10.10 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 anomalie report tecnico utente:
 1) Bug Anomalia 1 utente — "Respuesta no parseable" su AI Lookup MOT? (Foto 11): l'AI rispondeva con \`\`\`json\n{...}\n\`\`\` ma il regex di strip era /\`\`\`json|\`\`\`/g che lasciava newline intermedie + se c'era testo prima/dopo, JSON.parse falliva. ROOT CAUSE: parser fragile non robusto a varianti di output AI. FIX: nuovo parser robusto in nxLookupVehicleVersion: (a) replace fence tollerante newline /^\`\`\`(?:json)?\\s*\\n?/i e /\\n?\\s*\`\`\`\\s*$/; (b) estrai PRIMO oggetto JSON via indexOf('{') + lastIndexOf('}') anche se ci sono testi extra. Smoke test 4/4 PASS;
 2) Bug Anomalia 2 utente — "VIN no reconocido" fuorviante (Foto 12, Principio 3 utente): il messaggio rosso "VIN no reconocido" appariva quando i VIN del PDF (es. WAUZZZGY...) non matchavano i VIN dello Stock Vivo (es. WAUZZZ8Y... — diversi per OCR errori). FIX: messaggio sostituito con info chiara "VIN del documento no coinciden con Stock Vivo" + lista dei 3 motivi possibili (OCR diff, lotto diverso, VIN non importati ancora) + se _nxPendingPurchaseNotif presente → mostra bottone "🔗 Vincular N veh\u00edculos a este documento" che bypassa matching VIN e usa notif.stockIds[] come ground truth. Nuova fn nxAIDocLinkToNotif: scrive accDocs su tutti i sub-vehicles dei stockIds della notif + upload SharePoint TEMP + marca notif completed (proforma 26042102 ora arriva in Vista Contable anche se OCR Stock vs PDF differisce);
@@ -7233,11 +7237,12 @@ function renderStkTbl(){
     html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.date)+'</td>';
     html+='<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(item.supplier)+'</td>';
     html+='<td><strong style="color:var(--b2)">'+esc(item.brand)+'</strong></td>';
-    html+='<td style="white-space:nowrap">'+esc(item.model)+'</td>';
-    // v10.10.5: badge "motor da verificar" se l'AI parser non ha trovato keyword motorizzazione
-    // Click sul badge → AI lookup (web-search-like) per disambiguare versione
-    var motorWarn=item._motorUnverified?'<span class="motor-verify-btn" data-id="'+item.id+'" title="Click para buscar versi\u00f3n exacta con AI" style="display:inline-block;background:#fbbf24;color:#78350f;font-size:8px;font-weight:800;padding:1px 4px;border-radius:3px;margin-left:4px;letter-spacing:.04em;cursor:pointer">\u26a0 MOT?</span>':'';
-    html+='<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+esc(item.version)+(item._motorUnverified?' \u2014 Motorizzazione da verificar':'')+'">'+esc(item.version)+motorWarn+'</td>';
+    // v10.10.11: badge "modelo incompleto" sul Modelo (spec utente) con dialog ¿Buscar en web?
+    // Click sul badge → dialog Sí/No → Sí: AI lookup, No: dismiss flag (gestito manualmente)
+    var modeloWarn=item._motorUnverified?'<span class="modelo-verify-btn" data-id="'+item.id+'" title="Click \u2014 \u00bfBuscar el modelo completo en la web?" style="display:inline-block;background:#fbbf24;color:#78350f;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;margin-left:5px;letter-spacing:.04em;cursor:pointer">\u26a0</span>':'';
+    html+='<td style="white-space:nowrap">'+esc(item.model)+modeloWarn+'</td>';
+    // v10.10.11: badge MOT? rimosso dalla Versión (spostato sul Modelo)
+    html+='<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+esc(item.version)+'">'+esc(item.version)+'</td>';
     html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.reg)+'</td>';
     html+='<td style="text-align:center;font-weight:700;color:var(--acc)">'+unitsDisp+'</td>';
     html+='<td style="text-align:right;white-space:nowrap">'+esc(item.kms)+(item.avgKms?'<span style="font-size:9px;color:var(--t3)"> avg</span>':'')+'</td>';
@@ -7628,12 +7633,13 @@ function renderStkTbl(){
     });
   });
 
-  // v10.10.5: motor verify badge → AI lookup per disambiguare versione veicolo
-  tbody.querySelectorAll('.motor-verify-btn').forEach(function(btn){
+  // v10.10.11: modelo verify badge (era v10.10.5 motor-verify-btn) → dialog ¿Buscar en web? Sí/No
+  // Sí → AI lookup, No → dismiss flag (gestito manualmente)
+  tbody.querySelectorAll('.modelo-verify-btn').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
       var id=this.getAttribute('data-id');
-      if(typeof window.nxLookupVehicleVersion==='function')window.nxLookupVehicleVersion(id);
+      if(typeof window.nxAskModeloLookup==='function')window.nxAskModeloLookup(id);
     });
   });
 
@@ -10133,6 +10139,61 @@ function iHandleResp(resp,manualSup){
           v.vehicles.forEach(function(u){u._motorUnverified=true;});
         }
         console.log('[v10.10.5] Motor unverified per '+v.brand+' '+v.model+' '+v.version);
+      }
+    });
+
+    // v10.10.11: UBICACIÓN/PICK-UP fallback dal provider quando assente o sospettoso
+    // Spec utente: se PDF non specifica luogo di carico, eredita da Provider.city/region/country
+    // Anche se l'AI estrae un valore, se coincide con la sede del CLIENTE (es. "Praha" per DMCAR SRO)
+    // → è probabilmente un errore di interpretazione → preferisci il Provider come ground truth
+    var ownerCompanyCitiesBlacklist=/^(praha|prague|praga)/i; // sedi clienti note (estendibile)
+    vehicles.forEach(function(v){
+      var supName=v.supplier||'';
+      if(!supName)return;
+      // Trova provider canonico
+      var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(supName):supName.toUpperCase().trim();
+      var prov=null;
+      (window.providers||[]).forEach(function(p){
+        var pNm=p.company||p.name||'';
+        var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
+        if(pNorm===supNorm)prov=p;
+      });
+      if(!prov||!prov.city)return; // no provider o senza city
+      // Costruisci ubicación dal provider
+      var provCity=(prov.city||'').trim();
+      var provProv=(prov.province||'').trim();
+      var provCountry=(prov.country||prov.fiscalCountry||'').trim();
+      var provLocation=provCity+(provProv&&provProv!==provCity?' ('+provProv+')':'')+(provCountry&&provCountry!=='Espa\u00f1a'?' '+provCountry:'');
+      // Funzione per decidere se sostituire
+      function shouldUseProviderFor(currentVal){
+        if(!currentVal||currentVal==='--'||String(currentVal).trim()==='')return true;
+        // Se contiene blacklist (es. Praga = sede DMCAR cliente), sostituisci
+        if(ownerCompanyCitiesBlacklist.test(String(currentVal).trim()))return true;
+        return false;
+      }
+      // Applica al lotto + sub-vehicles
+      if(shouldUseProviderFor(v.pickup)){
+        v._pickupOriginal=v.pickup||''; // preserva per audit
+        v.pickup=provLocation;
+        v._pickupFromProvider=true;
+        console.log('[v10.10.11] Pickup eredita dal provider "'+(prov.company||prov.name)+'": '+provLocation+' (era: "'+v._pickupOriginal+'")');
+      }
+      if(v.vehicles&&v.vehicles.length){
+        v.vehicles.forEach(function(u){
+          if(shouldUseProviderFor(u.pickup)){
+            u._pickupOriginal=u.pickup||'';
+            u.pickup=provLocation;
+            u._pickupFromProvider=true;
+          }
+          // Propaga anche a ubicacion se vuota (lo storico iniziale è la stessa città di pickup)
+          if(!u.ubicacion||u.ubicacion==='--'||String(u.ubicacion).trim()===''){
+            u.ubicacion=provLocation;
+            u._ubicacionFromProvider=true;
+          }
+          if(!u.location||u.location==='--'||String(u.location).trim()===''){
+            u.location=provLocation;
+          }
+        });
       }
     });
 
@@ -27036,6 +27097,59 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(typeof showToast==='function'){
       var who=contabRecipients.map(function(c){return c.name;}).join(', ');
       showToast('\u2709\ufe0f Email pre-rellenado para '+who,5000);
+    }
+  };
+
+  // ========================================================================
+  // v10.10.11: Dialog ¿Buscar en web? quando l'utente clicca il badge ⚠ sul Modelo
+  // Sí → procede con nxLookupVehicleVersion (AI search)
+  // No → rimuove il flag _motorUnverified (gestito manualmente dall'utente)
+  // ========================================================================
+  window.nxAskModeloLookup=function(stockId){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(stockId);});
+    if(!s){alert('Veh\u00edculo no encontrado');return;}
+    var html='<div id="m-ask-modelo" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-ask-modelo\')">'
+      +'<div class="modal" style="max-width:480px">'
+        +'<div class="mh"><span>\u{1F50E} \u00bfBuscar en web?</span><button class="mx" onclick="nxCloseDynModal(\'m-ask-modelo\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:4px">Modelo incompleto</div>'
+            +'<div style="font-size:13px;color:var(--t1);font-weight:600">'+esc((s.brand||'')+' '+(s.model||''))+'</div>'
+            +(s.version?'<div style="font-size:11px;color:var(--t3);margin-top:3px">'+esc(s.version)+'</div>':'')
+          +'</div>'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">El modelo no contiene una motorizaci\u00f3n explicita (ej. <code>35 TFSI</code>, <code>30 TDI</code>, <code>2.0 D</code>). \u00bfQuieres buscar la denominaci\u00f3n completa con AI?</p>'
+          +'<div class="fc g8" style="flex-direction:column;align-items:stretch">'
+            +'<button class="btn bp" style="padding:12px 16px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;text-align:left" onclick="nxAskModeloChoose(\''+esc(stockId)+'\',\'yes\')">'
+              +'<div style="font-weight:700;font-size:13px">\u2705 S\u00ed, buscar con AI</div>'
+              +'<div style="font-size:11px;opacity:.85;margin-top:3px;font-weight:400">El sistema buscar\u00e1 la versi\u00f3n exacta y mostrar\u00e1 sugerencias para confirmar</div>'
+            +'</button>'
+            +'<button class="btn bg" style="padding:12px 16px;text-align:left" onclick="nxAskModeloChoose(\''+esc(stockId)+'\',\'no\')">'
+              +'<div style="font-weight:700;font-size:13px">\u274C No, ya est\u00e1 bien</div>'
+              +'<div style="font-size:11px;opacity:.85;margin-top:3px;font-weight:400">Marca el campo como gestionado manualmente y elimina el aviso</div>'
+            +'</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-ask-modelo');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+  };
+  window.nxAskModeloChoose=function(stockId,choice){
+    nxCloseDynModal('m-ask-modelo');
+    if(choice==='yes'){
+      // Avvia AI lookup (esistente)
+      if(typeof window.nxLookupVehicleVersion==='function')window.nxLookupVehicleVersion(stockId);
+    }else{
+      // Dismiss flag: utente conferma che il modelo è gestito manualmente
+      var s=(window.stock||[]).find(function(x){return String(x.id)===String(stockId);});
+      if(!s)return;
+      s._motorUnverified=false;
+      s._motorUserAcknowledged=true;
+      if(Array.isArray(s.vehicles)){
+        s.vehicles.forEach(function(u){u._motorUnverified=false;u._motorUserAcknowledged=true;});
+      }
+      SS('stock',window.stock);
+      if(typeof fStk==='function')fStk();
+      if(typeof showToast==='function')showToast('\u2713 Aviso eliminado \u2014 modelo marcado como gestionado manualmente',4000);
     }
   };
 
