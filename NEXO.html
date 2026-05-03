@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.25 — DMCAR GROUP CRM | 2026-05-03 | Memo VIN — Dialog correzione VIN inválidos:
+1) Bug osservato (utente Foto v10.10.24): dopo import PDF, console mostra ripetuti "[v10.10.5] VIN invalido: WAUZZZZGY8TA060102 reason=too_long_18". I VIN dell'Audi A3 estratti dall'AI hanno 18 caratteri invece dei 17 standard ISO 3779. Nel render della tabella Stock Vivo, i VIN appaiono in giallo con badge ⚠. Mancava un workflow di correzione interattivo.
+2) FIX: nuovo dialog post-import nxReviewInvalidVINs inserito tra nxReviewMissingData e nxAskAdquisicionPropia. Trigger: SOLO se ci sono VIN flaggati _vinUnverified=true tra i nuovi stockIds. Skip silenzioso se non ce ne sono. Gestisce sia sub-vehicles che stock semplici.
+3) UX: dialog con tabella editable (4 colonne: Veh\u00edculo / VIN actual + reason / VIN corregido (input) / OK?). Validation live durante typing (input.oninput → nxReviewVINValidate riusa window.nxValidateVIN per check). Border verde + ✅ se valido, rosso + ⚠️ se invalido. Auto-uppercase + auto-trim. Maxlength=17.
+4) Auto-suggerimento: per VIN con reason='too_long_NN' (NN>17), bottone "💡 [primi 17 char]" cliccabile a destra dell'input → applica via nxReviewVINApplySuggestion. Strategia conservativa (truncate from end). Avviso esplicito: "Verifica con el documento original — la sugerencia trunca los caracteres extra al final, pero el error podr\u00eda estar al medio".
+5) Apply: nxReviewVINApply(skipOnly): se !skipOnly, itera tutti gli input, salta quelli non modificati, valida, e applica al lot/sub-vehicle (cleanup _vinUnverified e _vinReason se ora valido, altrimenti aggiorna _vinReason). Toast "✓ N VIN corregidos — M aún inválidos" se applicabile. fStk() chiamato sempre per refresh visivo dei badge.
+6) Smoke test 4/4 PASS sui VIN reali del PDF utente: WAUZZZZGY8TA060102 (18) → WAUZZZZGY8TA06010 (17, valid). Edge cases gestiti: VIN troppo corto = no suggestion, has I/O/Q = no suggestion (richiede edit manuale).
+7) PRESERVA: tutto v10.10.24 (review dati mancanti), v10.10.23 (workflow OWN), v10.10.22 (status STOCK PROPIO), v10.10.21 (dialog adquisición). -->
 <!-- NEXO v10.10.24 — DMCAR GROUP CRM | 2026-05-03 | Memo #1+#2 P2 — Dialog post-import dati mancanti:
 1) Spec utente Memo #1+#2: dopo l'import, alcuni campi essenziali per la commercializzazione del veicolo possono mancare (KMS, 1ª REG, Daños, Equipamiento). Senza questi dati il veicolo è "incompleto" per la vendita o anche solo per il match con clienti potenziali. Serve un dialog di review che evidenzi visivamente i campi mancanti e permetta all'utente di compilarli rapidamente in bulk.
 2) Spec utente — campi controllati: KMS + 1ª REG + Daños + Equipamiento (4 campi). Trigger: SEMPRE dopo import (anche se tutto OK → conferma visiva ✅). UX: bulk-fill (1 input per campo che si applica a TUTTI i veicoli mancanti di quel campo), no editing singolo per veicolo.
@@ -10717,21 +10725,24 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     if(typeof showToast==='function')showToast('\u2713 '+statusMsg,5000);
     // v10.10.21: dialog "¿Es adquisición para empresa propia?" PRIMA di chiudere il modal Import
     // v10.10.24: PRIMA del dialog adquisición, mostra dialog review dati mancanti (KMS/REG/Daños/Equipamiento)
+    // v10.10.25: ANCHE dialog correzione VIN invalidi (se presenti) tra Review e Adquisición
     // Se Sì → chiude Import + apre Step1 workflow OWN (con i nuovi stockIds)
     // Se No → flusso normale (lotto resta in Trading)
     setTimeout(function(){
       if(newStockIds.length>0){
-        // v10.10.24: review dati mancanti, poi adquisición
+        // v10.10.24: review dati mancanti, poi v10.10.25 review VIN, poi adquisición
         nxReviewMissingData(newStockIds,function(){
-          if(typeof window.nxOwnEntryWorkflow==='function'){
-            nxAskAdquisicionPropia(newStockIds,vehicles);
-          }else{
-            // Workflow non disponibile → fallback chiusura
-            closeM('m-import');
-            n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
-            n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
-            updBF();fStk();renderDash();
-          }
+          nxReviewInvalidVINs(newStockIds,function(){
+            if(typeof window.nxOwnEntryWorkflow==='function'){
+              nxAskAdquisicionPropia(newStockIds,vehicles);
+            }else{
+              // Workflow non disponibile → fallback chiusura
+              closeM('m-import');
+              n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+              n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+              updBF();fStk();renderDash();
+            }
+          });
         });
       }else{
         // Nessun nuovo stock → flusso classico
@@ -10892,6 +10903,165 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     nxCloseDynModal('m-review-data');
     var onDone=ctx.onDone;
     window._nxReviewCtx=null;
+    if(typeof onDone==='function')onDone();
+  };
+
+  // v10.10.25: dialog post-import correzione VIN invalidi (Memo aggiuntivo)
+  // Trigger: dopo nxReviewMissingData, se ci sono VIN flaggati _vinUnverified=true
+  // UX: tabella editable con suggerimento auto-truncate per too_long_NN
+  function nxReviewInvalidVINs(stockIds,onDone){
+    if(!stockIds||!stockIds.length){if(onDone)onDone();return;}
+    // Helper: estrai TUTTI i veicoli con VIN invalido dai lotti
+    var lots=(stock||[]).filter(function(s){return stockIds.indexOf(s.id)>=0;});
+    var invalidVINs=[];
+    lots.forEach(function(lot){
+      if(Array.isArray(lot.vehicles)&&lot.vehicles.length){
+        lot.vehicles.forEach(function(v,idx){
+          if(v._vinUnverified&&v.vin){
+            invalidVINs.push({lotId:lot.id,vehIdx:idx,vin:v.vin,reason:v._vinReason||'invalid',label:lot.brand+' '+lot.model+' #'+(idx+1)});
+          }
+        });
+      }else if(lot._vinUnverified&&lot.vin){
+        invalidVINs.push({lotId:lot.id,vehIdx:-1,vin:lot.vin,reason:lot._vinReason||'invalid',label:lot.brand+' '+lot.model});
+      }
+    });
+    if(!invalidVINs.length){
+      console.log('[v10.10.25] No invalid VINs detected, skipping dialog');
+      if(onDone)onDone();
+      return;
+    }
+    console.log('[v10.10.25] '+invalidVINs.length+' invalid VINs detected');
+    window._nxReviewVINCtx={invalidVINs:invalidVINs,onDone:onDone};
+
+    // Helper: genera suggerimento auto-fix per too_long_NN
+    function buildSuggestion(vin,reason){
+      var m=String(reason).match(/^too_long_(\d+)$/);
+      if(m&&parseInt(m[1],10)>17){
+        // Suggerisci primi 17 char (più probabile sia stato aggiunto carattere extra in coda)
+        var clean=String(vin).replace(/[^A-HJ-NPR-Z0-9]/gi,'').toUpperCase();
+        if(clean.length>=17)return clean.substring(0,17);
+      }
+      return null;
+    }
+
+    // Build righe tabella
+    var rowsHtml=invalidVINs.map(function(item,i){
+      var sugg=buildSuggestion(item.vin,item.reason);
+      var suggBtn=sugg?'<button class="btn bs" onclick="nxReviewVINApplySuggestion('+i+',\''+sugg+'\')" style="font-size:10px;padding:3px 8px;margin-left:6px" title="Aplicar primeros 17 caracteres">\u{1F4A1} '+esc(sugg)+'</button>':'';
+      return '<tr id="nxrev-vin-row-'+i+'">'
+        +'<td style="padding:8px;font-size:11px;color:var(--t3);font-family:monospace">'+esc(item.label)+'</td>'
+        +'<td style="padding:8px;font-family:monospace;font-size:11px;color:#dc2626"><div>'+esc(item.vin)+'</div><div style="font-size:9px;color:#92400e;font-family:inherit;margin-top:2px">\u26a0 '+esc(item.reason)+'</div></td>'
+        +'<td style="padding:8px"><input id="nxrev-vin-input-'+i+'" type="text" maxlength="17" value="'+esc(item.vin)+'" oninput="nxReviewVINValidate('+i+')" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--bg);color:var(--t1);font-family:monospace;font-size:11px;text-transform:uppercase">'+suggBtn+'</td>'
+        +'<td id="nxrev-vin-status-'+i+'" style="padding:8px;font-size:11px;text-align:center"><span style="color:#dc2626">\u26a0\ufe0f</span></td>'
+        +'</tr>';
+    }).join('');
+
+    var html='<div id="m-review-vin" class="modal-bg" style="display:flex" onclick="event.target===this&&nxReviewVINApply(true)">'
+      +'<div class="modal" style="max-width:780px;max-height:88vh;overflow-y:auto">'
+        +'<div class="mh"><span style="color:#d97706">\u26a0\ufe0f Hay '+invalidVINs.length+' VIN inv\u00e1lido'+(invalidVINs.length!==1?'s':'')+', \u00bfCorregir ahora?</span><button class="mx" onclick="nxReviewVINApply(true)">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px;color:var(--t1);line-height:1.5">'
+            +'Los VIN deben tener exactamente <strong>17 caracteres</strong> alfanum\u00e9ricos (sin <code style="background:var(--bg2);padding:1px 4px;border-radius:2px">I</code>, <code style="background:var(--bg2);padding:1px 4px;border-radius:2px">O</code>, <code style="background:var(--bg2);padding:1px 4px;border-radius:2px">Q</code>). El AI extrajo VINs no v\u00e1lidos del PDF. '
+            +'Puedes <strong>corregir</strong> manualmente o <strong>omitir</strong> (los VIN quedar\u00e1n marcados \u26a0 para revisi\u00f3n posterior).'
+            +'<div style="font-size:10px;color:var(--t3);margin-top:6px">\u{1F4A1} Si aparece un bot\u00f3n con sugerencia (<code style="background:var(--bg2);padding:1px 4px;border-radius:2px">\u{1F4A1} XXX</code>), c\u00f3pialo en el input. <strong>Verifica con el documento original</strong> \u2014 la sugerencia trunca los caracteres extra al final, pero el error podr\u00eda estar al medio.</div>'
+          +'</div>'
+          +'<div style="overflow-x:auto;border:1px solid var(--bd);border-radius:6px">'
+            +'<table style="width:100%;border-collapse:collapse;font-size:12px">'
+              +'<thead style="background:var(--bg2)"><tr>'
+                +'<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--t3);font-weight:600;border-bottom:1px solid var(--bd)">Veh\u00edculo</th>'
+                +'<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--t3);font-weight:600;border-bottom:1px solid var(--bd)">VIN actual</th>'
+                +'<th style="padding:8px;text-align:left;font-size:10px;text-transform:uppercase;color:var(--t3);font-weight:600;border-bottom:1px solid var(--bd)">VIN corregido</th>'
+                +'<th style="padding:8px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--t3);font-weight:600;border-bottom:1px solid var(--bd);width:50px">OK?</th>'
+              +'</tr></thead>'
+              +'<tbody>'+rowsHtml+'</tbody>'
+            +'</table>'
+          +'</div>'
+          +'<div class="fc g8" style="justify-content:flex-end;margin-top:14px">'
+            +'<button class="btn bg" onclick="nxReviewVINApply(true)" style="font-size:13px">\u23ed\ufe0f Omitir y continuar</button>'
+            +'<button class="btn bp" onclick="nxReviewVINApply(false)" style="background:var(--acc);color:#fff;border:none;font-size:13px">\u{1F4BE} Aplicar correcciones</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-review-vin');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    // Validate iniziale di tutte le righe (mostra ⚠️ all'inizio)
+    setTimeout(function(){
+      invalidVINs.forEach(function(item,i){nxReviewVINValidate(i);});
+    },50);
+  }
+
+  // v10.10.25: validazione live di una riga input (durante typing)
+  window.nxReviewVINValidate=function(idx){
+    var inp=document.getElementById('nxrev-vin-input-'+idx);
+    var statusCell=document.getElementById('nxrev-vin-status-'+idx);
+    if(!inp||!statusCell)return;
+    var val=inp.value.toUpperCase().trim();
+    inp.value=val; // forza uppercase live
+    if(typeof window.nxValidateVIN==='function'){
+      var res=window.nxValidateVIN(val);
+      if(res.valid){
+        statusCell.innerHTML='<span style="color:#16a34a;font-size:14px">\u2705</span>';
+        inp.style.borderColor='#16a34a';
+      }else{
+        statusCell.innerHTML='<span style="color:#dc2626;font-size:14px" title="'+esc(res.reason)+'">\u26a0\ufe0f</span>';
+        inp.style.borderColor='#dc2626';
+      }
+    }
+  };
+
+  // v10.10.25: applica suggerimento (click sul bottone "💡 XXX")
+  window.nxReviewVINApplySuggestion=function(idx,suggested){
+    var inp=document.getElementById('nxrev-vin-input-'+idx);
+    if(!inp)return;
+    inp.value=suggested;
+    nxReviewVINValidate(idx);
+  };
+
+  // v10.10.25: applica le correzioni VIN
+  window.nxReviewVINApply=function(skipOnly){
+    var ctx=window._nxReviewVINCtx;
+    if(!ctx){nxCloseDynModal('m-review-vin');return;}
+    var fixedCount=0;
+    var stillInvalid=0;
+    if(!skipOnly){
+      ctx.invalidVINs.forEach(function(item,i){
+        var inp=document.getElementById('nxrev-vin-input-'+i);
+        if(!inp)return;
+        var newVin=inp.value.toUpperCase().trim();
+        // Se non cambiato, skip
+        if(newVin===item.vin)return;
+        // Valida
+        var res=(typeof window.nxValidateVIN==='function')?window.nxValidateVIN(newVin):{valid:false};
+        var lot=(stock||[]).find(function(s){return s.id===item.lotId;});
+        if(!lot)return;
+        var target=item.vehIdx>=0&&Array.isArray(lot.vehicles)?lot.vehicles[item.vehIdx]:lot;
+        if(!target)return;
+        if(res.valid){
+          target.vin=res.vin; // versione cleaned
+          target._vinUnverified=false;
+          delete target._vinReason;
+          fixedCount++;
+        }else{
+          target.vin=newVin; // salva comunque la modifica
+          target._vinReason=res.reason;
+          stillInvalid++;
+        }
+      });
+      if(fixedCount>0||stillInvalid>0)SS('stock',stock);
+      if(fixedCount>0){
+        if(typeof showToast==='function')showToast('\u2713 '+fixedCount+' VIN corregido'+(fixedCount!==1?'s':'')+(stillInvalid>0?' \u2014 '+stillInvalid+' a\u00fan inv\u00e1lido'+(stillInvalid!==1?'s':''):''),5000);
+        console.log('[v10.10.25] nxReviewVINApply: '+fixedCount+' fixed, '+stillInvalid+' still invalid');
+      }else{
+        console.log('[v10.10.25] nxReviewVINApply: no changes');
+      }
+    }else{
+      console.log('[v10.10.25] nxReviewVINApply: skipped, '+ctx.invalidVINs.length+' VINs left as ⚠');
+    }
+    nxCloseDynModal('m-review-vin');
+    var onDone=ctx.onDone;
+    window._nxReviewVINCtx=null;
+    // Refresh stock vivo per riflettere i fix
+    if(typeof fStk==='function')fStk();
     if(typeof onDone==='function')onDone();
   };
 
