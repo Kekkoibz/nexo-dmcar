@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.08 — DMCAR GROUP CRM | 2026-05-03 | Fix mappatura importi pre-parser block: 1) FIX BUG semantico: nel formato "lista subasta del fornitore" il 2° importo € è "Venta sin IVA (daños descontados)" del fornitore → ovvero il NOSTRO prezzo di acquisto (buy), non il prezzo di vendita futura (sell). Mappatura corretta ora: 1° importo € = daños, 2° importo € = buy (era erroneamente sell); 2) Normalizzazione importi: convert number → string formattata es. 15200 → "15.200 €" per damage, "450,00 €" per daños (compat con il resto del codice che si aspetta string); 3) Effetto: import dei 14 VW Taigo ora popola correttamente buy=15.200 € → no più dialog "Falta precio de compra", import diretto. -->
+<!-- NEXO v10.08 — DMCAR GROUP CRM | 2026-05-03 | Fix campi parser + Provider name preservation: 1) FIX BUG nomi campi: il pre-parser usava km/color/firstReg ma il resto del sistema usa kms/colors/reg (plurale + abbreviato) → veicoli importati con kms="" e colors="". Adesso parseVehicleBlock produce v={kms,colors,reg} consistente con renderStk e tutto il resto del codice. Effetto: kms (15.009 ecc.) e colors (8E8E - Plata Reflex Metalizado) ora vengono importati correttamente; 2) FIX BUG semantico (precedente v10.08): nel formato "lista subasta del fornitore" il 2° importo € è "Venta sin IVA (daños descontados)" → buy del nostro acquisto, non sell; 3) Normalizzazione importi number → string es. 15200 → "15.200 €", "450,00 €"; 4) FIX Provider override: NON sovrascrivere supplier se l'utente l'ha digitato manualmente (era erroneamente sostituito con company del provider matched, che in caso di Superwagen era "Raimon Casellas, 130" - address scritto per errore in company). Solo aggiorna se il canonico è più completo del manuale (es. "SUPERWAGEN" → "SUPERWAGEN, S.A"); 5) Console helper nxFixProviderCompany('NOME_EMPRESA') per pulire provider con campo company sbagliato (es. address salvato in company): sposta valore in address e mette il nome corretto in company; aggiorna anche tutti gli stock collegati. nxFixProviderCompany() senza arg = modalità audit per identificare provider sospetti. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -8990,8 +8990,14 @@ function addStkItem(item){
     var matchedProv=nxFindProviderByName(item.supplier);
     if(matchedProv){
       item.providerId=matchedProv.id;
-      // Normalizza il nome al canonico per evitare duplicati visivi
-      item.supplier=matchedProv.company||matchedProv.name||item.supplier;
+      // v10.08: NON sovrascrivere supplier (l'utente o il parser ha già messo un nome valido)
+      // Salviamo il nome canonico come reference se preferisce
+      // Solo se il supplier corrente è generico/abbreviato (es. solo "SUPERWAGEN") e legalName più completo
+      var canonicalName=matchedProv.legalName||matchedProv.name||matchedProv.company||'';
+      // Aggiorna SOLO se il supplier attuale è davvero "minore" del canonico
+      if(canonicalName&&canonicalName.length>item.supplier.length&&canonicalName.toUpperCase().indexOf(item.supplier.toUpperCase())>=0){
+        item.supplier=canonicalName;
+      }
       item.providerEmail=matchedProv.email||'';
     }
   }
@@ -9489,7 +9495,8 @@ window.tryNativeBlockParse=function(text,manualSup){
 
 // Parser del singolo blocco
 window.parseVehicleBlock=function(blockLines,brandLine){
-  var v={brand:'',model:'',version:'',firstReg:'',color:'',colorInt:'',km:'',pickup:'',damage:'',sell:'',buy:''};
+  // v10.08: Usa i nomi di campo CORRETTI come il resto del sistema (kms, colors, reg)
+  var v={brand:'',model:'',version:'',reg:'',colors:'',colorInt:'',kms:'',pickup:'',damage:'',sell:'',buy:''};
   // Brand+Model+Version dalla prima riga
   // "VW Taigo Life 1.0 TSI 85 kW (115 CV)  Auto DSG 7 vel."
   var m=brandLine.match(/^([A-Z\u00c0-\u017d][a-zA-Z\u00c0-\u017f-]+)\s+(\S+)\s+(.+)$/);
@@ -9511,15 +9518,15 @@ window.parseVehicleBlock=function(blockLines,brandLine){
   for(var k=1;k<blockLines.length;k++){
     var l=blockLines[k];
     // Fecha matriculacion: DD/MM/YYYY o MM/YYYY
-    if(!v.firstReg&&/^\d{1,2}\/\d{1,2}\/\d{4}|^\d{1,2}\/\d{4}/.test(l)){v.firstReg=l;continue;}
+    if(!v.reg&&/^\d{1,2}\/\d{1,2}\/\d{4}|^\d{1,2}\/\d{4}/.test(l)){v.reg=l;continue;}
     // Color: codice + nome (es. "8E8E - Plata Reflex Metalizado (Métal)")
-    if(!v.color&&/^[A-Z0-9]{2,8}\s*[-\u2014]\s+/.test(l)){v.color=l;continue;}
+    if(!v.colors&&/^[A-Z0-9]{2,8}\s*[-\u2014]\s+/.test(l)){v.colors=l;continue;}
     // Color senza codice (riga con keyword colore noto)
-    if(!v.color&&/^(blanco|negro|gris|rojo|azul|verde|amarillo|naranja|marr\u00f3n|plata|dorado|beige|white|black|gray|grey|red|blue|green|silver|gold|yellow|orange|brown)/i.test(l)){v.color=l;continue;}
+    if(!v.colors&&/^(blanco|negro|gris|rojo|azul|verde|amarillo|naranja|marr\u00f3n|plata|dorado|beige|white|black|gray|grey|red|blue|green|silver|gold|yellow|orange|brown)/i.test(l)){v.colors=l;continue;}
     // Kms: numero solo (con migliaia)
-    if(!v.km&&/^[\d\.\,]{2,8}$/.test(l)){
+    if(!v.kms&&/^[\d\.\,]{2,8}$/.test(l)){
       var num=parseInt(l.replace(/\./g,'').replace(/,/g,''),10);
-      if(!isNaN(num)&&num>=10&&num<999999){v.km=num;continue;}
+      if(!isNaN(num)&&num>=10&&num<999999){v.kms=String(num);continue;}
     }
     // v10.07: Daños / Buy - cerca importo €
     // Pattern lista subasta: 1° importo = daños sin IVA, 2° importo = "Venta sin IVA (daños descontados)"
@@ -24436,6 +24443,59 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
   // Reset cache (chiamato quando si aggiunge un provider)
   window.nxResetSupplierCanon=function(){window._nxSupplierCanon=null;};
+
+  // v10.08: Helper per pulire provider con campo Empresa errato (es. address scritto come company)
+  // Uso: nxFixProviderCompany('SUPERWAGEN, S.A')  oppure  nxFixProviderCompany() per audit
+  window.nxFixProviderCompany=function(correctCompany){
+    var providers=window.providers||[];
+    if(!correctCompany){
+      // Audit mode: mostra provider sospetti (company che sembra address)
+      console.log('=== AUDIT Providers con company sospetto (sembra address) ===');
+      providers.forEach(function(p){
+        var co=p.company||'';
+        // Pattern address: contiene numero civico tipo "Calle, 130" o "Strasse 45"
+        if(/,\s*\d+\s*$|^\d+\s+|via\s+|calle\s+|strasse\s+|stra\u00dfe\s+|street\s+/i.test(co)){
+          console.warn('  \u26a0\ufe0f Provider "'+p.name+'" \u2192 company="'+co+'" (sembra address!)');
+          console.log('     ID:',p.id,'| Address attuale:',p.address||'(vuoto)');
+        }
+      });
+      console.log('\nPer fixare: nxFixProviderCompany("NOME_CORRETTO_EMPRESA") con il provider selezionato in editor');
+      return;
+    }
+    // Fix mode: identifica provider Superwagen (o altro per company) e ripristina
+    var matched=providers.find(function(p){
+      var n=String(p.name||'').toUpperCase();
+      var co=String(p.company||'').toUpperCase();
+      return n.indexOf(correctCompany.toUpperCase())>=0||co.indexOf(correctCompany.toUpperCase())>=0;
+    });
+    if(!matched){
+      console.error('Nessun provider trovato per:',correctCompany);
+      return;
+    }
+    var oldCompany=matched.company;
+    // Se la vecchia company sembrava un address, sposta address e usa correctCompany
+    if(/,\s*\d+\s*$|^\d+\s+|via\s+|calle\s+|strasse\s+/i.test(oldCompany)){
+      if(!matched.address)matched.address=oldCompany;
+      console.log('  \u2192 Address recuperato:',oldCompany);
+    }
+    matched.company=correctCompany;
+    matched.legalName=matched.legalName||correctCompany;
+    SS('providers',providers);
+    // Aggiorna anche stock con providerId che ha questo provider
+    var stockUpdated=0;
+    (window.stock||[]).forEach(function(s){
+      if(String(s.providerId)===String(matched.id)){
+        s.supplier=correctCompany;
+        stockUpdated++;
+      }
+    });
+    if(stockUpdated>0)SS('stock',window.stock);
+    console.log('\u2713 Provider "'+matched.name+'" aggiornato: company "'+oldCompany+'" \u2192 "'+correctCompany+'"');
+    console.log('  '+stockUpdated+' veh\u00edculos in stock aggiornati con il nuovo nome');
+    if(typeof renderProv==='function')renderProv();
+    if(typeof fStk==='function')fStk();
+    return matched;
+  };
 
   // v9.99: Cleanup stock orfani - rimuove clientName/soldBy/salePrice se non ci sono più proforme/facturas/expedientes
   // Da chiamare manualmente o automaticamente quando si cancellano proforme
