@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.19 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX matching Provider robusto:
+1) Bug riportato (utente Foto): import PF SUPER RENT triggera dialog "Falta luogo di carico" con dropdown Madrid hardcoded invece di leggere provider.logistica (Tarragona/SantCugat) — l'utente nota anche che logicamente il provider dovrebbe essere identificato PRIMA del dialog. ROOT CAUSE: il fallback v10.10.11 (che doveva ereditare da provider.logistica) FALLIVA il provider matching perché: (a) cercava solo provider.company OR provider.name (riga 10245 del fix vecchio), (b) il PDF estrae "SUPER RENT, S.L." mentre il provider è registrato con name="SUPER RENT" + legalName="SUPER RENT, S.L." → nessun match canonical → no fallback → arriva al dialog senza data;
+2) FIX duale: (a) in iHandleResp matching prova 3 campi (p.name, p.legalName, p.company) E usa anche match parziale (supNorm contiene pNorm o vice versa, min 4 chars) — risolve il caso "SUPER RENT" vs "SUPER RENT, S.L." in entrambe le direzioni; (b) stesso identico fix nella migrazione idempotente v10.10.12 all'init per stocks pre-esistenti;
+3) Console logging diagnostico: "[v10.10.19] Provider matched: <supplier> → <provider name>" oppure "Provider non trovato per supplier (norm: ...)" per debugging futuro. Il messaggio di "non trovato" mostra la forma normalizzata, utile per capire il mismatch;
+4) Smoke test 6/6 PASS: matching SUPER RENT trova provider in tutte le forme: "SUPER RENT, S.L." / "SUPER RENT" / "SUPER RENT S.L" / "Super Rent S.L." (case-insensitive); JARMAUTO esatto; UNKNOWN COMPANY → null;
+5) Effetto pratico: ora il dialog "Falta luogo di carico" appare SOLO quando il fallback non trova provider o provider senza city (caso raro). Quando appare, è popolato dinamicamente dalla v10.10.18 (logística + sede fiscal + altri provider + città comuni);
+6) PRESERVA: tutto v10.10.18 (dialog popolato + provider autocomplete), v10.10.17 (cancelar traslado), v10.10.16 (bulk trasladar), v10.10.15 (no Persona Jurídica), v10.10.14 (Provider schema extended), v10.10.4 (Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.18 — DMCAR GROUP CRM | 2026-05-03 | 2 fix UI Import (da Foto 15 + Foto 16 utente):
 1) Foto 15 — Dialog "Falta luogo di carico" con dropdown HARDCODED (Madrid/Barcelona/etc) ignorava le info disponibili nei Provider. SPEC utente: il dropdown deve usare AUTOMATICAMENTE provider.logistica[] del fornitore identificato + sede fiscale come fallback se logistica vuota; deve mostrare anche tutti gli altri provider come opzione. FIX in askPickupForVehicles: popolazione DINAMICA del select #pk-sel a 4 sezioni: (a) "🚛 Logística de [Provider matched]" — entries di logistica ordinate (default first) + città fiscale come fallback con badge 📍 sede fiscal; (b) "📒 Otros proveedores registrados" — tutti gli altri provider con la loro città default; (c) "🌍 Ciudades comunes" — lista statica fallback (16 città EU); (d) "✏ Otra" — input custom. Auto-selection: prima entry default del provider matched. Smoke test 2/2 PASS (provider con logistica → 3 opzioni Tarragona/SantCugat/Barcelona-fiscal; provider senza → solo sede fiscale);
 2) Foto 16 — Input "Proveedor" durante Import era textbox semplice senza autocomplete: la dropdown system-native mostrava solo provider già visti recentemente (es. JARMAUTO/CARLINE) ma non SUPER RENT registrato in Providers. SPEC utente: deve fare auto-detection dal contenuto, e in caso non lo trovi mostrare TUTTI i provider registrati con autocomplete per lettere. FIX: input ora ha list="i-sup-datalist" + datalist popolato al focus via window.iSupBuildDatalist (legge tutti i providers con dedup case-insensitive, mostra primary name + legalName/company come label extra); validazione live via window.iSupDetectMatch al input event con feedback visivo: ✓ verde se match canonical (via nxNormalizeSupplierName), ⚠ arancio se non registrato + spiegazione "se añadirá al detectarlo";
@@ -10238,15 +10245,28 @@ function iHandleResp(resp,manualSup){
     vehicles.forEach(function(v){
       var supName=v.supplier||'';
       if(!supName)return;
-      // Trova provider canonico
+      // v10.10.19: matching robusto — prova 3 campi del provider (name, legalName, company)
+      // perché AI parser può estrarre "SUPER RENT" o "SUPER RENT, S.L." (varia per documento)
       var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(supName):supName.toUpperCase().trim();
       var prov=null;
       (window.providers||[]).forEach(function(p){
-        var pNm=p.company||p.name||'';
-        var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
-        if(pNorm===supNorm)prov=p;
+        if(prov)return; // già trovato
+        // Lista candidati: prova ogni campo
+        var candidates=[p.name,p.legalName,p.company].filter(Boolean);
+        for(var ci=0;ci<candidates.length;ci++){
+          var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(candidates[ci]):String(candidates[ci]).toUpperCase().trim();
+          if(pNorm===supNorm){prov=p;break;}
+          // Match parziale: il supplier estratto contiene il provider name, o vice versa
+          if(pNorm.length>=4&&supNorm.length>=4){
+            if(supNorm.indexOf(pNorm)>=0||pNorm.indexOf(supNorm)>=0){prov=p;break;}
+          }
+        }
       });
-      if(!prov)return;
+      if(!prov){
+        console.log('[v10.10.19] Provider non trovato per supplier "'+supName+'" (norm: "'+supNorm+'")');
+        return;
+      }
+      console.log('[v10.10.19] Provider matched: "'+supName+'" \u2192 '+(prov.legalName||prov.name||prov.company));
       // v10.10.14: prefer provider.logistica[default] (se presente) sopra provider.city
       // L'utente dichiara la sede di carico abituale → ground truth più precisa di city fiscale
       var provCity='',provProv='',provCountry='';
@@ -23054,13 +23074,19 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }
       window.stock.forEach(function(s){
         if(!s.supplier)return;
-        // Trova provider canonico
+        // v10.10.19: matching robusto — prova 3 campi (name, legalName, company) + match parziale
         var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(s.supplier):String(s.supplier).toUpperCase().trim();
         var prov=null;
         window.providers.forEach(function(p){
-          var pNm=p.company||p.name||'';
-          var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
-          if(pNorm===supNorm)prov=p;
+          if(prov)return;
+          var candidates=[p.name,p.legalName,p.company].filter(Boolean);
+          for(var ci=0;ci<candidates.length;ci++){
+            var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(candidates[ci]):String(candidates[ci]).toUpperCase().trim();
+            if(pNorm===supNorm){prov=p;break;}
+            if(pNorm.length>=4&&supNorm.length>=4){
+              if(supNorm.indexOf(pNorm)>=0||pNorm.indexOf(supNorm)>=0){prov=p;break;}
+            }
+          }
         });
         // v10.10.14: prefer provider.logistica[default] sopra provider.city
         var provCity='',provProv='',provCountry='';
