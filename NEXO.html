@@ -1,4 +1,22 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.5 — DMCAR GROUP CRM | 2026-05-03 | Parser PDF + Anagrafica reuse + Trasladar UX:
+
+PARTE A — Parser PDF affidabile (P1):
+1) MOTORIZZAZIONE — bug v10.10.4: l'AI infieriva "Full Electric" anche su veicoli ICE quando il PDF era ambiguo. FIX: post-processing detecta se la version contiene keyword esplicite (DIESEL/GASOLINA/TDI/TSI/TFSI/HEV/PHEV/EV/BEV/Hybrid/HDi/CDI/JTD/Multijet/BlueHDi/EcoBoost/EcoTec/Bluetec/VVT-i/etc.); se NESSUNA match → flag _motorUnverified=true → render badge giallo "⚠ MOT?" cliccabile in colonna Versión Stock Vivo;
+2) AI LOOKUP versione — Click sul badge MOT? apre nxLookupVehicleVersion: chiama callAPI con sys prompt esperto auto europei, parsing JSON {versionPropuesta, motorTipo, confianza, fuente, alternativas[]}; mostra modal "Sugerencia AI" con chip motorTipo + chip confianza colorato (alta=verde/media=arancio/baja=rosso); 3 azioni: ✓ Confirmo / 🔄 Buscar de nuevo / Modifico manualmente; click su alternativa = applica direttamente;
+3) VIN HELPERS robusti per spec utente: nxValidateVIN(raw) ritorna {valid, vin, reason} con check 17 char + no I/O/Q + clean separators; nxExtractAllVINs(text) ritorna array {vin,confidence,label} con confidence=high se preceduto da VIN/Vehicle Identification Number/telaio/n.telaio/chassis/frame number/bastidor (regex case-insensitive), confidence=medium per standalone 17-char; dedup automatico via seen-map;
+4) VIN SALVAGE — post-AI: se l'AI non ha estratto VIN (vehicles[] tutti senza VIN) E il testo input contiene VIN parsabili → recupera dal raw e assegna in ordine alle unità; flag _vinSource='salvage_high|medium' per traccia; toast "✨ N VIN recuperados del PDF (post-AI)";
+5) VIN VALIDATION — post-AI: ogni VIN viene validato; se invalid → flag _vinUnverified+_vinReason; render sub-row VIN cell con 3 stati: VIN valido (acc color), "⚠ sin VIN" (badge arancione), "VIN ⚠" (vin presente ma non 17 char);
+
+PARTE B — Anagrafica reuse (P1, principio 2):
+6) PROVIDER PICKER — bug Image 3: "Proveedor SUPERWAGEN.S.A no encontrado" → fallback a mailto vuoto. FIX: nuova fn nxOwnEntryShowProviderPicker con fuzzy matching (token similarity sui nomi providers); modal mostra top-3 sugerencias (con check ✅/⚠ Contabilidad presente) + dropdown "Otros providers" + bottone aiuto "Crear nuevo en Providers"; sostituisce il confirm() generico v10.10;
+
+PARTE C — Trasladar UX intelligente (P2):
+7) AUTOCOMPLETE città — database NX_CITIES_EU con ~200 città offline su 7 paesi (España 50, Italia 40, Francia 30, Alemania 30, Portugal 15, Países Bajos 10, Bélgica 8, UK 10); datalist HTML5 #nx-city-list (format "Ciudad, Región, País") + datalist regioni #nx-region-list; al select di un'opzione completa → split su virgole → auto-fill región + país (select index match);
+8) Country dropdown ampliato a 9 opzioni (era 7);
+
+Smoke test 9/9 PASS validazione VIN + 4/4 PASS extraction da PDF text simulato.
+PRESERVA: workflow OWN v10.10.1, fix CSS v10.10.2, dati per-veicolo Vista Contable v10.10.3, notifica purchase + Tareas v10.10.3, sí/no+secondary prompt v10.10.4, modello Ubicación/Pick-Up + dialog Trasladar v10.10.4, aggregazione lotti v10.09. -->
 <!-- NEXO v10.10.4 — DMCAR GROUP CRM | 2026-05-03 | Estensione workflow OWN + nuovo modello Ubicación/Pick-Up:
 
 PARTE A — Notifica Nexo Numbers con dialog completo (P1):
@@ -4481,6 +4499,59 @@ window.nxExtractVin=function(text){
   return match?match[0]:null;
 };
 
+// v10.10.5: VIN helpers robusti (spec utente formale)
+// VIN = 17 char alfanumerici, no I/O/Q, no spaces. Mai targa/codice stock/ordine.
+// Riconosce diciture: VIN, Vehicle Identification Number, telaio, n.telaio, chassis, frame number
+window.nxValidateVIN=function(raw){
+  if(raw==null)return {valid:false,vin:'',reason:'empty'};
+  var s=String(raw).toUpperCase();
+  // Tentativo 1: già pulito
+  var clean=s.replace(/[^A-Z0-9]/g,'');
+  if(clean.length===17&&!/[IOQ]/.test(clean)){
+    return {valid:true,vin:clean,reason:'ok'};
+  }
+  // Tentativo 2: cerca pattern dentro la stringa
+  var match=s.match(/\b[A-HJ-NPR-Z0-9]{17}\b/);
+  if(match)return {valid:true,vin:match[0],reason:'ok-extracted'};
+  // Non valido
+  if(clean.length<17)return {valid:false,vin:clean,reason:'too_short_'+clean.length};
+  if(clean.length>17)return {valid:false,vin:clean.substring(0,17),reason:'too_long_'+clean.length};
+  if(/[IOQ]/.test(clean))return {valid:false,vin:clean,reason:'has_IOQ'};
+  return {valid:false,vin:clean,reason:'unknown'};
+};
+
+// Estrae TUTTI i VIN da un testo (es. PDF estratto), inclusi quelli preceduti da label
+// Ritorna array di {vin, confidence, label} con confidence=high se preceduto da VIN/telaio/chassis
+window.nxExtractAllVINs=function(text){
+  if(!text)return [];
+  var s=String(text).toUpperCase();
+  var found=[];
+  var seen={};
+  // Pattern 1: con label esplicita (alta confidenza)
+  var labelRe=/(?:VIN|VEHICLE\s+IDENTIFICATION\s+NUMBER|N\.?\s*TELAIO|TELAIO|CHASSIS\s*(?:NUMBER|NO\.?|N\u00b0)?|FRAME\s+NUMBER|N\u00b0\s*BASTIDOR|BASTIDOR)[\s:.\-#]*([A-HJ-NPR-Z0-9\s\-]{17,25})/gi;
+  var m;
+  while((m=labelRe.exec(s))!==null){
+    var raw=m[1].replace(/[\s\-]/g,'');
+    if(raw.length>=17){
+      var v=raw.substring(0,17);
+      if(!/[IOQ]/.test(v)&&!seen[v]){
+        seen[v]=true;
+        found.push({vin:v,confidence:'high',label:m[0].split(/[\s:.\-]/)[0]});
+      }
+    }
+  }
+  // Pattern 2: 17 char standalone (media confidenza)
+  var standaloneRe=/\b[A-HJ-NPR-Z0-9]{17}\b/g;
+  while((m=standaloneRe.exec(s))!==null){
+    var v2=m[0];
+    if(!seen[v2]){
+      seen[v2]=true;
+      found.push({vin:v2,confidence:'medium',label:''});
+    }
+  }
+  return found;
+};
+
 // Auto-detect tipo documento da filename
 window.nxDetectDocType=function(fileName){
   if(!fileName)return 'otro';
@@ -6966,7 +7037,12 @@ function renderDash(){
 }
 
 // -- STOCK VIVO -----------------------------------------------
-var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. TRANSMISION: AT8=AUT, eDCS6=AUT, DSG=DSG (no anadas AUT), S-TRONIC=S-TRONIC (no anadas AUT), Steptronic=Steptronic (no anadas AUT), DCT=DCT (no anadas AUT), X-TRONIC=X-TRONIC (no anadas AUT), MAN=M/T. IMPORTANTE: si el vehiculo es ELECTRICO (Full Electric, BEV, EV, electric) o HIBRIDO (Hybrid, HEV, PHEV, plug-in), siempre es AUTOMATICO -> usa AUT (NUNCA M/T para electricos/hibridos). Si no se indica transmision y no es electrico/hibrido -> M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA"}]}]}';
+var SI_SYS='Analiza datos de vehiculos y devuelve JSON. AGRUPA por Brand+Model+Version exacto. Para cada grupo: calcula media KMS y DAMAGES. Incluye vehiculos individuales en campo "vehicles". COLORES en ingles: Noir=Black,Jaune=Yellow,Gris=Grey,Blanc=White,Bleu=Blue. TRANSMISION: AT8=AUT, eDCS6=AUT, DSG=DSG (no anadas AUT), S-TRONIC=S-TRONIC (no anadas AUT), Steptronic=Steptronic (no anadas AUT), DCT=DCT (no anadas AUT), X-TRONIC=X-TRONIC (no anadas AUT), MAN=M/T. IMPORTANTE: si el vehiculo es ELECTRICO (Full Electric, BEV, EV, electric) o HIBRIDO (Hybrid, HEV, PHEV, plug-in), siempre es AUTOMATICO -> usa AUT (NUNCA M/T para electricos/hibridos). Si no se indica transmision y no es electrico/hibrido -> M/T. UNIDADES: si el numero no esta especificado o hay minimo/maximo de pedido, usa Varias como valor. Si hay min/max ponlo en notas. '
+  // v10.10.5: REGLAS ESTRICTAS sobre MOTORIZACION y VIN
+  +'MOTORIZACION CRITICA: NO INFIERAS NUNCA el tipo de combustible/motorizacion. Solo extrae lo que esta EXPLICITO en el documento fuente. Si el documento dice "Full Electric", "BEV", "PHEV", "Hybrid", "Diesel", "TDI", "TSI", "Gasolina" -> usalo. Si NO esta explicito o es ambiguo -> NO inventar, NO poner notas como "Full Electric vehicles - Automatic transmission". En ese caso, deja el campo "fuelType" como "" y ANADE "motorizationUnverified":true al objeto. NUNCA generes notas auto-descriptivas con suposiciones sobre motorizacion. '
+  +'VIN: el VIN (Vehicle Identification Number, tambien llamado "numero telaio", "chassis number", "n. telaio", "frame number") es un codigo alfanumerico de EXACTAMENTE 17 caracteres, sin espacios, que NO contiene las letras I, O, Q (para evitar confusion con 1 y 0). Reglas: 1) Si encuentras una cadena de 17 caracteres alfanumericos sin I/O/Q -> es un VIN; 2) Si la cadena esta precedida por VIN/telaio/chassis/n. telaio -> VIN con alta confianza; 3) Conserva el VIN en MAYUSCULAS; 4) Quita espacios/guiones SOLO si reconstruyen un VIN valido de 17 chars; 5) Si <17 o >17 chars -> NO es VIN, deja vin:"" y anade vinUnverified:true al vehiculo individual; 6) NUNCA confundas con: matricula/targa, codigo stock interno, numero pedido, referencia proveedor, numero factura. Si el documento NO contiene VINs reales (solo numeros de orden o referencias) -> deja vin:"" para cada vehiculo, NO INVENTES VINs ficticios. '
+  +'NOTAS: el campo "notes" debe contener SOLO informacion descriptiva extraida del documento (condiciones de venta, observaciones del proveedor, plazos, etc.). NO usar "notes" para describir caracteristicas del vehiculo (motor, transmision, color) que ya tienen su propio campo. Si no hay notas reales en el documento, usa "--". '
+  +'SOLO JSON puro sin texto ni markdown: {"supplier":"nombre","vehicles":[{"brand":"OPEL","model":"ASTRA L","version":"GS 1.5D AT8 AUT","reg":"05/2024","kms":"29222","avgKms":true,"colors":"Black, Yellow","damage":"1014","avgDamages":true,"units":"2","equip":"GS Line - AT8 - LED","buy":"15400","sell":"","pickup":"Valencia","status":"Stock","notes":"--","fuelType":"Diesel","motorizationUnverified":false,"vehicles":[{"vin":"VXKFBYHZ7R1023642","color":"Black","kms":"29099","damage":"1060","reg":"05/2024","location":"CHESTE BERGE GEFCO VALENCIA","vinUnverified":false}]}]}';
 
 function renderStk(){
   updBF();
@@ -7136,7 +7212,10 @@ function renderStkTbl(){
     html+='<td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500">'+esc(item.supplier)+'</td>';
     html+='<td><strong style="color:var(--b2)">'+esc(item.brand)+'</strong></td>';
     html+='<td style="white-space:nowrap">'+esc(item.model)+'</td>';
-    html+='<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+esc(item.version)+'">'+esc(item.version)+'</td>';
+    // v10.10.5: badge "motor da verificar" se l'AI parser non ha trovato keyword motorizzazione
+    // Click sul badge → AI lookup (web-search-like) per disambiguare versione
+    var motorWarn=item._motorUnverified?'<span class="motor-verify-btn" data-id="'+item.id+'" title="Click para buscar versi\u00f3n exacta con AI" style="display:inline-block;background:#fbbf24;color:#78350f;font-size:8px;font-weight:800;padding:1px 4px;border-radius:3px;margin-left:4px;letter-spacing:.04em;cursor:pointer">\u26a0 MOT?</span>':'';
+    html+='<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="'+esc(item.version)+(item._motorUnverified?' \u2014 Motorizzazione da verificar':'')+'">'+esc(item.version)+motorWarn+'</td>';
     html+='<td style="white-space:nowrap;font-size:11px">'+esc(item.reg)+'</td>';
     html+='<td style="text-align:center;font-weight:700;color:var(--acc)">'+unitsDisp+'</td>';
     html+='<td style="text-align:right;white-space:nowrap">'+esc(item.kms)+(item.avgKms?'<span style="font-size:9px;color:var(--t3)"> avg</span>':'')+'</td>';
@@ -7278,7 +7357,16 @@ function renderStkTbl(){
         html+='<td style="padding:6px 10px;text-align:center"><input type="checkbox" class="veh-sel-chk" data-sid="'+esc(item.id)+'" data-vi="'+vi+'"'+(vSel?' checked':'')+' title="Seleccionar para campa&ntilde;a Direct Mail" style="cursor:pointer;accent-color:#06b6d4;width:16px;height:16px"></td>';
         // Env. checkbox
         html+='<td style="padding:6px 10px;text-align:center"><input type="checkbox" class="veh-env-chk" data-sid="'+esc(item.id)+'" data-vi="'+vi+'"'+(vSent?' checked':'')+' title="'+(vSentAt?'Enviada el '+esc(vSentAt):'Marcar como enviada')+'" style="cursor:pointer;accent-color:#10b981;width:16px;height:16px"></td>';
-        html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+esc(v.vin||'--')+'</td>';
+        // v10.10.5: badge "VIN no verificado" se vin manca o non è 17 char valido
+        var vinDisp;
+        if(!v.vin){
+          vinDisp='<span style="color:#92400e;font-size:9px;background:rgba(245,158,11,.18);padding:2px 5px;border-radius:3px;font-weight:600" title="VIN no extra\u00eddo \u2014 a\u00f1ade manualmente">\u26a0 sin VIN</span>';
+        }else if(v._vinUnverified){
+          vinDisp='<span style="color:#92400e;font-family:monospace;font-size:11px" title="VIN no verificado: '+esc(v._vinReason||'invalid')+' \u2014 confirma manualmente">'+esc(v.vin)+' \u26a0</span>';
+        }else{
+          vinDisp='<span title="VIN v\u00e1lido (17 char)">'+esc(v.vin)+'</span>';
+        }
+        html+='<td style="padding:6px 10px;font-size:11px;color:var(--acc);font-family:monospace">'+vinDisp+'</td>';
         html+='<td style="padding:6px 10px;font-size:12px">'+esc(v.color||'--')+'</td>';
         html+='<td style="padding:6px 10px;font-size:12px;text-align:right">'+esc(v.kms||'--')+'</td>';
         html+='<td style="padding:6px 14px;font-size:12px;font-weight:600;text-align:center;color:var(--orange);white-space:nowrap">'+esc(v.damage||'--')+'</td>';
@@ -7515,6 +7603,15 @@ function renderStkTbl(){
       var shown=det.style.display!=='none';
       det.style.display=shown?'none':'table-row';
       this.innerHTML=(shown?'&#9660;':'&#9650;')+' '+this.textContent.trim().split(' ')[1];
+    });
+  });
+
+  // v10.10.5: motor verify badge → AI lookup per disambiguare versione veicolo
+  tbody.querySelectorAll('.motor-verify-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var id=this.getAttribute('data-id');
+      if(typeof window.nxLookupVehicleVersion==='function')window.nxLookupVehicleVersion(id);
     });
   });
 
@@ -9929,6 +10026,85 @@ function iHandleResp(resp,manualSup){
 
     // Set supplier
     vehicles.forEach(function(v){v.supplier=manualSup||v.supplier||detSup;});
+
+    // v10.10.5: VIN SALVAGE — se l'AI non ha estratto VIN, scansiona il testo originale
+    // Spec utente: VIN = 17 char alfanumerici, no I/O/Q. Non confondere con targa/codice stock.
+    try{
+      var rawText=n('i-text').value||'';
+      if(rawText&&typeof window.nxExtractAllVINs==='function'){
+        var allVINs=window.nxExtractAllVINs(rawText);
+        if(allVINs.length>0){
+          // Conta unità totali e VIN già presenti
+          var totalUnitsExpected=0;
+          var totalVINsAlreadyAssigned=0;
+          vehicles.forEach(function(v){
+            if(v.vehicles&&v.vehicles.length){
+              totalUnitsExpected+=v.vehicles.length;
+              v.vehicles.forEach(function(u){if(u.vin&&String(u.vin).trim())totalVINsAlreadyAssigned++;});
+            }else{
+              totalUnitsExpected+=parseInt(v.units,10)||1;
+              if(v.vin&&String(v.vin).trim())totalVINsAlreadyAssigned++;
+            }
+          });
+          // Se servono VIN E ne abbiamo abbastanza dal testo → assegna in ordine
+          if(totalVINsAlreadyAssigned===0&&allVINs.length>=Math.min(totalUnitsExpected,1)){
+            console.log('[v10.10.5] VIN salvage: AI non ha estratto VIN, recuperati '+allVINs.length+' dal testo per '+totalUnitsExpected+' unidades');
+            var vinIdx=0;
+            vehicles.forEach(function(v){
+              if(v.vehicles&&v.vehicles.length){
+                v.vehicles.forEach(function(u){
+                  if(!u.vin&&vinIdx<allVINs.length){
+                    u.vin=allVINs[vinIdx].vin;
+                    u._vinSource='salvage_'+allVINs[vinIdx].confidence;
+                    vinIdx++;
+                  }
+                });
+              }
+            });
+            if(vinIdx>0&&typeof showToast==='function'){
+              showToast('\u2728 '+vinIdx+' VIN recuperados del PDF (post-AI)',5000);
+            }
+          }
+        }
+      }
+    }catch(eVS){console.warn('[v10.10.5] VIN salvage error:',eVS);}
+
+    // v10.10.5: VIN VALIDATION — flag invalid VINs con _vinUnverified
+    vehicles.forEach(function(v){
+      if(v.vehicles&&v.vehicles.length){
+        v.vehicles.forEach(function(u){
+          if(u.vin){
+            var vRes=window.nxValidateVIN(u.vin);
+            if(vRes.valid){
+              u.vin=vRes.vin; // normalizzato
+            }else{
+              console.warn('[v10.10.5] VIN invalido: "'+u.vin+'" reason='+vRes.reason);
+              u._vinUnverified=true;
+              u._vinReason=vRes.reason;
+            }
+          }
+        });
+      }else if(v.vin){
+        var vRes2=window.nxValidateVIN(v.vin);
+        if(vRes2.valid){v.vin=vRes2.vin;}
+        else{v._vinUnverified=true;v._vinReason=vRes2.reason;}
+      }
+    });
+
+    // v10.10.5: MOTOR UNVERIFIED FLAG — se la version non contiene keyword esplicite di
+    // motorizzazione (Diesel/Benzina/TDI/TSI/HEV/PHEV/EV/BEV/Hybrid/etc.), segnala "da verificare"
+    // Evita default automatici "Full Electric" per veicoli ICE non specificati.
+    var motorKeywordsRe=/(DIESEL|GASOLINA|BENZINA|TDI|TSI|TFSI|MILD\s*HYBRID|MHEV|HYBRID|HEV|PHEV|PLUG[\s-]?IN|EV\b|BEV|FULL\s*ELECTRIC|ELECTR\w*|HIBRIDO|IBRID\w*|GPL|METANO|CNG|LPG|D\d+|TDCi|HDi|DCi|CDI|JTD|JTDM|MULTIJET|BLUEHDI|MULTIAIR|TWINAIR|FIRE|BOOSTERJET|CRDI|TGDI|VTEC|BLUETEC|ECOBOOST|ECOTEC|VVT-?I)/i;
+    vehicles.forEach(function(v){
+      var verCombined=(v.version||'')+' '+(v.equip||'');
+      if(!motorKeywordsRe.test(verCombined)){
+        v._motorUnverified=true;
+        if(v.vehicles&&v.vehicles.length){
+          v.vehicles.forEach(function(u){u._motorUnverified=true;});
+        }
+        console.log('[v10.10.5] Motor unverified per '+v.brand+' '+v.model+' '+v.version);
+      }
+    });
 
     // v10.06: Pre-validation report — duplicati VIN + mancante campi essenziali
     var existingVins={};
@@ -26493,9 +26669,41 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
     // 5. Branch in base ai contatti trovati
     if(!provider){
-      // Provider non trovato in DB: fallback prompt
-      if(confirm('Proveedor "'+supplierName+'" no encontrado en la lista de Providers.\n\n\u00bfQuieres abrir tu cliente de email con el mensaje pre-rellenado para que lo env\u00edes manualmente?')){
-        nxOpenMailtoFallback('',subject,body);
+      // v10.10.5: invece di mailto vuoto, mostra selettore provider con suggerimenti fuzzy
+      // (Principio 2 spec: riusa anagrafica esistente)
+      if(typeof window.nxOwnEntryShowProviderPicker==='function'){
+        window.nxOwnEntryShowProviderPicker(supplierName,subject,body,function(picked){
+          if(!picked){return;}
+          // Trova contatti Contabilidad del provider scelto
+          var pickedContab=[];
+          if(picked.email&&(picked.role||'').toLowerCase()==='contabilidad'){
+            pickedContab.push({name:picked.name||picked.company,email:picked.email});
+          }
+          (picked.staff||[]).forEach(function(s){
+            if(s.email&&(s.role||'').toLowerCase()==='contabilidad'){
+              pickedContab.push({name:s.name||'(sin nombre)',email:s.email});
+            }
+          });
+          if(pickedContab.length===0){
+            // Provider scelto ma senza Contabilidad → riusa selettore generale
+            if(typeof window.nxProvSelectEmailRecipients==='function'){
+              window.nxProvSelectEmailRecipients(picked,function(emails){
+                if(emails&&emails.length)nxOpenMailtoFallback(emails.join(','),subject,body);
+              });
+            }else{
+              nxOpenMailtoFallback(picked.email||'',subject,body);
+            }
+            return;
+          }
+          var to=pickedContab.map(function(c){return c.email;}).join(',');
+          nxOpenMailtoFallback(to,subject,body);
+          if(typeof showToast==='function')showToast('\u2709\ufe0f Email pre-rellenado para '+pickedContab.map(function(c){return c.name;}).join(', '),5000);
+        });
+      }else{
+        // Fallback ultra-conservativo (helper non disponibile)
+        if(confirm('Proveedor "'+supplierName+'" no encontrado.\n\u00bfAbrir email vac\u00edo con mensaje pre-rellenado?')){
+          nxOpenMailtoFallback('',subject,body);
+        }
       }
       return;
     }
@@ -26524,6 +26732,173 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var who=contabRecipients.map(function(c){return c.name;}).join(', ');
       showToast('\u2709\ufe0f Email pre-rellenado para '+who,5000);
     }
+  };
+
+  // ========================================================================
+  // v10.10.5: nxLookupVehicleVersion — AI "web-search-like" per disambiguare versione
+  // Trigger: click sul badge "MOT?" giallo nella riga sintesi Stock Vivo
+  // Mostra prompt con risultato AI suggerito + opzioni Conferma/Modifica/Buscar de nuevo
+  // ========================================================================
+  window.nxLookupVehicleVersion=function(stockId){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(stockId);});
+    if(!s){alert('Veh\u00edculo no encontrado');return;}
+    var query=(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+' '+(s.equip||'').slice(0,80);
+    var firstReg=s.reg||'';
+    // Open loading modal
+    var html='<div id="m-motor-lookup" class="modal-bg" style="display:flex">'
+      +'<div class="modal" style="max-width:580px">'
+        +'<div class="mh"><span>\u{1F50D} Buscar versi\u00f3n exacta</span><button class="mx" onclick="nxCloseDynModal(\'m-motor-lookup\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(99,102,241,.06);border-left:3px solid #6366f1;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Buscando para</div>'
+            +'<div style="font-size:13px;color:var(--t1);font-weight:600">'+esc(query)+'</div>'
+            +(firstReg?'<div style="font-size:11px;color:var(--t3);margin-top:3px">Matriculaci\u00f3n: '+esc(firstReg)+'</div>':'')
+          +'</div>'
+          +'<div id="motor-lookup-result" style="min-height:120px;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--t3);font-size:13px">'
+            +'<div style="font-size:24px;margin-bottom:8px">\u{1F50E}</div>'
+            +'<div>Consultando informaci\u00f3n del veh\u00edculo\u2026</div>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-motor-lookup');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    var sys='Eres un experto en autom\u00f3viles europeos. Te paso datos parciales de un veh\u00edculo y debes proponer la denominaci\u00f3n exacta de versi\u00f3n con motorizaci\u00f3n.\n\nReglas:\n1. Devuelve SOLO un JSON: {"versionPropuesta":"...","motorTipo":"Diesel|Gasolina|H\u00edbrido|Mild Hybrid|Plug-in Hybrid|El\u00e9ctrico|GLP|GNC","confianza":"alta|media|baja","fuente":"breve descripci\u00f3n","alternativas":["...","..."]}\n2. La motorTipo debe estar en la lista permitida. Si no es seguro, "confianza":"baja".\n3. NO inventes nada: si los datos son insuficientes, motorTipo="" y confianza="baja".\n4. La versi\u00f3n debe ser corta y comercial (ej: "Audi A3 Sportback 35 TFSI 150CV S-Line").';
+    var msg='Marca: '+(s.brand||'?')+'\nModelo: '+(s.model||'?')+'\nVersi\u00f3n parcial: '+(s.version||'?')+'\nMatriculaci\u00f3n: '+(firstReg||'?')+'\nEquipamiento: '+(s.equip||'').slice(0,200);
+    if(typeof callAPI!=='function'){
+      var rEl=document.getElementById('motor-lookup-result');
+      if(rEl)rEl.innerHTML='<div style="color:var(--red)">\u26a0 API no disponible. Configura la API key en Settings.</div>';
+      return;
+    }
+    callAPI(sys,msg,400,function(resp,err){
+      var rEl=document.getElementById('motor-lookup-result');
+      if(!rEl)return;
+      if(err||!resp){
+        rEl.innerHTML='<div style="color:var(--red);font-size:12px">\u26a0 Error: '+esc(err||'sin respuesta')+'</div>';
+        return;
+      }
+      try{
+        // Strip markdown fences se presenti
+        var clean=String(resp).replace(/```json|```/g,'').trim();
+        var obj=JSON.parse(clean);
+        var conf=obj.confianza||'baja';
+        var confColor=conf==='alta'?'#16a34a':conf==='media'?'#f59e0b':'#dc2626';
+        var alts=Array.isArray(obj.alternativas)?obj.alternativas.filter(Boolean):[];
+        var resultHtml='<div style="text-align:left;width:100%">'
+          +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:4px">Sugerencia AI</div>'
+          +'<div style="font-size:14px;font-weight:600;color:var(--t1);margin-bottom:6px">'+esc(obj.versionPropuesta||'(sin propuesta)')+'</div>'
+          +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'
+            +(obj.motorTipo?'<span style="background:rgba(29,78,216,.1);color:var(--acc);font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600">'+esc(obj.motorTipo)+'</span>':'')
+            +'<span style="background:rgba(0,0,0,.05);color:'+confColor+';font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;text-transform:uppercase">Confianza '+esc(conf)+'</span>'
+          +'</div>'
+          +(obj.fuente?'<div style="font-size:11px;color:var(--t3);font-style:italic;margin-bottom:10px">'+esc(obj.fuente)+'</div>':'');
+        if(alts.length>0){
+          resultHtml+='<div style="font-size:11px;color:var(--t3);text-transform:uppercase;font-weight:700;margin-top:10px;margin-bottom:4px">Alternativas</div>';
+          alts.slice(0,3).forEach(function(a){
+            resultHtml+='<div style="padding:5px 10px;background:rgba(0,0,0,.03);border-radius:4px;margin-bottom:3px;font-size:12px;cursor:pointer" onclick="nxApplyLookupVersion(\''+esc(stockId)+'\','+JSON.stringify(a).replace(/"/g,'&quot;')+',\''+esc(obj.motorTipo||'')+'\')">'+esc(a)+'</div>';
+          });
+        }
+        resultHtml+='<div class="fc g8" style="justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'
+          +'<button class="btn bg" onclick="nxCloseDynModal(\'m-motor-lookup\')">Modifico manualmente</button>'
+          +'<button class="btn bs" onclick="nxLookupVehicleVersion(\''+esc(stockId)+'\')">\u{1F504} Buscar de nuevo</button>'
+          +'<button class="btn bp" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none" onclick="nxApplyLookupVersion(\''+esc(stockId)+'\','+JSON.stringify(obj.versionPropuesta||'').replace(/"/g,'&quot;')+',\''+esc(obj.motorTipo||'')+'\')">\u2713 S\u00ed, confirmo</button>'
+        +'</div></div>';
+        rEl.innerHTML=resultHtml;
+      }catch(e){
+        rEl.innerHTML='<div style="color:var(--red);font-size:12px">\u26a0 Respuesta no parseable: '+esc(String(resp).slice(0,100))+'\u2026</div>';
+      }
+    });
+  };
+  window.nxApplyLookupVersion=function(stockId,newVersion,motorTipo){
+    var s=(window.stock||[]).find(function(x){return String(x.id)===String(stockId);});
+    if(!s)return;
+    if(newVersion)s.version=String(newVersion);
+    s._motorUnverified=false;
+    s._motorVerifiedAt=new Date().toISOString();
+    if(motorTipo)s._motorTipo=motorTipo;
+    if(Array.isArray(s.vehicles)){
+      s.vehicles.forEach(function(u){u._motorUnverified=false;});
+    }
+    SS('stock',window.stock);
+    nxCloseDynModal('m-motor-lookup');
+    if(typeof fStk==='function')fStk();
+    if(typeof showToast==='function')showToast('\u2713 Versi\u00f3n actualizada: '+(newVersion||'(sin cambios)'),5000);
+  };
+
+
+  // Mostra selettore provider quando il match canonical fallisce.
+  // Suggerisce i 3 provider con nome più simile (fuzzy basic) + lista completa.
+  // Permette anche "Crear nuevo provider" inline per workflow rapido.
+  // ========================================================================
+  window.nxOwnEntryShowProviderPicker=function(supplierName,subject,body,callback){
+    var providersArr=window.providers||[];
+    if(providersArr.length===0){
+      alert('No hay providers registrados en NEXO. Cre\u00e1 uno antes en m\u00f3dulo Providers.');
+      if(callback)callback(null);
+      return;
+    }
+    // Fuzzy score: match parziale tra supplier name e provider names
+    var supU=String(supplierName||'').toUpperCase();
+    var supTokens=supU.replace(/[^A-Z0-9\s]/g,' ').split(/\s+/).filter(function(t){return t.length>=3;});
+    var scored=providersArr.map(function(p){
+      var pName=((p.company||p.name||'')+' '+(p.name||'')).toUpperCase();
+      var score=0;
+      supTokens.forEach(function(t){if(pName.indexOf(t)>=0)score+=t.length;});
+      return {provider:p,score:score,displayName:p.company||p.name||'(sin nombre)'};
+    });
+    scored.sort(function(a,b){return b.score-a.score;});
+    var topMatches=scored.filter(function(s){return s.score>0;}).slice(0,3);
+    var allOthers=scored.filter(function(s){return s.score===0;});
+    // Build modal
+    var html='<div id="m-provider-picker" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-provider-picker\')">'
+      +'<div class="modal" style="max-width:560px">'
+        +'<div class="mh"><span>\u{1F50E} Selecciona el proveedor</span><button class="mx" onclick="nxCloseDynModal(\'m-provider-picker\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;padding:10px;border-radius:6px;margin-bottom:14px;font-size:12px;color:var(--t2);line-height:1.5">'
+            +'\u26a0\ufe0f El nombre <strong>"'+esc(supplierName)+'"</strong> no coincide exactamente con ning\u00fan provider registrado. Selecciona el correcto:'
+          +'</div>';
+    if(topMatches.length>0){
+      html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc);font-weight:700;margin-bottom:6px">\u2728 Sugerencias</div>';
+      topMatches.forEach(function(item){
+        var p=item.provider;
+        var staffCnt=(p.staff||[]).length;
+        var hasContab=p.staff&&p.staff.some(function(s){return (s.role||'').toLowerCase()==='contabilidad';});
+        html+='<button class="btn bs" style="width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;background:rgba(29,78,216,.05);border:1px solid var(--border);display:block" onclick="nxOwnEntryPickProvider(\''+esc(p.id||'')+'\')">'
+          +'<div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(item.displayName)+'</div>'
+          +'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+(p.country?esc(p.country)+' \u2022 ':'')+staffCnt+' staff'+(hasContab?' \u2022 \u2705 Tiene Contabilidad':' \u2022 \u26a0 Sin Contabilidad')+'</div>'
+        +'</button>';
+      });
+      html+='<div style="height:8px"></div>';
+    }
+    if(allOthers.length>0){
+      html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--t3);font-weight:700;margin:10px 0 6px">Otros providers</div>'
+        +'<select id="prov-picker-other" style="width:100%;padding:8px;font-size:12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px">'
+        +'<option value="">-- Elegir otro provider --</option>';
+      allOthers.forEach(function(item){
+        var p=item.provider;
+        html+='<option value="'+esc(p.id||'')+'">'+esc(item.displayName)+'</option>';
+      });
+      html+='</select>'
+        +'<button class="btn bp" style="width:100%;margin-top:6px;font-size:12px" onclick="nxOwnEntryPickProviderFromSelect()">Confirmar selecci\u00f3n</button>';
+    }
+    html+='<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">'
+        +'<button class="btn bg" style="width:100%;font-size:11px" onclick="nxCloseDynModal(\'m-provider-picker\');alert(\'Para crear un nuevo provider, usa el m\\u00f3dulo Providers\\u2192+ Nuevo. Despu\\u00e9s vuelve a esta acci\\u00f3n.\');">+ Provider no existe (crea uno nuevo en m\u00f3dulo Providers)</button>'
+      +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-provider-picker');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    window._nxProvPickerCb=callback;
+  };
+  window.nxOwnEntryPickProvider=function(pid){
+    var p=(window.providers||[]).find(function(x){return String(x.id)===String(pid);});
+    nxCloseDynModal('m-provider-picker');
+    var cb=window._nxProvPickerCb;window._nxProvPickerCb=null;
+    if(cb)cb(p||null);
+  };
+  window.nxOwnEntryPickProviderFromSelect=function(){
+    var sel=document.getElementById('prov-picker-other');
+    if(!sel||!sel.value){alert('Selecciona un provider de la lista');return;}
+    nxOwnEntryPickProvider(sel.value);
   };
 
   // Helper: apre mailto: con encoding corretto
@@ -26738,14 +27113,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
             +(currentPickup&&currentPickup!==currentUbic?'<div style="font-size:11px;color:var(--t3);margin-top:2px">Pick-Up actual: <strong>'+esc(currentPickup)+'</strong>'+(currentStatus==='in_transit'?' <span style="color:#92400e">(en tr\u00e1nsito)</span>':currentStatus==='arrived'?' <span style="color:#15803d">(llegado)</span>':'')+'</div>':'')
           +'</div>'
           +'<div class="g3 mb10">'
-            +'<div><label>Ciudad *</label><input type="text" id="trasl-city" placeholder="Ej: San Cugat" autocomplete="off" style="width:100%;padding:8px"></div>'
-            +'<div><label>Provincia / Regi\u00f3n</label><input type="text" id="trasl-region" placeholder="Ej: Barcelona" autocomplete="off" style="width:100%;padding:8px"></div>'
+            +'<div><label>Ciudad *</label><input type="text" id="trasl-city" placeholder="Ej: San Cugat, Barcelona, Mil\u00e1n..." list="nx-city-list" autocomplete="off" oninput="nxTrasladarOnCityInput(this)" style="width:100%;padding:8px"></div>'
+            +'<div><label>Provincia / Regi\u00f3n</label><input type="text" id="trasl-region" placeholder="Ej: Barcelona" list="nx-region-list" autocomplete="off" style="width:100%;padding:8px"></div>'
             +'<div><label>Pa\u00eds</label><select id="trasl-country" style="width:100%;padding:8px">'
               +'<option value="Espa\u00f1a" selected>Espa\u00f1a</option>'
               +'<option value="Italia">Italia</option>'
               +'<option value="Francia">Francia</option>'
               +'<option value="Alemania">Alemania</option>'
               +'<option value="Portugal">Portugal</option>'
+              +'<option value="Pa\u00edses Bajos">Pa\u00edses Bajos</option>'
+              +'<option value="B\u00e9lgica">B\u00e9lgica</option>'
               +'<option value="UK">UK</option>'
               +'<option value="Otros">Otros</option>'
             +'</select></div>'
@@ -26768,7 +27145,138 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'</div></div>';
     var old=document.getElementById('m-trasladar');if(old)old.parentNode.removeChild(old);
     document.body.insertAdjacentHTML('beforeend',html);
+    // v10.10.5: inietta datalist citt\u00e0 offline (~200 EU)
+    if(typeof window.nxBuildCityDatalists==='function')window.nxBuildCityDatalists();
     setTimeout(function(){var c=document.getElementById('trasl-city');if(c)c.focus();},80);
+  };
+
+  // v10.10.5: database citt\u00e0 EU offline (~200 città maggiori per business DMCAR)
+  // Format: [{name, region, country}]
+  window.NX_CITIES_EU=window.NX_CITIES_EU||[
+    // ESPAÑA (~50)
+    {n:'Madrid',r:'Madrid',c:'Espa\u00f1a'},{n:'Barcelona',r:'Barcelona',c:'Espa\u00f1a'},{n:'Valencia',r:'Valencia',c:'Espa\u00f1a'},
+    {n:'Sevilla',r:'Sevilla',c:'Espa\u00f1a'},{n:'Zaragoza',r:'Zaragoza',c:'Espa\u00f1a'},{n:'M\u00e1laga',r:'M\u00e1laga',c:'Espa\u00f1a'},
+    {n:'Murcia',r:'Murcia',c:'Espa\u00f1a'},{n:'Palma',r:'Baleares',c:'Espa\u00f1a'},{n:'Las Palmas',r:'Gran Canaria',c:'Espa\u00f1a'},
+    {n:'Bilbao',r:'Vizcaya',c:'Espa\u00f1a'},{n:'Alicante',r:'Alicante',c:'Espa\u00f1a'},{n:'C\u00f3rdoba',r:'C\u00f3rdoba',c:'Espa\u00f1a'},
+    {n:'Valladolid',r:'Valladolid',c:'Espa\u00f1a'},{n:'Vigo',r:'Pontevedra',c:'Espa\u00f1a'},{n:'Gij\u00f3n',r:'Asturias',c:'Espa\u00f1a'},
+    {n:'L\u2019Hospitalet',r:'Barcelona',c:'Espa\u00f1a'},{n:'A Coru\u00f1a',r:'A Coru\u00f1a',c:'Espa\u00f1a'},{n:'Granada',r:'Granada',c:'Espa\u00f1a'},
+    {n:'Vitoria-Gasteiz',r:'\u00c1lava',c:'Espa\u00f1a'},{n:'Elche',r:'Alicante',c:'Espa\u00f1a'},{n:'Oviedo',r:'Asturias',c:'Espa\u00f1a'},
+    {n:'Santa Cruz de Tenerife',r:'Tenerife',c:'Espa\u00f1a'},{n:'Pamplona',r:'Navarra',c:'Espa\u00f1a'},{n:'Cartagena',r:'Murcia',c:'Espa\u00f1a'},
+    {n:'Terrassa',r:'Barcelona',c:'Espa\u00f1a'},{n:'Jerez de la Frontera',r:'C\u00e1diz',c:'Espa\u00f1a'},{n:'Sabadell',r:'Barcelona',c:'Espa\u00f1a'},
+    {n:'M\u00f3stoles',r:'Madrid',c:'Espa\u00f1a'},{n:'Alcal\u00e1 de Henares',r:'Madrid',c:'Espa\u00f1a'},{n:'Pamplona',r:'Navarra',c:'Espa\u00f1a'},
+    {n:'Fuenlabrada',r:'Madrid',c:'Espa\u00f1a'},{n:'Almer\u00eda',r:'Almer\u00eda',c:'Espa\u00f1a'},{n:'Legan\u00e9s',r:'Madrid',c:'Espa\u00f1a'},
+    {n:'San Cugat del Vall\u00e8s',r:'Barcelona',c:'Espa\u00f1a'},{n:'Sant Cugat',r:'Barcelona',c:'Espa\u00f1a'},{n:'Badalona',r:'Barcelona',c:'Espa\u00f1a'},
+    {n:'Cheste',r:'Valencia',c:'Espa\u00f1a'},{n:'La Roda',r:'Albacete',c:'Espa\u00f1a'},{n:'Salobral',r:'Albacete',c:'Espa\u00f1a'},
+    {n:'Ge taf e',r:'Madrid',c:'Espa\u00f1a'},{n:'Burgos',r:'Burgos',c:'Espa\u00f1a'},{n:'Salamanca',r:'Salamanca',c:'Espa\u00f1a'},
+    {n:'Albacete',r:'Albacete',c:'Espa\u00f1a'},{n:'Logro\u00f1o',r:'La Rioja',c:'Espa\u00f1a'},{n:'Le\u00f3n',r:'Le\u00f3n',c:'Espa\u00f1a'},
+    {n:'Tarragona',r:'Tarragona',c:'Espa\u00f1a'},{n:'Lleida',r:'Lleida',c:'Espa\u00f1a'},{n:'Girona',r:'Girona',c:'Espa\u00f1a'},
+    {n:'Santander',r:'Cantabria',c:'Espa\u00f1a'},{n:'Castell\u00f3n',r:'Castell\u00f3n',c:'Espa\u00f1a'},{n:'C\u00e1diz',r:'C\u00e1diz',c:'Espa\u00f1a'},
+    // ITALIA (~40)
+    {n:'Roma',r:'Lazio',c:'Italia'},{n:'Milano',r:'Lombardia',c:'Italia'},{n:'Napoli',r:'Campania',c:'Italia'},
+    {n:'Torino',r:'Piemonte',c:'Italia'},{n:'Palermo',r:'Sicilia',c:'Italia'},{n:'Genova',r:'Liguria',c:'Italia'},
+    {n:'Bologna',r:'Emilia-Romagna',c:'Italia'},{n:'Firenze',r:'Toscana',c:'Italia'},{n:'Bari',r:'Puglia',c:'Italia'},
+    {n:'Catania',r:'Sicilia',c:'Italia'},{n:'Venezia',r:'Veneto',c:'Italia'},{n:'Verona',r:'Veneto',c:'Italia'},
+    {n:'Messina',r:'Sicilia',c:'Italia'},{n:'Padova',r:'Veneto',c:'Italia'},{n:'Trieste',r:'Friuli',c:'Italia'},
+    {n:'Brescia',r:'Lombardia',c:'Italia'},{n:'Parma',r:'Emilia-Romagna',c:'Italia'},{n:'Modena',r:'Emilia-Romagna',c:'Italia'},
+    {n:'Reggio Emilia',r:'Emilia-Romagna',c:'Italia'},{n:'Reggio Calabria',r:'Calabria',c:'Italia'},{n:'Perugia',r:'Umbria',c:'Italia'},
+    {n:'Livorno',r:'Toscana',c:'Italia'},{n:'Ravenna',r:'Emilia-Romagna',c:'Italia'},{n:'Cagliari',r:'Sardegna',c:'Italia'},
+    {n:'Foggia',r:'Puglia',c:'Italia'},{n:'Rimini',r:'Emilia-Romagna',c:'Italia'},{n:'Salerno',r:'Campania',c:'Italia'},
+    {n:'Ferrara',r:'Emilia-Romagna',c:'Italia'},{n:'Sassari',r:'Sardegna',c:'Italia'},{n:'Latina',r:'Lazio',c:'Italia'},
+    {n:'Monza',r:'Lombardia',c:'Italia'},{n:'Bergamo',r:'Lombardia',c:'Italia'},{n:'Vicenza',r:'Veneto',c:'Italia'},
+    {n:'Pescara',r:'Abruzzo',c:'Italia'},{n:'Bolzano',r:'Trentino-Alto Adige',c:'Italia'},{n:'Trento',r:'Trentino-Alto Adige',c:'Italia'},
+    {n:'Como',r:'Lombardia',c:'Italia'},{n:'Varese',r:'Lombardia',c:'Italia'},{n:'Pisa',r:'Toscana',c:'Italia'},
+    // FRANCE (~30)
+    {n:'Paris',r:'\u00cele-de-France',c:'Francia'},{n:'Marseille',r:'Provence',c:'Francia'},{n:'Lyon',r:'Auvergne-Rh\u00f4ne-Alpes',c:'Francia'},
+    {n:'Toulouse',r:'Occitanie',c:'Francia'},{n:'Nice',r:'PACA',c:'Francia'},{n:'Nantes',r:'Pays de la Loire',c:'Francia'},
+    {n:'Strasbourg',r:'Grand Est',c:'Francia'},{n:'Montpellier',r:'Occitanie',c:'Francia'},{n:'Bordeaux',r:'Nouvelle-Aquitaine',c:'Francia'},
+    {n:'Lille',r:'Hauts-de-France',c:'Francia'},{n:'Rennes',r:'Bretagne',c:'Francia'},{n:'Reims',r:'Grand Est',c:'Francia'},
+    {n:'Le Havre',r:'Normandie',c:'Francia'},{n:'Saint-\u00c9tienne',r:'AURA',c:'Francia'},{n:'Toulon',r:'PACA',c:'Francia'},
+    {n:'Grenoble',r:'AURA',c:'Francia'},{n:'Dijon',r:'Bourgogne',c:'Francia'},{n:'Angers',r:'Pays de la Loire',c:'Francia'},
+    {n:'Nimes',r:'Occitanie',c:'Francia'},{n:'Villeurbanne',r:'AURA',c:'Francia'},{n:'Cannes',r:'PACA',c:'Francia'},
+    {n:'Aix-en-Provence',r:'PACA',c:'Francia'},{n:'Brest',r:'Bretagne',c:'Francia'},{n:'Limoges',r:'Nouvelle-Aquitaine',c:'Francia'},
+    {n:'Tours',r:'Centre-Val de Loire',c:'Francia'},{n:'Amiens',r:'Hauts-de-France',c:'Francia'},{n:'Perpignan',r:'Occitanie',c:'Francia'},
+    {n:'Metz',r:'Grand Est',c:'Francia'},{n:'Besan\u00e7on',r:'Bourgogne',c:'Francia'},{n:'Orleans',r:'Centre-Val de Loire',c:'Francia'},
+    // DEUTSCHLAND (~30)
+    {n:'Berlin',r:'Berlin',c:'Alemania'},{n:'Hamburg',r:'Hamburg',c:'Alemania'},{n:'M\u00fcnchen',r:'Bayern',c:'Alemania'},
+    {n:'K\u00f6ln',r:'NRW',c:'Alemania'},{n:'Frankfurt',r:'Hessen',c:'Alemania'},{n:'Stuttgart',r:'Baden-W\u00fcrttemberg',c:'Alemania'},
+    {n:'D\u00fcsseldorf',r:'NRW',c:'Alemania'},{n:'Leipzig',r:'Sachsen',c:'Alemania'},{n:'Dortmund',r:'NRW',c:'Alemania'},
+    {n:'Essen',r:'NRW',c:'Alemania'},{n:'Bremen',r:'Bremen',c:'Alemania'},{n:'Dresden',r:'Sachsen',c:'Alemania'},
+    {n:'Hannover',r:'Niedersachsen',c:'Alemania'},{n:'N\u00fcrnberg',r:'Bayern',c:'Alemania'},{n:'Duisburg',r:'NRW',c:'Alemania'},
+    {n:'Bochum',r:'NRW',c:'Alemania'},{n:'Wuppertal',r:'NRW',c:'Alemania'},{n:'Bielefeld',r:'NRW',c:'Alemania'},
+    {n:'Bonn',r:'NRW',c:'Alemania'},{n:'M\u00fcnster',r:'NRW',c:'Alemania'},{n:'Karlsruhe',r:'Baden-W\u00fcrttemberg',c:'Alemania'},
+    {n:'Mannheim',r:'Baden-W\u00fcrttemberg',c:'Alemania'},{n:'Augsburg',r:'Bayern',c:'Alemania'},{n:'Wiesbaden',r:'Hessen',c:'Alemania'},
+    {n:'M\u00f6nchengladbach',r:'NRW',c:'Alemania'},{n:'Gelsenkirchen',r:'NRW',c:'Alemania'},{n:'Braunschweig',r:'Niedersachsen',c:'Alemania'},
+    {n:'Kiel',r:'Schleswig-Holstein',c:'Alemania'},{n:'Aachen',r:'NRW',c:'Alemania'},{n:'Magdeburg',r:'Sachsen-Anhalt',c:'Alemania'},
+    // PORTUGAL (~15)
+    {n:'Lisboa',r:'Lisboa',c:'Portugal'},{n:'Porto',r:'Porto',c:'Portugal'},{n:'Vila Nova de Gaia',r:'Porto',c:'Portugal'},
+    {n:'Amadora',r:'Lisboa',c:'Portugal'},{n:'Braga',r:'Braga',c:'Portugal'},{n:'Coimbra',r:'Coimbra',c:'Portugal'},
+    {n:'Funchal',r:'Madeira',c:'Portugal'},{n:'Set\u00fabal',r:'Set\u00fabal',c:'Portugal'},{n:'Almada',r:'Set\u00fabal',c:'Portugal'},
+    {n:'Aveiro',r:'Aveiro',c:'Portugal'},{n:'Faro',r:'Algarve',c:'Portugal'},{n:'Viseu',r:'Viseu',c:'Portugal'},
+    {n:'Leiria',r:'Leiria',c:'Portugal'},{n:'Guimar\u00e3es',r:'Braga',c:'Portugal'},{n:'\u00c9vora',r:'\u00c9vora',c:'Portugal'},
+    // PA\u00cdSES BAJOS (~10)
+    {n:'Amsterdam',r:'Noord-Holland',c:'Pa\u00edses Bajos'},{n:'Rotterdam',r:'Zuid-Holland',c:'Pa\u00edses Bajos'},
+    {n:'Den Haag',r:'Zuid-Holland',c:'Pa\u00edses Bajos'},{n:'Utrecht',r:'Utrecht',c:'Pa\u00edses Bajos'},
+    {n:'Eindhoven',r:'Noord-Brabant',c:'Pa\u00edses Bajos'},{n:'Groningen',r:'Groningen',c:'Pa\u00edses Bajos'},
+    {n:'Tilburg',r:'Noord-Brabant',c:'Pa\u00edses Bajos'},{n:'Almere',r:'Flevoland',c:'Pa\u00edses Bajos'},
+    {n:'Breda',r:'Noord-Brabant',c:'Pa\u00edses Bajos'},{n:'Nijmegen',r:'Gelderland',c:'Pa\u00edses Bajos'},
+    // BELGIUM (~8)
+    {n:'Bruxelles',r:'Bruxelles',c:'B\u00e9lgica'},{n:'Antwerpen',r:'Vlaanderen',c:'B\u00e9lgica'},
+    {n:'Gent',r:'Vlaanderen',c:'B\u00e9lgica'},{n:'Charleroi',r:'Wallonie',c:'B\u00e9lgica'},
+    {n:'Li\u00e8ge',r:'Wallonie',c:'B\u00e9lgica'},{n:'Brugge',r:'Vlaanderen',c:'B\u00e9lgica'},
+    {n:'Namur',r:'Wallonie',c:'B\u00e9lgica'},{n:'Leuven',r:'Vlaanderen',c:'B\u00e9lgica'},
+    // UK (~10)
+    {n:'London',r:'England',c:'UK'},{n:'Birmingham',r:'England',c:'UK'},{n:'Manchester',r:'England',c:'UK'},
+    {n:'Glasgow',r:'Scotland',c:'UK'},{n:'Liverpool',r:'England',c:'UK'},{n:'Leeds',r:'England',c:'UK'},
+    {n:'Sheffield',r:'England',c:'UK'},{n:'Edinburgh',r:'Scotland',c:'UK'},{n:'Bristol',r:'England',c:'UK'},
+    {n:'Cardiff',r:'Wales',c:'UK'}
+  ];
+
+  window.nxBuildCityDatalists=function(){
+    // Costruisci datalist <option value="Citt\u00e0, Regi\u00f3n, Pa\u00eds">
+    var oldDl=document.getElementById('nx-city-list');
+    if(oldDl)oldDl.parentNode.removeChild(oldDl);
+    var oldRl=document.getElementById('nx-region-list');
+    if(oldRl)oldRl.parentNode.removeChild(oldRl);
+    var dl=document.createElement('datalist');
+    dl.id='nx-city-list';
+    var rl=document.createElement('datalist');
+    rl.id='nx-region-list';
+    var regionSet={};
+    (window.NX_CITIES_EU||[]).forEach(function(city){
+      var opt=document.createElement('option');
+      opt.value=city.n+', '+city.r+', '+city.c;
+      dl.appendChild(opt);
+      regionSet[city.r+'|'+city.c]=true;
+    });
+    Object.keys(regionSet).forEach(function(k){
+      var parts=k.split('|');
+      var ropt=document.createElement('option');
+      ropt.value=parts[0];
+      rl.appendChild(ropt);
+    });
+    document.body.appendChild(dl);
+    document.body.appendChild(rl);
+  };
+
+  // Auto-fill region/country quando l'utente seleziona "Citt\u00e0, Regi\u00f3n, Pa\u00eds" dal datalist
+  window.nxTrasladarOnCityInput=function(input){
+    if(!input)return;
+    var val=String(input.value||'');
+    // Se contiene virgole = format "Ciudad, Regi\u00f3n, Pa\u00eds" → split e auto-fill
+    var parts=val.split(',').map(function(p){return p.trim();});
+    if(parts.length>=2){
+      var regEl=document.getElementById('trasl-region');
+      var coEl=document.getElementById('trasl-country');
+      if(regEl&&parts[1])regEl.value=parts[1];
+      if(coEl&&parts[2]){
+        // Match opzione esistente del select
+        for(var i=0;i<coEl.options.length;i++){
+          if(coEl.options[i].value===parts[2]){coEl.selectedIndex=i;break;}
+        }
+      }
+      // Lascia solo la città in trasl-city
+      input.value=parts[0];
+    }
   };
 
   // Conferma trasferimento: Pick-Up <- nuova destinazione, transferStatus <- in_transit
