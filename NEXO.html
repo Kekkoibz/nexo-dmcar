@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.08 — DMCAR GROUP CRM | 2026-05-03 | Fix campi parser + Provider name preservation: 1) FIX BUG nomi campi: il pre-parser usava km/color/firstReg ma il resto del sistema usa kms/colors/reg (plurale + abbreviato) → veicoli importati con kms="" e colors="". Adesso parseVehicleBlock produce v={kms,colors,reg} consistente con renderStk e tutto il resto del codice. Effetto: kms (15.009 ecc.) e colors (8E8E - Plata Reflex Metalizado) ora vengono importati correttamente; 2) FIX BUG semantico (precedente v10.08): nel formato "lista subasta del fornitore" il 2° importo € è "Venta sin IVA (daños descontados)" → buy del nostro acquisto, non sell; 3) Normalizzazione importi number → string es. 15200 → "15.200 €", "450,00 €"; 4) FIX Provider override: NON sovrascrivere supplier se l'utente l'ha digitato manualmente (era erroneamente sostituito con company del provider matched, che in caso di Superwagen era "Raimon Casellas, 130" - address scritto per errore in company). Solo aggiorna se il canonico è più completo del manuale (es. "SUPERWAGEN" → "SUPERWAGEN, S.A"); 5) Console helper nxFixProviderCompany('NOME_EMPRESA') per pulire provider con campo company sbagliato (es. address salvato in company): sposta valore in address e mette il nome corretto in company; aggiorna anche tutti gli stock collegati. nxFixProviderCompany() senza arg = modalità audit per identificare provider sospetti. -->
+<!-- NEXO v10.09 — DMCAR GROUP CRM | 2026-05-03 | Stock Import: aggregazione lotti per Brand+Model+Version: 1) FIX UX: prima 14 VW Taigo identici venivano importati come 14 lotti separati invece di 1 lotto aggregato con sub-rows. Ora tryNativeBlockParse aggrega per chiave brand+model+version → 1 riga master + drilldown ▼ N per vedere singole unità; 2) Calcoli aggregati per lotto: KMS media (avgKms=true), Daños media (avgDamages=true), Buy unico se tutti uguali altrimenti media, Pickup unique values join " / ", Colors unique values join ", "; 3) Mantiene vehicles[] con ogni unità individuale (kms+color+damage+pickup+reg specifici); 4) Console log "[v10.09] Pre-parser ha aggregato N unidades en M lote(s)"; 5) Compatibile con render esistente: hasD=item.vehicles.length>0 mostra bottone "▼ N" per espandere e vedere unità singole con KMS/colors/daños di ogni veicolo; 6) Header keywords estesi a "faros|matrix" per skip header file subasta. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -9453,13 +9453,13 @@ window.tryNativeBlockParse=function(text,manualSup){
   if(lines.length<4)return null;
 
   // Skip header se presente (riga con "Marca/Modelo", "Color", "Kms", "Daños", "Venta", ecc.)
-  var headerKeywords=/^(marca|modelo|version|matricula|fecha|color|kms?|pickup|campa|da\u00f1os?|venta|precio|chassis|bastidor|vin)/i;
+  var headerKeywords=/^(marca|modelo|version|matricula|fecha|color|kms?|pickup|campa|da\u00f1os?|venta|precio|chassis|bastidor|vin|faros|matrix)/i;
   var startIdx=0;
   while(startIdx<lines.length&&headerKeywords.test(lines[startIdx])){startIdx++;}
   // Se ci sono troppe righe header (>5 righe iniziali), la struttura non è block-pattern
   if(startIdx>10)return null;
 
-  var vehicles=[];
+  var rawVehicles=[];
   var brands=/^(VW|Volkswagen|Audi|BMW|Mercedes|Mercedes-Benz|MB|Renault|Peugeot|Citroen|Citro\u00ebn|Fiat|Ford|Opel|Skoda|Seat|Cupra|Nissan|Toyota|Honda|Hyundai|Kia|Mazda|Volvo|Dacia|Mini|Smart|Porsche|Land Rover|Jaguar|Tesla|Lexus|Subaru|Mitsubishi|Suzuki|Alfa Romeo|Lancia|Jeep|Chrysler|Dodge|Chevrolet|DS|Lynk|Polestar|MG|BYD|Aixam|Microcar)\b/i;
 
   // Cerca pattern: ogni "blocco" inizia con riga che matcha brand
@@ -9474,22 +9474,87 @@ window.tryNativeBlockParse=function(text,manualSup){
     while(j<lines.length&&!brands.test(lines[j])){
       block.lines.push(lines[j]);
       j++;
-      // Limita blocco a max 10 righe (sicurezza)
       if(block.lines.length>=10)break;
     }
-    if(block.lines.length<3){i=j;continue;} // Blocco troppo corto
+    if(block.lines.length<3){i=j;continue;}
 
     // Parse del blocco
     var v=parseVehicleBlock(block.lines,brandLine);
     if(v){
-      // Aggiungi VIN vuoto e units 1 (il pattern non ha VIN)
-      v.vehicles=[{vin:'',colorInt:''}];
-      v.units=1;
-      vehicles.push(v);
+      rawVehicles.push(v);
     }
     i=j;
   }
-  if(vehicles.length===0)return null;
+  if(rawVehicles.length===0)return null;
+
+  // v10.09: AGGREGAZIONE per brand+model+version
+  // Veicoli con stesso brand+model+version vengono raggruppati in un lotto unico con vehicles[] = unità
+  var groups={};
+  rawVehicles.forEach(function(v){
+    var key=(v.brand||'')+'||'+(v.model||'')+'||'+(v.version||'');
+    if(!groups[key])groups[key]={
+      brand:v.brand,model:v.model,version:v.version,
+      reg:v.reg,
+      // Cumulativi per unità
+      _kmsList:[],_damageList:[],_buyList:[],
+      _pickupSet:{},_colorSet:{},
+      buy:'',pickup:'',colors:'',damage:'',kms:'',
+      vehicles:[],
+      units:0
+    };
+    var g=groups[key];
+    // Aggiungi unità singola al lotto
+    g.vehicles.push({
+      vin:'', // formato subasta non ha VIN
+      kms:v.kms||'',
+      color:v.colors||'',
+      damage:v.damage||'',
+      pickup:v.pickup||'',
+      reg:v.reg||''
+    });
+    // Aggiorna stats
+    if(v.kms){var n2=parseInt(String(v.kms).replace(/[^\d]/g,''),10);if(!isNaN(n2))g._kmsList.push(n2);}
+    if(v.damage){var d2=parseFloat(String(v.damage).replace(/[^\d.,]/g,'').replace(/\./g,'').replace(/,/g,'.'));if(!isNaN(d2))g._damageList.push(d2);}
+    if(v.buy){var b2=parseFloat(String(v.buy).replace(/[^\d.,]/g,'').replace(/\./g,'').replace(/,/g,'.'));if(!isNaN(b2))g._buyList.push(b2);}
+    if(v.pickup)g._pickupSet[v.pickup]=true;
+    if(v.colors)g._colorSet[v.colors]=true;
+  });
+
+  // Calcola valori aggregati per ogni gruppo
+  var vehicles=[];
+  Object.keys(groups).forEach(function(k){
+    var g=groups[k];
+    g.units=g.vehicles.length;
+    // KMS medio
+    if(g._kmsList.length>0){
+      var avgKms=Math.round(g._kmsList.reduce(function(s,x){return s+x;},0)/g._kmsList.length);
+      g.kms=avgKms.toLocaleString('es-ES');
+      g.avgKms=true;
+    }
+    // Daños medio
+    if(g._damageList.length>0){
+      var avgDam=g._damageList.reduce(function(s,x){return s+x;},0)/g._damageList.length;
+      g.damage=avgDam.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' \u20ac';
+      g.avgDamages=true;
+    }
+    // Buy: se tutti uguali → unico, altrimenti media
+    if(g._buyList.length>0){
+      var allSame=g._buyList.every(function(b){return b===g._buyList[0];});
+      var buyVal=allSame?g._buyList[0]:(g._buyList.reduce(function(s,x){return s+x;},0)/g._buyList.length);
+      g.buy=buyVal.toLocaleString('es-ES')+' \u20ac';
+    }
+    // Pickup: lista unica join
+    var pks=Object.keys(g._pickupSet);
+    g.pickup=pks.length===1?pks[0]:(pks.length>1?pks.join(' / '):'');
+    // Colors: lista unica
+    var cls=Object.keys(g._colorSet);
+    g.colors=cls.length===1?cls[0]:(cls.length>1?cls.join(', '):'');
+    // Pulisci campi temp
+    delete g._kmsList;delete g._damageList;delete g._buyList;delete g._pickupSet;delete g._colorSet;
+    vehicles.push(g);
+  });
+
+  console.log('[v10.09] Pre-parser ha aggregato '+rawVehicles.length+' unidades en '+vehicles.length+' lote(s)');
   return {supplier:manualSup||detectSupplierFromText(text)||'',vehicles:vehicles};
 };
 
