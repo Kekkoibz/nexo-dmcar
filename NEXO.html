@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.24 — DMCAR GROUP CRM | 2026-05-03 | Memo #1+#2 P2 — Dialog post-import dati mancanti:
+1) Spec utente Memo #1+#2: dopo l'import, alcuni campi essenziali per la commercializzazione del veicolo possono mancare (KMS, 1ª REG, Daños, Equipamiento). Senza questi dati il veicolo è "incompleto" per la vendita o anche solo per il match con clienti potenziali. Serve un dialog di review che evidenzi visivamente i campi mancanti e permetta all'utente di compilarli rapidamente in bulk.
+2) Spec utente — campi controllati: KMS + 1ª REG + Daños + Equipamiento (4 campi). Trigger: SEMPRE dopo import (anche se tutto OK → conferma visiva ✅). UX: bulk-fill (1 input per campo che si applica a TUTTI i veicoli mancanti di quel campo), no editing singolo per veicolo.
+3) Pipeline aggiornata: finishImport → setTimeout 1800ms → nxReviewMissingData(stockIds, onDone=nxAskAdquisicionPropia) → poi workflow OWN. La review è step intrinseco dell'import, l'adquisición è la decisione su cosa fare con i dati corretti. Backward compat: se non ci sono nuovi stockIds, fallback chiusura modal classico.
+4) Implementazione nxReviewMissingData: (a) helper isMissing tratta '', '--', '0', 'N/D', 'ND', '-', 'N/A' come mancante; (b) statistiche per campo {kms, reg, damage, equip} = array di {lotId, vehIdx, label} per ogni veicolo mancante (vehIdx=-1 per stock semplice, vehIdx>=0 per sub-vehicles del lotto); (c) gestisce sia lotti con sub-vehicles che stocks semplici; (d) UI rendering: 4 sezioni con badge stato (verde "✓ OK" se 0 missing, arancione "⚠️ Falta en N de M" se parziale, rosso "⚠️ Falta en TODOS" se tutti); (e) input disabled per campi OK (no edit possibile su dati già completi); (f) header dinamico: verde "✅ Datos completos" se all OK, arancione "📝 Revisión" altrimenti; (g) bottoni: "Continuar" (skip) sempre, "Aplicar y continuar" solo se ci sono missing.
+5) Implementazione nxReviewMissingApply(skipOnly): se !skipOnly, legge i 4 input → applica solo campi non-vuoti via applyField helper che modifica lot[field] o lot.vehicles[vehIdx][field] secondo stats; se skipOnly, flagga _needsReview=true sui nuovi stocks per future review da Stock Vivo.
+6) Smoke test 4/4 PASS: bulk apply distingue lotto vs sub-vehicle, non tocca veicoli con dato già presente, vuoto = no-op, idempotente.
+7) PRESERVA: tutto v10.10.23 (double hotfix workflow OWN), v10.10.22 (status STOCK PROPIO), v10.10.21 (dialog adquisición), v10.10.20 (kW→CV converter). -->
 <!-- NEXO v10.10.23 — DMCAR GROUP CRM | 2026-05-03 | DOUBLE HOTFIX critico v10.10.21+v10.10.22:
 ROOT CAUSE 1 (delta stockIds vuoto): finishImport calcolava stockCountBefore=(window.stock||[]).length e itera su window.stock, ma addStkItem fa stock.push(item) sulla variabile LOCALE `stock` (var stock=LS('stock',[]) dichiarata a riga 6689 dentro l'IIFE wrapper). window.stock è una reference SEPARATA aggiornata solo da SS('stock',stock); il timing del delta calcolato su window.stock prima/dopo addStkItem dava sempre 0 newStockIds → fallback a flusso classico → dialog v10.10.21 mai mostrato.
 FIX 1: cambiato window.stock → stock (locale) nel calcolo stockCountBefore + iterazione delta. Aggiunto console.log [v10.10.23] finishImport: stockBefore=X stockAfter=Y newIds=N.
@@ -10708,13 +10716,25 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     n('i-status').textContent=statusMsg;
     if(typeof showToast==='function')showToast('\u2713 '+statusMsg,5000);
     // v10.10.21: dialog "¿Es adquisición para empresa propia?" PRIMA di chiudere il modal Import
+    // v10.10.24: PRIMA del dialog adquisición, mostra dialog review dati mancanti (KMS/REG/Daños/Equipamiento)
     // Se Sì → chiude Import + apre Step1 workflow OWN (con i nuovi stockIds)
     // Se No → flusso normale (lotto resta in Trading)
     setTimeout(function(){
-      if(newStockIds.length>0&&typeof window.nxOwnEntryWorkflow==='function'){
-        nxAskAdquisicionPropia(newStockIds,vehicles);
+      if(newStockIds.length>0){
+        // v10.10.24: review dati mancanti, poi adquisición
+        nxReviewMissingData(newStockIds,function(){
+          if(typeof window.nxOwnEntryWorkflow==='function'){
+            nxAskAdquisicionPropia(newStockIds,vehicles);
+          }else{
+            // Workflow non disponibile → fallback chiusura
+            closeM('m-import');
+            n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+            n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+            updBF();fStk();renderDash();
+          }
+        });
       }else{
-        // Nessun nuovo stock o workflow non disponibile → flusso classico
+        // Nessun nuovo stock → flusso classico
         closeM('m-import');
         n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
         n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
@@ -10722,6 +10742,158 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
       }
     },1800);
   }
+
+  // v10.10.24: dialog post-import review dati mancanti (Memo #1+#2)
+  // Spec utente: KMS + 1A REG + Daños + Equipamiento
+  // UX: bulk-fill (1 input per campo che si applica a TUTTI i veicoli mancanti di quel campo)
+  // Trigger: SEMPRE dopo l'import (anche se tutto OK — conferma visiva)
+  function nxReviewMissingData(stockIds,onDone){
+    if(!stockIds||!stockIds.length){if(onDone)onDone();return;}
+    // Helper: considera "missing" valori vuoti, "--", "0", "N/D", null/undefined
+    function isMissing(val){
+      if(val==null)return true;
+      var s=String(val).trim().toUpperCase();
+      return s===''||s==='--'||s==='0'||s==='N/D'||s==='ND'||s==='-'||s==='N/A';
+    }
+    // Raccogli stocks + sub-vehicles
+    var lots=(stock||[]).filter(function(s){return stockIds.indexOf(s.id)>=0;});
+    if(!lots.length){if(onDone)onDone();return;}
+    // Stats per campo: quanti veicoli mancano di quel campo
+    var stats={kms:[],reg:[],damage:[],equip:[]};
+    var totalVeh=0;
+    lots.forEach(function(lot){
+      if(Array.isArray(lot.vehicles)&&lot.vehicles.length){
+        // Lotto con sub-vehicles: controlla ogni sub
+        lot.vehicles.forEach(function(v,idx){
+          totalVeh++;
+          if(isMissing(v.kms)&&isMissing(lot.kms))stats.kms.push({lotId:lot.id,vehIdx:idx,label:(v.vin||lot.brand+' '+lot.model+' #'+(idx+1))});
+          if(isMissing(v.reg)&&isMissing(lot.reg))stats.reg.push({lotId:lot.id,vehIdx:idx,label:(v.vin||lot.brand+' '+lot.model+' #'+(idx+1))});
+          if(isMissing(v.damage)&&isMissing(lot.damage))stats.damage.push({lotId:lot.id,vehIdx:idx,label:(v.vin||lot.brand+' '+lot.model+' #'+(idx+1))});
+          if(isMissing(v.equip)&&isMissing(lot.equip))stats.equip.push({lotId:lot.id,vehIdx:idx,label:(v.vin||lot.brand+' '+lot.model+' #'+(idx+1))});
+        });
+      }else{
+        // Stock semplice (no sub-vehicles)
+        var unitsCount=parseInt(lot.units,10)||1;
+        totalVeh+=unitsCount;
+        if(isMissing(lot.kms))stats.kms.push({lotId:lot.id,vehIdx:-1,label:lot.brand+' '+lot.model+(unitsCount>1?' x'+unitsCount:'')});
+        if(isMissing(lot.reg))stats.reg.push({lotId:lot.id,vehIdx:-1,label:lot.brand+' '+lot.model+(unitsCount>1?' x'+unitsCount:'')});
+        if(isMissing(lot.damage))stats.damage.push({lotId:lot.id,vehIdx:-1,label:lot.brand+' '+lot.model+(unitsCount>1?' x'+unitsCount:'')});
+        if(isMissing(lot.equip))stats.equip.push({lotId:lot.id,vehIdx:-1,label:lot.brand+' '+lot.model+(unitsCount>1?' x'+unitsCount:'')});
+      }
+    });
+    // Salva stats per uso da nxReviewMissingApply
+    window._nxReviewCtx={stockIds:stockIds,stats:stats,totalVeh:totalVeh,onDone:onDone};
+    console.log('[v10.10.24] nxReviewMissingData stats:',{kms:stats.kms.length,reg:stats.reg.length,damage:stats.damage.length,equip:stats.equip.length,total:totalVeh});
+
+    // Costruisci HTML del dialog
+    function fieldRow(key,label,icon,placeholder,inputType){
+      var missingCount=stats[key].length;
+      var statusBadge='';
+      if(missingCount===0){
+        statusBadge='<span style="background:rgba(34,197,94,.15);color:#16a34a;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600">\u2713 OK</span>';
+      }else if(missingCount===totalVeh){
+        statusBadge='<span style="background:rgba(239,68,68,.15);color:#dc2626;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600">\u26a0\ufe0f Falta en TODOS ('+missingCount+')</span>';
+      }else{
+        statusBadge='<span style="background:rgba(245,158,11,.15);color:#d97706;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600">\u26a0\ufe0f Falta en '+missingCount+' de '+totalVeh+'</span>';
+      }
+      var inputDisabled=missingCount===0?'disabled':'';
+      var inputBg=missingCount===0?'background:var(--bg2);opacity:.5':'';
+      var inputAttr='';
+      if(inputType==='number')inputAttr='type="number" min="0" step="1"';
+      else inputAttr='type="text"';
+      return '<div style="margin-bottom:14px;border:1px solid var(--bd);border-radius:8px;padding:12px;'+(missingCount===0?'opacity:.7':'')+'">'
+        +'<div class="fbet" style="margin-bottom:8px">'
+          +'<label style="font-size:12px;font-weight:700;color:var(--t1);display:flex;align-items:center;gap:6px">'+icon+' '+label+'</label>'
+          +statusBadge
+        +'</div>'
+        +'<input id="nxrev-'+key+'" '+inputAttr+' '+inputDisabled+' placeholder="'+placeholder+'" style="width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--t1);font-size:13px;'+inputBg+'">'
+        +(missingCount>0?'<div style="font-size:10px;color:var(--t3);margin-top:6px">Si rellenas, se aplicar\u00e1 a los '+missingCount+' veh\u00edculo'+(missingCount!==1?'s':'')+' que no tienen este dato. Vac\u00edo \u2192 se omite.</div>':'')
+        +'</div>';
+    }
+
+    var allOk=stats.kms.length===0&&stats.reg.length===0&&stats.damage.length===0&&stats.equip.length===0;
+    var headerColor=allOk?'#16a34a':'#d97706';
+    var headerIcon=allOk?'\u2705':'\u{1F4DD}';
+    var headerText=allOk?'Datos completos \u2014 confirma para continuar':'Revisi\u00f3n de datos importados';
+
+    var html='<div id="m-review-data" class="modal-bg" style="display:flex" onclick="event.target===this&&nxReviewMissingApply(true)">'
+      +'<div class="modal" style="max-width:560px;max-height:85vh;overflow-y:auto">'
+        +'<div class="mh"><span style="color:'+headerColor+'">'+headerIcon+' '+headerText+'</span><button class="mx" onclick="nxReviewMissingApply(true)">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(99,102,241,.06);border-left:3px solid #6366f1;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px;color:var(--t1);line-height:1.5">'
+            +(allOk
+              ?'\u2705 Todos los datos esenciales est\u00e1n presentes para los <strong>'+totalVeh+' veh\u00edculo'+(totalVeh!==1?'s':'')+'</strong> importado'+(totalVeh!==1?'s':'')+'. Puedes continuar.'
+              :'Algunos campos esenciales faltan. Puedes <strong>rellenar en bloque</strong> los valores que se aplicar\u00e1n a todos los veh\u00edculos que no los tienen, o <strong>omitir</strong> y editarlos manualmente m\u00e1s tarde desde Stock Vivo.')
+          +'</div>'
+          +fieldRow('kms','Kilometraje','\u{1F6E3}','Ej: 50000 (km)','number')
+          +fieldRow('reg','1\u00aa Matriculaci\u00f3n','\u{1F4C5}','Ej: 03/2023 o 2023','text')
+          +fieldRow('damage','Da\u00f1os declarados','\u{1F527}','Ej: Sin da\u00f1os declarados','text')
+          +fieldRow('equip','Equipamiento','\u2728','Ej: Climatizador, GPS, Bluetooth, faros LED','text')
+          +'<div class="fc g8" style="justify-content:flex-end;margin-top:14px">'
+            +'<button class="btn bg" onclick="nxReviewMissingApply(true)" style="font-size:13px">'+(allOk?'\u2713 Continuar':'\u23ed\ufe0f Omitir y continuar')+'</button>'
+            +(allOk?'':'<button class="btn bp" onclick="nxReviewMissingApply(false)" style="background:var(--acc);color:#fff;border:none;font-size:13px">\u{1F4BE} Aplicar y continuar</button>')
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-review-data');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+  }
+
+  // v10.10.24: applica i bulk-fill (se skipOnly=true non legge gli input, va dritto a onDone)
+  window.nxReviewMissingApply=function(skipOnly){
+    var ctx=window._nxReviewCtx;
+    if(!ctx){nxCloseDynModal('m-review-data');return;}
+    var stats=ctx.stats;
+    var nFn=function(id){return document.getElementById(id);};
+    var changesApplied=0;
+    if(!skipOnly){
+      // Leggi i 4 input
+      var vKms=nFn('nxrev-kms')?nFn('nxrev-kms').value.trim():'';
+      var vReg=nFn('nxrev-reg')?nFn('nxrev-reg').value.trim():'';
+      var vDmg=nFn('nxrev-damage')?nFn('nxrev-damage').value.trim():'';
+      var vEqp=nFn('nxrev-equip')?nFn('nxrev-equip').value.trim():'';
+      // Applica solo i campi non vuoti
+      function applyField(fieldKey,newVal){
+        if(!newVal||!stats[fieldKey].length)return;
+        stats[fieldKey].forEach(function(target){
+          var lot=(stock||[]).find(function(s){return s.id===target.lotId;});
+          if(!lot)return;
+          if(target.vehIdx>=0&&Array.isArray(lot.vehicles)&&lot.vehicles[target.vehIdx]){
+            // Sub-vehicle
+            lot.vehicles[target.vehIdx][fieldKey==='reg'?'reg':(fieldKey==='damage'?'damage':(fieldKey==='equip'?'equip':'kms'))]=newVal;
+          }else{
+            // Lotto/stock semplice
+            lot[fieldKey==='reg'?'reg':(fieldKey==='damage'?'damage':(fieldKey==='equip'?'equip':'kms'))]=newVal;
+          }
+          changesApplied++;
+        });
+      }
+      applyField('kms',vKms);
+      applyField('reg',vReg);
+      applyField('damage',vDmg);
+      applyField('equip',vEqp);
+      if(changesApplied>0){
+        SS('stock',stock);
+        if(typeof showToast==='function')showToast('\u2713 '+changesApplied+' campo'+(changesApplied!==1?'s':'')+' actualizado'+(changesApplied!==1?'s':'')+' en bloque',4000);
+        console.log('[v10.10.24] nxReviewMissingApply: '+changesApplied+' bulk updates');
+      }
+    }else{
+      // skip — flagga _needsReview se ci sono campi mancanti rimasti
+      var totalMissing=stats.kms.length+stats.reg.length+stats.damage.length+stats.equip.length;
+      if(totalMissing>0){
+        ctx.stockIds.forEach(function(sid){
+          var s=(stock||[]).find(function(x){return x.id===sid;});
+          if(s)s._needsReview=true;
+        });
+        SS('stock',stock);
+        console.log('[v10.10.24] _needsReview flag set on '+ctx.stockIds.length+' stocks (skipped review with '+totalMissing+' missing)');
+      }
+    }
+    nxCloseDynModal('m-review-data');
+    var onDone=ctx.onDone;
+    window._nxReviewCtx=null;
+    if(typeof onDone==='function')onDone();
+  };
 
   // v10.10.21: dialog post-import "¿Es adquisición para empresa propia?"
   // Mostra riepilogo veicoli importati + 2 bottoni grandi (Sí workflow OWN / No solo Trading)
