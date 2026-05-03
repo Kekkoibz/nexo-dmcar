@@ -1,4 +1,22 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.28 — DMCAR GROUP CRM | 2026-05-03 | Regola Vehículo Nuevo (ripristino business rule):
+1) Spec utente da REPORT TECNICO: regola business definita in fase iniziale del progetto, ma risultata regredita. Ripristino richiesto:
+   SE [1ª Reg/Matr.] è VUOTO/NULL ALLORA il veicolo viene classificato come "NUEVO" e si applicano:
+     • Estado/1A REG → "At Payment" (placeholder testuale che indica "non ancora immatricolato")
+     • KMS → 0
+     • Daños → 0
+2) Conferma utente: applica SOLO se 1ª Reg vuota; SE 1ª Reg presente → lasciare i dati come l'AI li ha estratti. Campo target = colonna 1A REG (placeholder per veicoli senza data immatricolazione).
+3) Implementazione: nuovo blocco in iHandleResp post kW→CV converter, prima di MOTOR UNVERIFIED FLAG. Helper interni isEmpty1aReg (rileva '', '--', 'N/D', 'ND', '-', 'N/A', 'NULL', null) e isEmptyValue. Funzione applyNewVehicleRule(target):
+   • Return false se 1ª Reg presente (no-op)
+   • Set target.reg = 'At Payment' SEMPRE
+   • Set target.kms = '0' SOLO se vuoto (NO override se AI ha estratto valore)
+   • Set target.damage = '0' SOLO se vuoto (NO override)
+   • Set target._isNewVehicle = true (flag audit per render)
+4) Logica conservativa: NON sovrascrive KMS/Daños se l'AI ha estratto valori (caso limite: AI estrae "12000 km" su veicolo strano senza data Reg → KMS=12000 preservato, ma reg comunque diventa 'At Payment').
+5) Iterazione: per ogni v in vehicles[], se ha sub-vehicles applica a ogni sub. Se TUTTI i sub-vehicles sono nuovi → applica anche al lotto master (per consistenza tabella riassuntiva).
+6) Console log diagnostico [v10.10.28]: "Regla Vehículo Nuevo aplicada a N vehículos (1ª Reg vacía → At Payment, KMS=0, Daños=0)"
+7) Smoke test 8/8 PASS coprendo: 4 varianti reg vuoto (vacío, --, N/D, null), 2 reg presente (no-op), 2 edge cases (KMS estratto preservato, Daños estratto preservato).
+8) PRESERVA: tutto v10.10.27 (overwrite via dialog), v10.10.26 (re-import detection), v10.10.25 (VIN dialog), v10.10.24 (review dati). -->
 <!-- NEXO v10.10.27 — DMCAR GROUP CRM | 2026-05-03 | Integrazione re-import overwrite con dialog v10.07 esistente:
 1) Bug osservato (utente Foto): re-import dello stesso PDF mostrava il dialog v10.07 "Reporte de importación" pre-esistente con 3 bottoni (Cancelar / Importar todo / Saltar duplicados) MA NESSUNO faceva l'OVERWRITE intelligente di v10.10.26. Il dialog v10.07 intercetta i VIN duplicati PRIMA di chiamare proceedToImport+finishImport, quindi nxApplyReimportOverwrite non veniva mai eseguito sui duplicati. Risultato: o l'utente sceglieva "Saltar" (i dati esistenti restano vuoti senza update) o "Importar todo" (creando lotti redundanti).
 2) FIX: aggiunto QUARTO bottone "🔄 Actualizar datos" come default consigliato (verde, posizione primary, vs "Saltar duplicados" ora secondary, "Importar todo" ora rosso/sconsigliato). Action='overwrite' nel callback:
@@ -10687,6 +10705,55 @@ function iHandleResp(resp,manualSup){
       }
     });
 
+    // ========================================================================
+    // v10.10.28: REGOLA VEICOLO NUEVO (spec utente — ripristino regola business)
+    // ========================================================================
+    // SE v.reg è vuoto/null/'--' → veicolo classificato come NUEVO:
+    //   • reg = 'At Payment' (placeholder che indica "non ancora immatricolato")
+    //   • kms = '0' (solo se kms vuoto/non valorizzato, NO override se AI ha messo valore)
+    //   • damage = '0' (solo se vuoto, NO override)
+    //   • _isNewVehicle = true (audit flag per render)
+    //
+    // Logica conservativa: NON sovrascrive valori già presenti (l'AI potrebbe
+    // aver estratto valori veri anche se 1ª Reg manca). Se reg presente → no-op.
+    // ========================================================================
+    function isEmpty1aReg(val){
+      if(val==null)return true;
+      var s=String(val).trim().toUpperCase();
+      return s===''||s==='--'||s==='N/D'||s==='ND'||s==='-'||s==='N/A'||s==='NULL';
+    }
+    function isEmptyValue(val){
+      if(val==null)return true;
+      var s=String(val).trim();
+      return s===''||s==='--'||s==='N/D'||s==='-';
+    }
+    function applyNewVehicleRule(target){
+      if(!isEmpty1aReg(target.reg))return false; // 1ª Reg presente → no-op
+      target.reg='At Payment';
+      // KMS: solo se vuoto, no override (caso AI estraesse "12000 km" su veicolo nuovo strano)
+      if(isEmptyValue(target.kms))target.kms='0';
+      // Daños: stesso
+      if(isEmptyValue(target.damage))target.damage='0';
+      target._isNewVehicle=true;
+      return true;
+    }
+    var newVehCount=0;
+    vehicles.forEach(function(v){
+      if(Array.isArray(v.vehicles)&&v.vehicles.length){
+        v.vehicles.forEach(function(u){
+          if(applyNewVehicleRule(u))newVehCount++;
+        });
+        // Anche il lotto: se TUTTI i sub-vehicles sono nuovi, applica la regola anche al master
+        // (utile per la tabella riassuntiva)
+        var allNew=v.vehicles.every(function(u){return u._isNewVehicle;});
+        if(allNew)applyNewVehicleRule(v);
+      }else{
+        if(applyNewVehicleRule(v))newVehCount++;
+      }
+    });
+    if(newVehCount>0){
+      console.log('[v10.10.28] Regla Veh\u00edculo Nuevo aplicada a '+newVehCount+' veh\u00edculo'+(newVehCount!==1?'s':'')+' (1\u00aa Reg vac\u00eda \u2192 At Payment, KMS=0, Da\u00f1os=0)');
+    }
 
     // v10.10.5: MOTOR UNVERIFIED FLAG — se la version non contiene keyword esplicite di
     // motorizzazione (Diesel/Benzina/TDI/TSI/HEV/PHEV/EV/BEV/Hybrid/etc.), segnala "da verificare"
