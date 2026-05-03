@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.06 — DMCAR GROUP CRM | 2026-05-03 | Stock Vivo Import enhancements: 1) AUTO-LINK Provider: addStkItem ora fa lookup providers[] per nome (case-insensitive + normalizzato + strip suffissi legali S.A./S.L./GmbH/etc) e collega via providerId + popola supplier con nome canonico (evita duplicati visivi tipo "Superwagen SA" vs "SUPERWAGEN, S.A"); helper nxFindProviderByName con match esatto + parziale; auto-popola providerEmail; 2) STATO INIZIALE 'libre' di default per ogni nuovo veicolo importato (era undefined → ora consistente); ownership default 'live_trading' (Trading); commercialUpdatedAt timestamp; 3) DUPLICATE VIN CHECK pre-import: scansiona stock esistente + intra-batch, classifica veicoli in {ok, duplicateVins[], missingVin[]}; 4) IMPORT REPORT DIALOG con stats KPI (Listos/VIN duplic./Sin VIN), lista duplicati con badge [ya en stock] vs [duplicado en este lote], 3 azioni: Cancelar / Importar todo / Saltar duplicados; 5) Status post-import esteso: mostra anche "X enlazado al Proveedor"; toast 5s con summary completo. -->
+<!-- NEXO v10.07 — DMCAR GROUP CRM | 2026-05-03 | Stock Import fix blocco a "Extrayendo datos": 1) Pre-parser deterministico (tryNativeBlockParse) per formato "block-of-rows" tipico subasta/lista veicoli - riconosce pattern: <Brand Model Version> + <Fecha matriculacion DD/MM/YYYY> + <Color codice+nome (Métal)> + <Kms> + <Pickup/Campa CAT/Berge> + <Daños €> + [<Venta €>]; rileva 30+ brand (VW/Volkswagen/Audi/BMW/Mercedes/MB/Renault/Peugeot/etc); espande abbreviazioni VW→VOLKSWAGEN, MB→MERCEDES-BENZ; salta header rows (Marca/Modelo/Color/etc); 2) parseVehicleBlock: estrae brand+model+version dalla prima riga, identifica fecha (regex DD/MM/YYYY), color (codice [A-Z0-9]2-8 + nome), kms (numero), pickup (CAT/Berge keyword), importi € (primo=daños, secondo=venta); 3) Try pre-parser PRIMA della chiamata AI - se ok, no AI call (più veloce, gratis); 4) Timeout 60s su API call per evitare blocco infinito UI (Extrayendo datos... senza fine); 5) Errori migliori: "Timeout 60s - intenta con menos texto"; 6) detectSupplierFromText: cerca riga maiuscola con suffisso S.A./S.L./GmbH; 7) Fallback chain: pre-parser → AI → user feedback. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6888,7 +6888,22 @@ function callAPI(sys,msg,maxTok,cb){
 function callAPIbody(body,cb){
   var key=getKey();
   if(!key){alert('Configura tu API key');go('config');return;}
-  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){if(d.error){cb(null,d.error.message);return;}cb(d.content.map(function(b){return b.text||'';}).join(''),null);}).catch(function(e){cb(null,e.message);});
+  // v10.07: timeout 60s per non lasciare l'utente bloccato
+  var aborted=false;
+  var timeoutId=setTimeout(function(){
+    aborted=true;
+    cb(null,'Timeout 60s - intenta con menos texto o usa formato más simple');
+  },60000);
+  fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){
+    if(aborted)return;
+    clearTimeout(timeoutId);
+    if(d.error){cb(null,d.error.message);return;}
+    cb(d.content.map(function(b){return b.text||'';}).join(''),null);
+  }).catch(function(e){
+    if(aborted)return;
+    clearTimeout(timeoutId);
+    cb(null,e.message);
+  });
 }
 
 function updateApiStatus(){
@@ -9392,13 +9407,140 @@ function iProcess(){
 
   var text=n('i-text').value.trim();
   if(!text){alert('Pega el texto primero');return;}
-  n('i-btn').disabled=true;n('i-status').textContent='Extrayendo datos...';
+  // v10.07: Try deterministic pre-parser FIRST (no AI dipendency for known formats)
+  var blockParsed=tryNativeBlockParse(text,sup);
+  if(blockParsed&&blockParsed.vehicles&&blockParsed.vehicles.length){
+    console.log('[v10.07] Pre-parser deterministico ha estratto '+blockParsed.vehicles.length+' veh\u00edculos (no AI necessario)');
+    n('i-status').textContent='\u2728 Detectado formato bloque (no AI): '+blockParsed.vehicles.length+' veh\u00edculos';
+    var fakeResp2=JSON.stringify(blockParsed);
+    iHandleResp(fakeResp2,sup);
+    return;
+  }
+  n('i-btn').disabled=true;n('i-status').textContent='Extrayendo datos con IA...';
   callAPIbody({model:'claude-sonnet-4-5-20250929',max_tokens:8000,system:SI_SYS,messages:[{role:'user',content:text}]},function(resp,err){
     n('i-btn').disabled=false;
-    if(err){n('i-status').textContent='Error: '+err;return;}
+    if(err){n('i-status').textContent='Error: '+err+' \u2014 Intenta con menos l\u00edneas a la vez';return;}
     iHandleResp(resp,sup);
   });
 }
+
+// v10.07: Pre-parser deterministico per formati a blocchi ripetuti
+// Riconosce blocchi tipo:
+//   <Brand Model Version>
+//   <Fecha matriculacion>
+//   <Color>
+//   <Kms>
+//   <Pickup/Campa>
+//   <Daños €>
+//   [<Venta €>]  (opzionale)
+window.tryNativeBlockParse=function(text,manualSup){
+  if(!text)return null;
+  var lines=text.split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l!=='';});
+  if(lines.length<4)return null;
+
+  // Skip header se presente (riga con "Marca/Modelo", "Color", "Kms", "Daños", "Venta", ecc.)
+  var headerKeywords=/^(marca|modelo|version|matricula|fecha|color|kms?|pickup|campa|da\u00f1os?|venta|precio|chassis|bastidor|vin)/i;
+  var startIdx=0;
+  while(startIdx<lines.length&&headerKeywords.test(lines[startIdx])){startIdx++;}
+  // Se ci sono troppe righe header (>5 righe iniziali), la struttura non è block-pattern
+  if(startIdx>10)return null;
+
+  var vehicles=[];
+  var brands=/^(VW|Volkswagen|Audi|BMW|Mercedes|Mercedes-Benz|MB|Renault|Peugeot|Citroen|Citro\u00ebn|Fiat|Ford|Opel|Skoda|Seat|Cupra|Nissan|Toyota|Honda|Hyundai|Kia|Mazda|Volvo|Dacia|Mini|Smart|Porsche|Land Rover|Jaguar|Tesla|Lexus|Subaru|Mitsubishi|Suzuki|Alfa Romeo|Lancia|Jeep|Chrysler|Dodge|Chevrolet|DS|Lynk|Polestar|MG|BYD|Aixam|Microcar)\b/i;
+
+  // Cerca pattern: ogni "blocco" inizia con riga che matcha brand
+  var i=startIdx;
+  while(i<lines.length){
+    var brandLine=lines[i];
+    if(!brands.test(brandLine)){i++;continue;}
+    // Inizio blocco trovato
+    var block={lines:[brandLine],startIdx:i};
+    // Estende: prendi tutte le righe fino al prossimo brand o fine
+    var j=i+1;
+    while(j<lines.length&&!brands.test(lines[j])){
+      block.lines.push(lines[j]);
+      j++;
+      // Limita blocco a max 10 righe (sicurezza)
+      if(block.lines.length>=10)break;
+    }
+    if(block.lines.length<3){i=j;continue;} // Blocco troppo corto
+
+    // Parse del blocco
+    var v=parseVehicleBlock(block.lines,brandLine);
+    if(v){
+      // Aggiungi VIN vuoto e units 1 (il pattern non ha VIN)
+      v.vehicles=[{vin:'',colorInt:''}];
+      v.units=1;
+      vehicles.push(v);
+    }
+    i=j;
+  }
+  if(vehicles.length===0)return null;
+  return {supplier:manualSup||detectSupplierFromText(text)||'',vehicles:vehicles};
+};
+
+// Parser del singolo blocco
+window.parseVehicleBlock=function(blockLines,brandLine){
+  var v={brand:'',model:'',version:'',firstReg:'',color:'',colorInt:'',km:'',pickup:'',damage:'',sell:'',buy:''};
+  // Brand+Model+Version dalla prima riga
+  // "VW Taigo Life 1.0 TSI 85 kW (115 CV)  Auto DSG 7 vel."
+  var m=brandLine.match(/^([A-Z\u00c0-\u017d][a-zA-Z\u00c0-\u017f-]+)\s+(\S+)\s+(.+)$/);
+  if(m){
+    v.brand=m[1].toUpperCase();
+    // Espandi abbreviazioni note
+    if(v.brand==='VW')v.brand='VOLKSWAGEN';
+    else if(v.brand==='MB')v.brand='MERCEDES-BENZ';
+    v.model=m[2];
+    v.version=m[3].trim();
+  }else{
+    // Fallback: brand intera prima parola
+    var parts=brandLine.split(/\s+/);
+    v.brand=parts[0].toUpperCase();
+    v.model=parts[1]||'';
+    v.version=parts.slice(2).join(' ');
+  }
+
+  for(var k=1;k<blockLines.length;k++){
+    var l=blockLines[k];
+    // Fecha matriculacion: DD/MM/YYYY o MM/YYYY
+    if(!v.firstReg&&/^\d{1,2}\/\d{1,2}\/\d{4}|^\d{1,2}\/\d{4}/.test(l)){v.firstReg=l;continue;}
+    // Color: codice + nome (es. "8E8E - Plata Reflex Metalizado (Métal)")
+    if(!v.color&&/^[A-Z0-9]{2,8}\s*[-\u2014]\s+/.test(l)){v.color=l;continue;}
+    // Color senza codice (riga con keyword colore noto)
+    if(!v.color&&/^(blanco|negro|gris|rojo|azul|verde|amarillo|naranja|marr\u00f3n|plata|dorado|beige|white|black|gray|grey|red|blue|green|silver|gold|yellow|orange|brown)/i.test(l)){v.color=l;continue;}
+    // Kms: numero solo (con migliaia)
+    if(!v.km&&/^[\d\.\,]{2,8}$/.test(l)){
+      var num=parseInt(l.replace(/\./g,'').replace(/,/g,''),10);
+      if(!isNaN(num)&&num>=10&&num<999999){v.km=num;continue;}
+    }
+    // Daños / Venta - cerca importo €
+    var euroMatch=l.match(/([\d\.\,]+)\s*\u20ac/);
+    if(euroMatch){
+      var amt=parseFloat(euroMatch[1].replace(/\./g,'').replace(/,/g,'.'));
+      if(!isNaN(amt)){
+        // Primo importo trovato = daños, secondo = venta
+        if(!v.damage)v.damage=amt;
+        else if(!v.sell)v.sell=amt;
+      }
+      continue;
+    }
+    // Pickup/Campa: contiene parola tipica (CAT/Berge/...)
+    if(!v.pickup&&/^(CAT|Berge|Compound|Yard|Camping|Pickup)/i.test(l)){v.pickup=l;continue;}
+    // Fallback pickup: riga di testo non numerica e non già usata
+    if(!v.pickup&&l.length>3&&l.length<60&&!/^\d/.test(l)&&!/\u20ac/.test(l)){v.pickup=l;continue;}
+  }
+  // Sanity check: deve avere almeno brand+model
+  if(!v.brand||!v.model)return null;
+  return v;
+};
+
+// Helper: detect supplier name from text
+window.detectSupplierFromText=function(text){
+  // Cerca riga che inizia con "SUPERWAGEN" o simili in maiuscolo
+  var m=text.match(/^([A-Z][A-Z\s\.,&]{4,40}(?:S\.?A\.?|S\.?L\.?|GmbH|SARL|Ltd|S\.?r\.?l\.?))/m);
+  if(m)return m[1].trim();
+  return '';
+};
 
 // Native Excel parser. Returns {vehicles:[...], totalUnits, supplier} or null if format isn't recognized.
 function tryNativeExcelParse(rows){
