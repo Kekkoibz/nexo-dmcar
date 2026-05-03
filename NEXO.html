@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.01 — DMCAR GROUP CRM | 2026-05-02 | Sync Stock OWN ↔ Vista Contable + Workflow notifica + Rinomina PROPIEDAD→OWN: 1) FIX BUG sync: i veicoli en propiedad ora compaiono SEMPRE in Vista Contable col badge OWN + N.Exp=N/D (default tab cambiato da "Vendidos" a "Todos" che mostra anche OWN); 2) Workflow notifica contabile (nxOwnEntryWorkflow) con dialog decisional 2-3 step: Step1 "Sono entrate N {modello} da {fornitore}. Hai la proforma?" [Sì/No] → Step2a (Sì) "Hai la proforma da caricare?" [Sì→naviga Vista+upload / No→registrato con N/D] → Step2b (No) "Vuoi caricarle ugualmente?" [Sì→Vista N/D / No→solo Stock]; 3) Trigger automatico: stato Libre/Reservada/Negociacion → Vendido = ownership auto-set 'propio' + soldAt (regola business "vendita = già di proprietà"); 4) Hook in stkBulkSetOwnership: lancia workflow su nuovi entrati a 'propio'; 5) Flag stock._ownNotified evita re-prompt, _ownPendingProforma traccia stato attesa proforma; 6) RINOMINA PROPIEDAD→OWN solo modulo Stock Vivo: tab "En propiedad"→"OWN", tooltip "Cambiar entre Trading y OWN", prompt cambio tipo, toast; valori interni 'propio'/'propios' INVARIATI (chiavi tecniche); 7) Modulo Contabile NON modificato (resta in spagnolo); 8) Dict NX_I18N introdotto + helper window.t(key) come base per futura lingua configurabile. -->
+<!-- NEXO v10.02 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable schema rivisitato (basato su Excel cliente "STOCK_MASTER_2026"): 5 blocchi semantici + OWN + RESULTADO = 40 colonne tutte in spagnolo. Struttura: OWN(1 badge separato pre-REGISTRO) + REGISTRO(3: Fecha/Nº Expediente/VIN) + COMPRA(7: Proveedor/Nº PF/Nº FT separate/Fecha Pago/Imp. Compra/Fecha Depósito/Imp. Depósito) + VENTA(7: Cliente/Vendedor DMCAR/Nº PF Venta/Fecha Saldo/Imp. Venta/Fecha Dep. Cli./Imp. Dep. Cli.) + TRANSPORTE(8 incluye Ganancia T. editable) + VEHÍCULO(8 incluye Ganancia V. editable) + BROKER(5: Comisión/Broker/Nº FT/Fecha Pago/Imp. Pagada) + RESULTADO(1: Ganancia Final editable). Tooltip su ogni colonna con descrizione completa. Edit inline: dblclick su Ganancia → input numerico, persistito in nxManualGanancias{rowKey:{field:value}}. Override manuale ✏ icon viola se presente. Auto-calc: GV=Venta-Compra-Daños, GT=ImpVenta-ImpCompraT, GF=GV+GT-BrokerPagado. KPI labels aggiornati: Ganancia Vehículo, Ganancia Transporte, Ganancia Final. Export XLSX/CSV nuovi headers spagnoli + colonna OWN come prima. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1056,9 +1056,9 @@ En que te puedo ayudar hoy?</div></div>
           <!-- KPI Mini -->
           <div class="g4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
             <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Veh\u00edculos</div><div id="nbv-kpi-cnt" style="font-size:20px;font-weight:800;color:var(--acc)">0</div></div>
-            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Auto</div><div id="nbv-kpi-billed" style="font-size:20px;font-weight:800;color:var(--green)">0 \u20ac</div></div>
-            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Profit Trasporto</div><div id="nbv-kpi-pending" style="font-size:20px;font-weight:800;color:#0369a1">0 \u20ac</div></div>
-            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">REAL FEES</div><div id="nbv-kpi-margin" style="font-size:20px;font-weight:800;color:#7c3aed">0 \u20ac</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Ganancia Veh\u00edculo</div><div id="nbv-kpi-billed" style="font-size:20px;font-weight:800;color:var(--green)">0 \u20ac</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Ganancia Transporte</div><div id="nbv-kpi-pending" style="font-size:20px;font-weight:800;color:#0369a1">0 \u20ac</div></div>
+            <div class="card" style="padding:8px 10px"><div style="font-size:10px;color:var(--t3);text-transform:uppercase">Ganancia Final</div><div id="nbv-kpi-margin" style="font-size:20px;font-weight:800;color:#7c3aed">0 \u20ac</div></div>
           </div>
         </div>
         <!-- Tabella (scorre sotto il blocco fisso) -->
@@ -23620,91 +23620,103 @@ document.querySelectorAll('.ovl').forEach(function(el){
     fEl('nbv-kpi-pending',(kpiProfitTrasp>0?'+':'')+Math.round(kpiProfitTrasp).toLocaleString('es-ES')+' \u20ac');
     fEl('nbv-kpi-margin',(kpiRealFees>0?'+':'')+Math.round(kpiRealFees).toLocaleString('es-ES')+' \u20ac');
     // Update KPI labels
-    var kbE=document.querySelector('#nbv-kpi-billed');var kbP=kbE&&kbE.parentElement&&kbE.parentElement.querySelector('div:first-child');if(kbP)kbP.textContent='Profit Auto';
-    var kpE=document.querySelector('#nbv-kpi-pending');var kpP=kpE&&kpE.parentElement&&kpE.parentElement.querySelector('div:first-child');if(kpP)kpP.textContent='Profit Trasporto';
-    var kmE=document.querySelector('#nbv-kpi-margin');var kmP=kmE&&kmE.parentElement&&kmE.parentElement.querySelector('div:first-child');if(kmP)kmP.textContent='REAL FEES';
+    var kbE=document.querySelector('#nbv-kpi-billed');var kbP=kbE&&kbE.parentElement&&kbE.parentElement.querySelector('div:first-child');if(kbP)kbP.textContent='Ganancia Veh\u00edculo';
+    var kpE=document.querySelector('#nbv-kpi-pending');var kpP=kpE&&kpE.parentElement&&kpE.parentElement.querySelector('div:first-child');if(kpP)kpP.textContent='Ganancia Transporte';
+    var kmE=document.querySelector('#nbv-kpi-margin');var kmP=kmE&&kmE.parentElement&&kmE.parentElement.querySelector('div:first-child');if(kmP)kmP.textContent='Ganancia Final';
     if(records.length===0){
       listEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--t3)"><div style="font-size:32px;margin-bottom:10px">&#128203;</div><div style="font-weight:600;color:var(--t2)">Sin resultados</div></div>';
       return;
     }
-    // Stili colonne per blocchi colorati
+    // v10.02: Schema rivisitato - 5 blocchi semantici + OWN + RESULTADO
+    // Reference: Excel "Vista Contable" fornito dal cliente
     var COL={
-      gen:{bg:'rgba(148,163,184,0.10)',head:'#64748b',label:'GENERAL'},
-      forn:{bg:'rgba(245,158,11,0.10)',head:'#92400e',label:'FORNITORE (acq.)'},
-      cli:{bg:'rgba(34,197,94,0.10)',head:'#15803d',label:'CLIENTE (vend.)'},
-      trasp:{bg:'rgba(14,165,233,0.10)',head:'#0369a1',label:'TRASPORTO'},
-      auto:{bg:'rgba(99,102,241,0.10)',head:'#4338ca',label:'AUTO'},
-      mar:{bg:'rgba(168,85,247,0.10)',head:'#7e22ce',label:'MARGINI'},
-      bro:{bg:'rgba(236,72,153,0.10)',head:'#9d174d',label:'BROKER'}
+      own:{bg:'rgba(251,191,36,0.10)',head:'#92400e',label:''},
+      reg:{bg:'rgba(148,163,184,0.10)',head:'#475569',label:'REGISTRO'},
+      compra:{bg:'rgba(245,158,11,0.10)',head:'#92400e',label:'COMPRA'},
+      venta:{bg:'rgba(34,197,94,0.10)',head:'#15803d',label:'VENTA'},
+      transporte:{bg:'rgba(14,165,233,0.10)',head:'#0369a1',label:'TRANSPORTE'},
+      vehiculo:{bg:'rgba(99,102,241,0.10)',head:'#4338ca',label:'VEH\u00cdCULO'},
+      broker:{bg:'rgba(236,72,153,0.10)',head:'#9d174d',label:'BROKER'},
+      resultado:{bg:'rgba(168,85,247,0.10)',head:'#7e22ce',label:'RESULTADO'}
     };
-    // v9.96: Definizione colonne con larghezza default + carica salvati
-    // v10.00: prima colonna OWN per identificare veicoli en propiedad
+    // v10.02: Definizione colonne con descrizioni (tooltip) - 40 col tot
     var colDefs=[
-      {id:'own',label:'OWN',w:50,c:true},
-      {id:'data',label:'Data',w:80},
-      {id:'numexp',label:'N.Exp',w:90},
-      {id:'vin',label:'VIN',w:130,br:true},
-      {id:'fornitore',label:'Fornitore',w:130},
-      {id:'fornNpf',label:'N\u00b0 PF/FT',w:100},
-      {id:'fornDataPag',label:'Data pag',w:80},
-      {id:'fornImpAcq',label:'Imp acq',w:90,r:true},
-      {id:'fornAccData',label:'Acconto data',w:90},
-      {id:'fornAccImp',label:'Acconto imp',w:90,r:true,br:true},
-      {id:'cliente',label:'Cliente',w:140},
-      {id:'seller',label:'Seller',w:80},
-      {id:'cliFt',label:'FT/Pro vend',w:120},
-      {id:'cliData',label:'Data saldo',w:80},
-      {id:'cliImp',label:'Imp vend',w:90,r:true},
-      {id:'cliAccData',label:'Acconto data',w:90},
-      {id:'cliAccImp',label:'Acconto imp',w:90,r:true,br:true},
-      {id:'traspForn',label:'Forn. tr.',w:110},
-      {id:'traspFtAcq',label:'FT acq tr.',w:100},
-      {id:'traspDataPag',label:'Data pag tr.',w:90},
-      {id:'traspImpAcq',label:'Imp acq tr.',w:90,r:true},
-      {id:'traspFtVend',label:'FT vend tr.',w:100},
-      {id:'traspDataInc',label:'Data inc tr.',w:90},
-      {id:'traspImpVend',label:'Imp vend tr.',w:90,r:true,br:true},
-      {id:'brand',label:'Brand',w:90},
-      {id:'model',label:'Model',w:100},
-      {id:'version',label:'Version',w:130},
-      {id:'firstReg',label:'1\u00aa Reg',w:80},
-      {id:'km',label:'Km',w:70,r:true},
-      {id:'color',label:'Color',w:90},
-      {id:'damage',label:'Damage',w:70,r:true,br:true},
-      {id:'profAuto',label:'Profit Auto',w:90,r:true},
-      {id:'profTrasp',label:'Profit Trasp.',w:90,r:true,br:true},
-      {id:'broSeller',label:'Seller prov',w:90},
-      {id:'broDest',label:'Destinatario',w:110},
-      {id:'broFt',label:'FT prov',w:100},
-      {id:'broData',label:'Data inc',w:80},
-      {id:'broImp',label:'Imp prov',w:90,r:true},
-      {id:'realFees',label:'REAL FEES',w:100,r:true}
+      // OWN (1)
+      {id:'own',label:'OWN',w:55,c:true,desc:'Veh\u00edculo en propiedad (OWN). Si est\u00e1 marcado, el coche est\u00e1 registrado en el inventario propio de la empresa.',block:'own'},
+      // REGISTRO (3)
+      {id:'fecha',label:'Fecha',w:80,desc:'Fecha en la que se registra la venta o la incorporaci\u00f3n del producto al inventario.',block:'reg'},
+      {id:'numexp',label:'N\u00ba Expediente',w:100,desc:'N\u00famero del expediente al que pertenece el registro, ya sea un expediente nuevo creado o uno existente al que se asocia el producto.',block:'reg'},
+      {id:'vin',label:'VIN',w:130,br:true,desc:'N\u00famero de identificaci\u00f3n del veh\u00edculo (VIN) correspondiente a cada coche registrado.',block:'reg'},
+      // COMPRA (7)
+      {id:'proveedor',label:'Proveedor',w:130,desc:'Nombre de la empresa proveedora a la que se ha comprado el veh\u00edculo.',block:'compra'},
+      {id:'numPF',label:'N\u00ba PF',w:90,desc:'N\u00famero de proforma emitida por el proveedor.',block:'compra'},
+      {id:'numFT',label:'N\u00ba FT',w:90,desc:'N\u00famero de factura emitida por el proveedor.',block:'compra'},
+      {id:'fechaPago',label:'Fecha Pago',w:85,desc:'Fecha en la que se efect\u00faa el pago al proveedor.',block:'compra'},
+      {id:'impCompra',label:'Imp. Compra (\u20ac)',w:100,r:true,desc:'Importe total de compra del veh\u00edculo expresado en euros.',block:'compra'},
+      {id:'fechaDep',label:'Fecha Dep\u00f3s.',w:85,desc:'Fecha de eventual dep\u00f3sito o pago a cuenta efectuado al proveedor, si procede.',block:'compra'},
+      {id:'impDep',label:'Imp. Dep\u00f3s. (\u20ac)',w:100,r:true,br:true,desc:'Importe del dep\u00f3sito o pago a cuenta abonado al proveedor, si procede.',block:'compra'},
+      // VENTA (7)
+      {id:'cliente',label:'Cliente',w:140,desc:'Nombre de la empresa cliente a la que se ha vendido el veh\u00edculo.',block:'venta'},
+      {id:'vendedor',label:'Vendedor DMCAR',w:110,desc:'Nombre del vendedor de DMCAR que ha gestionado la venta al cliente.',block:'venta'},
+      {id:'numPFVenta',label:'N\u00ba PF Venta',w:100,desc:'N\u00famero de proforma emitida por DMCAR al cliente.',block:'venta'},
+      {id:'fechaSaldo',label:'Fecha Saldo',w:85,desc:'Fecha en la que se recibe el pago del cliente en la cuenta bancaria.',block:'venta'},
+      {id:'impVenta',label:'Imp. Venta (\u20ac)',w:100,r:true,desc:'Importe total de venta del veh\u00edculo al cliente, expresado en euros.',block:'venta'},
+      {id:'fechaDepCli',label:'Fecha Dep. Cli.',w:90,desc:'Fecha de eventual dep\u00f3sito o pago a cuenta recibido del cliente, si procede.',block:'venta'},
+      {id:'impDepCli',label:'Imp. Dep. Cli. (\u20ac)',w:105,r:true,br:true,desc:'Importe del dep\u00f3sito o pago a cuenta recibido del cliente, si procede.',block:'venta'},
+      // TRANSPORTE (8)
+      {id:'transEmpresa',label:'Empresa Trans.',w:120,desc:'Nombre de la empresa proveedora del servicio de transporte.',block:'transporte'},
+      {id:'transFTCompra',label:'N\u00ba FT Compra T.',w:110,desc:'N\u00famero de factura emitida por la empresa de transporte a DMCAR.',block:'transporte'},
+      {id:'transImpCompra',label:'Imp. Compra T. (\u20ac)',w:115,r:true,desc:'Importe de la factura emitida por la empresa de transporte.',block:'transporte'},
+      {id:'transFechaPago',label:'Fecha Pago T.',w:95,desc:'Fecha en la que DMCAR efect\u00faa el pago a la empresa de transporte.',block:'transporte'},
+      {id:'transPFVenta',label:'N\u00ba PF Venta T.',w:110,desc:'N\u00famero de proforma de transporte emitida por DMCAR al cliente.',block:'transporte'},
+      {id:'transFTVenta',label:'N\u00ba FT Venta T.',w:110,desc:'N\u00famero de factura de transporte emitida por DMCAR al cliente.',block:'transporte'},
+      {id:'transImpVenta',label:'Imp. Venta T. (\u20ac)',w:110,r:true,desc:'Importe del servicio de transporte facturado al cliente.',block:'transporte'},
+      {id:'transGanancia',label:'Ganancia T. (\u20ac)',w:105,r:true,br:true,editable:true,desc:'Margen de ganancia sobre el transporte: diferencia entre el importe de venta y el de compra del transporte. Auto-calculado, editable manualmente.',block:'transporte'},
+      // VEHICULO (8)
+      {id:'marca',label:'Marca',w:90,desc:'Marca del veh\u00edculo.',block:'vehiculo'},
+      {id:'modelo',label:'Modelo',w:100,desc:'Modelo del veh\u00edculo.',block:'vehiculo'},
+      {id:'version',label:'Versi\u00f3n',w:130,desc:'Versi\u00f3n espec\u00edfica del modelo del veh\u00edculo.',block:'vehiculo'},
+      {id:'matriculacion',label:'1\u00aa Matr.',w:80,desc:'Fecha de la primera matriculaci\u00f3n del veh\u00edculo.',block:'vehiculo'},
+      {id:'kms',label:'Kms',w:75,r:true,desc:'Kilometraje registrado del veh\u00edculo.',block:'vehiculo'},
+      {id:'color',label:'Color',w:90,desc:'Color del veh\u00edculo.',block:'vehiculo'},
+      {id:'danos',label:'Da\u00f1os (\u20ac)',w:80,r:true,desc:'Importe de los da\u00f1os registrados en el veh\u00edculo, si los hubiera. Indicar 0 en caso contrario.',block:'vehiculo'},
+      {id:'gananciaVeh',label:'Ganancia V. (\u20ac)',w:105,r:true,br:true,editable:true,desc:'Margen de ganancia sobre el veh\u00edculo: diferencia entre el importe de venta y el de compra del veh\u00edculo. Auto-calculado, editable manualmente.',block:'vehiculo'},
+      // BROKER (5)
+      {id:'comBroker',label:'Comisi\u00f3n (\u20ac)',w:100,r:true,desc:'Importe de la comisi\u00f3n correspondiente al broker, en caso de que intervenga.',block:'broker'},
+      {id:'nomBroker',label:'Broker',w:110,desc:'Nombre del broker que ha intermediado en la operaci\u00f3n.',block:'broker'},
+      {id:'broFT',label:'N\u00ba FT Comisi\u00f3n',w:110,desc:'N\u00famero de factura emitida por el broker correspondiente a la comisi\u00f3n.',block:'broker'},
+      {id:'broFechaPago',label:'Fecha Pago Com.',w:100,desc:'Fecha en la que se efect\u00faa el pago de la factura de comisi\u00f3n al broker.',block:'broker'},
+      {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker.',block:'broker'},
+      // RESULTADO (1)
+      {id:'gananciaFinal',label:'Ganancia Final (\u20ac)',w:120,r:true,editable:true,desc:'Resultado final de la operaci\u00f3n sobre el veh\u00edculo: importe de venta menos importe de compra menos comisiones del broker. Auto-calculado, editable manualmente.',block:'resultado'}
     ];
     var savedWidths=LS('nxVistaColWidths',{})||{};
     colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
-    window._nxColDefs=colDefs; // expose for resize handler
+    window._nxColDefs=colDefs;
     var cgHtml='<colgroup>'+colDefs.map(function(c){return '<col data-col-id="'+c.id+'" style="width:'+c.w+'px">';}).join('')+'</colgroup>';
     var html='<div style="overflow-x:auto"><table id="nbv-table" style="border-collapse:collapse;font-size:10.5px;font-family:monospace;table-layout:fixed">';
     html+=cgHtml;
-    // Header riga 1: blocchi colorati
+    // Header riga 1: blocchi colorati - struttura v10.02
+    // OWN(1) + REGISTRO(3) + COMPRA(7) + VENTA(7) + TRANSPORTE(8) + VEHICULO(8) + BROKER(5) + RESULTADO(1) = 40
     html+='<thead><tr>'
-      +'<th colspan="4" style="padding:6px 10px;background:'+COL.gen.bg+';color:'+COL.gen.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.gen.label+'</th>'
-      +'<th colspan="6" style="padding:6px 10px;background:'+COL.forn.bg+';color:'+COL.forn.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.forn.label+'</th>'
-      +'<th colspan="7" style="padding:6px 10px;background:'+COL.cli.bg+';color:'+COL.cli.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.cli.label+'</th>'
-      +'<th colspan="7" style="padding:6px 10px;background:'+COL.trasp.bg+';color:'+COL.trasp.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.trasp.label+' (acq + vend)</th>'
-      +'<th colspan="7" style="padding:6px 10px;background:'+COL.auto.bg+';color:'+COL.auto.head+';text-align:left;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.auto.label+'</th>'
-      +'<th colspan="2" style="padding:6px 10px;background:'+COL.mar.bg+';color:'+COL.mar.head+';text-align:center;font-weight:700;font-size:11px;border-right:2px solid var(--border)">'+COL.mar.label+'</th>'
-      +'<th colspan="6" style="padding:6px 10px;background:'+COL.bro.bg+';color:'+COL.bro.head+';text-align:left;font-weight:700;font-size:11px">'+COL.bro.label+'</th>'
+      +'<th style="padding:6px 4px;background:'+COL.own.bg+';color:'+COL.own.head+';text-align:center;font-weight:700;font-size:10px;border-right:2px solid var(--border)" title="Veh\u00edculos en propiedad de la empresa">&nbsp;</th>'
+      +'<th colspan="3" style="padding:6px 10px;background:'+COL.reg.bg+';color:'+COL.reg.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.reg.label+'</th>'
+      +'<th colspan="7" style="padding:6px 10px;background:'+COL.compra.bg+';color:'+COL.compra.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.compra.label+'</th>'
+      +'<th colspan="7" style="padding:6px 10px;background:'+COL.venta.bg+';color:'+COL.venta.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.venta.label+'</th>'
+      +'<th colspan="8" style="padding:6px 10px;background:'+COL.transporte.bg+';color:'+COL.transporte.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.transporte.label+'</th>'
+      +'<th colspan="8" style="padding:6px 10px;background:'+COL.vehiculo.bg+';color:'+COL.vehiculo.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.vehiculo.label+'</th>'
+      +'<th colspan="5" style="padding:6px 10px;background:'+COL.broker.bg+';color:'+COL.broker.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.broker.label+'</th>'
+      +'<th style="padding:6px 10px;background:'+COL.resultado.bg+';color:'+COL.resultado.head+';text-align:center;font-weight:800;font-size:11px;letter-spacing:.05em">'+COL.resultado.label+'</th>'
     +'</tr>';
-    // Header riga 2: nomi colonne (con data-col-id per resize)
+    // Header riga 2: nomi colonne (con data-col-id per resize + tooltip via title)
     var th='padding:6px 7px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--t3);font-weight:600;background:var(--bg3);border-bottom:2px solid var(--border);position:relative;user-select:none';
     var thR=th+';text-align:right';
     var thC=th+';text-align:center';
-    // Costruisci header riga colonne con resize handle
     var hdrCells=colDefs.map(function(c){
-      var thStyle=c.r?thR:th;
+      var thStyle=c.r?thR:(c.c?thC:th);
       if(c.br)thStyle+=';border-right:2px solid var(--border)';
-      return '<th data-col-id="'+c.id+'" style="'+thStyle+'">'
+      var titleAttr=c.desc?' title="'+esc(c.desc)+'"':'';
+      return '<th data-col-id="'+c.id+'" style="'+thStyle+'"'+titleAttr+'>'
         +esc(c.label)
         +'<span class="nbv-col-resize" data-col-id="'+c.id+'" style="position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;background:transparent;z-index:5" onmousedown="numbersStartColResize(event, \''+c.id+'\')"></span>'
       +'</th>';
@@ -23720,7 +23732,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     };
     var fmtDate=function(d){if(!d)return '<span style="color:var(--t4)">\u2014</span>';try{return new Date(d).toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'2-digit'});}catch(e){return esc(String(d));}};
     var fmtTxt=function(t){return t?esc(String(t)):'<span style="color:var(--t4)">\u2014</span>';};
-    var bgGen=COL.gen.bg,bgForn=COL.forn.bg,bgCli=COL.cli.bg,bgTr=COL.trasp.bg,bgAuto=COL.auto.bg,bgMar=COL.mar.bg,bgBro=COL.bro.bg;
+    var bgOwn=COL.own.bg,bgReg=COL.reg.bg,bgCompra=COL.compra.bg,bgVenta=COL.venta.bg,bgTrans=COL.transporte.bg,bgVeh=COL.vehiculo.bg,bgBro=COL.broker.bg,bgRes=COL.resultado.bg;
     records.forEach(function(r){
       var ext=nxAccGetExtended(r);
       var vinShow=r.vin?(r.vin.length>14?r.vin.substring(0,8)+'\u2026'+r.vin.substring(r.vin.length-4):r.vin):'';
@@ -23742,64 +23754,125 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }else{
         expLabel='\u2014';
       }
-      // OWN badge cell
+      // OWN badge cell - badge giallo se in propiedad, X rosso se anulada
       var ownCell=r.isOwn?'<span style="display:inline-block;background:#fbbf24;color:#78350f;font-weight:800;font-size:9px;padding:2px 6px;border-radius:4px;letter-spacing:.04em">OWN</span>':(r.isAnulada?'<span style="color:#dc2626;font-size:14px" title="Anulada">\u2718</span>':'');
       // CELLA STD
       var rowExtra=r.isAnulada?';opacity:0.55;background:rgba(220,38,38,0.04)':'';
       var td=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px'+(extra||'')+rowExtra+'">'+content+'</td>';};
       var tdR=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:right'+(extra||'')+rowExtra+'">'+content+'</td>';};
       var tdC=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:center'+(extra||'')+rowExtra+'">'+content+'</td>';};
+      // v10.02: Calcolo Ganancias auto + supporto override manuale via accDocs
+      var manualG=(r.stockId&&window._nxManualGanancias&&window._nxManualGanancias[r.stockId+'_'+r.lotIdx])||{};
+      var calcGanVeh=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-(ext.damage||0)):null;
+      var calcGanTrans=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
+      var brokerPagado=(ext.brokerAmount||0);
+      var gananciaVeh=manualG.gananciaVeh!==undefined?manualG.gananciaVeh:calcGanVeh;
+      var gananciaTrans=manualG.gananciaTrans!==undefined?manualG.gananciaTrans:calcGanTrans;
+      var gananciaFinalCalc=((gananciaVeh||0)+(gananciaTrans||0)-brokerPagado);
+      var gananciaFinal=manualG.gananciaFinal!==undefined?manualG.gananciaFinal:(gananciaVeh!==null?gananciaFinalCalc:null);
+      // Helpers per celle editable
+      var rowKey=r.stockId+'_'+r.lotIdx;
+      var editable=function(content,bg,fieldId,value,extra){
+        var dataAttr=' data-row-key="'+esc(rowKey)+'" data-field="'+fieldId+'"';
+        return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:right'+(extra||'')+rowExtra+';position:relative" ondblclick="numbersEditCell(this)" title="Double-click para editar"'+dataAttr+(value!==null&&value!==undefined?' data-value="'+value+'"':'')+'>'+content+(manualG[fieldId]!==undefined?'<span style="position:absolute;top:1px;right:2px;font-size:8px;color:#7c3aed" title="Editado manualmente">\u270f</span>':'')+'</td>';
+      };
       html+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="numbersOpenVistaDetail(\''+esc(r.stockId)+'\','+r.lotIdx+')" onmouseover="this.style.opacity=\''+(r.isAnulada?'0.7':'0.85')+'\'" onmouseout="this.style.opacity=\''+(r.isAnulada?'0.55':'1')+'\'">'
-        // GENERAL (4 cells: OWN + Data + N.Exp + VIN)
-        +tdC(ownCell,bgGen)
-        +td(fmtDate(r.createdAt||r.soldAt),bgGen)
-        +td(expLabel,bgGen,';font-weight:600')
-        +td(vinHtml,bgGen,';border-right:2px solid var(--border)')
-        // FORNITORE
-        +td(fmtTxt(r.supplier),bgForn)
-        +td(fmtTxt(ext.fornFt),bgForn)
-        +td(fmtDate(ext.fornDataPag),bgForn)
-        +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgForn)
-        +td(fmtDate(ext.fornAccDate),bgForn)
-        +tdR(ext.fornAccAmount?fmtMon(ext.fornAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgForn,';border-right:2px solid var(--border)')
-        // CLIENTE
-        +td(fmtTxt(r.clientName),bgCli)
-        +td(fmtTxt(r.soldBy),bgCli)
-        +td(fmtTxt(ext.cliFt),bgCli)
-        +td(fmtDate(ext.cliDataSaldo),bgCli)
-        +tdR(r.salePrice?fmtMon(r.salePrice):'<span style="color:var(--t4)">\u2014</span>',bgCli)
-        +td(fmtDate(ext.cliAccDate),bgCli)
-        +tdR(ext.cliAccAmount?fmtMon(ext.cliAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgCli,';border-right:2px solid var(--border)')
-        // TRASPORTO
-        +td(fmtTxt(ext.traspFornitore),bgTr)
-        +td(fmtTxt(ext.traspFtAcq),bgTr)
-        +td(fmtDate(ext.traspDataPag),bgTr)
-        +tdR(ext.traspAcqAmount?fmtMon(ext.traspAcqAmount):'<span style="color:var(--t4)">\u2014</span>',bgTr)
-        +td(fmtTxt(ext.traspFtVend),bgTr)
-        +td(fmtDate(ext.traspDataInc),bgTr)
-        +tdR(ext.traspVendAmount?fmtMon(ext.traspVendAmount):'<span style="color:var(--t4)">\u2014</span>',bgTr,';border-right:2px solid var(--border)')
-        // AUTO
-        +td(fmtTxt(r.brand),bgAuto)
-        +td(fmtTxt(r.model),bgAuto)
-        +td(fmtTxt(ext.version),bgAuto)
-        +td(fmtDate(ext.firstReg),bgAuto)
-        +tdR(ext.km?Math.round(ext.km).toLocaleString('es-ES'):'\u2014',bgAuto)
-        +td(fmtTxt(r.color),bgAuto)
-        +tdR(ext.damage?fmtMon(ext.damage):'0',bgAuto,';border-right:2px solid var(--border)')
-        // MARGINI
-        +tdR(ext.profitAuto!==null?fmtMon(ext.profitAuto,true):'<span style="color:var(--t4)">\u2014</span>',bgMar)
-        +tdR(ext.profitTrasporto!==null?fmtMon(ext.profitTrasporto,true):'<span style="color:var(--t4)">\u2014</span>',bgMar,';border-right:2px solid var(--border)')
-        // BROKER
-        +td(fmtTxt(ext.brokerSeller),bgBro)
-        +td(fmtTxt(ext.brokerDest),bgBro)
+        // OWN (1)
+        +tdC(ownCell,bgOwn,';border-right:2px solid var(--border)')
+        // REGISTRO (3): Fecha, N\u00ba Expediente, VIN
+        +td(fmtDate(r.createdAt||r.soldAt),bgReg)
+        +td(expLabel,bgReg,';font-weight:600')
+        +td(vinHtml,bgReg,';border-right:2px solid var(--border)')
+        // COMPRA (7): Proveedor, PF, FT, Pago, Compra, Dep.Date, Dep.\u20ac
+        +td(fmtTxt(r.supplier),bgCompra)
+        +td(fmtTxt(ext.fornNumPF||''),bgCompra)
+        +td(fmtTxt(ext.fornNumFT||ext.fornFt||''),bgCompra)
+        +td(fmtDate(ext.fornDataPag),bgCompra)
+        +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgCompra)
+        +td(fmtDate(ext.fornAccDate),bgCompra)
+        +tdR(ext.fornAccAmount?fmtMon(ext.fornAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgCompra,';border-right:2px solid var(--border)')
+        // VENTA (7): Cliente, Vendedor DMCAR, PF Venta, Saldo, Venta, Dep.Cli.Date, Dep.Cli.\u20ac
+        +td(fmtTxt(r.clientName),bgVenta)
+        +td(fmtTxt(r.soldBy),bgVenta)
+        +td(fmtTxt(ext.cliFt),bgVenta)
+        +td(fmtDate(ext.cliDataSaldo),bgVenta)
+        +tdR(r.salePrice?fmtMon(r.salePrice):'<span style="color:var(--t4)">\u2014</span>',bgVenta)
+        +td(fmtDate(ext.cliAccDate),bgVenta)
+        +tdR(ext.cliAccAmount?fmtMon(ext.cliAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgVenta,';border-right:2px solid var(--border)')
+        // TRANSPORTE (8): Empresa, FT Compra, Imp Compra, Pago, PF Venta, FT Venta, Imp Venta, Ganancia T (editable)
+        +td(fmtTxt(ext.traspFornitore),bgTrans)
+        +td(fmtTxt(ext.traspFtAcq),bgTrans)
+        +tdR(ext.traspAcqAmount?fmtMon(ext.traspAcqAmount):'<span style="color:var(--t4)">\u2014</span>',bgTrans)
+        +td(fmtDate(ext.traspDataPag),bgTrans)
+        +td(fmtTxt(ext.traspPFVenta||''),bgTrans)
+        +td(fmtTxt(ext.traspFtVend),bgTrans)
+        +tdR(ext.traspVendAmount?fmtMon(ext.traspVendAmount):'<span style="color:var(--t4)">\u2014</span>',bgTrans)
+        +editable(gananciaTrans!==null?fmtMon(gananciaTrans,true):'<span style="color:var(--t4)">\u2014</span>',bgTrans,'gananciaTrans',gananciaTrans,';border-right:2px solid var(--border);font-weight:700')
+        // VEHICULO (8): Marca, Modelo, Versi\u00f3n, 1\u00aa Matr., Kms, Color, Da\u00f1os, Ganancia V (editable)
+        +td(fmtTxt(r.brand),bgVeh)
+        +td(fmtTxt(r.model),bgVeh)
+        +td(fmtTxt(ext.version),bgVeh)
+        +td(fmtDate(ext.firstReg),bgVeh)
+        +tdR(ext.km?Math.round(ext.km).toLocaleString('es-ES'):'\u2014',bgVeh)
+        +td(fmtTxt(r.color),bgVeh)
+        +tdR(ext.damage?fmtMon(ext.damage):'0',bgVeh)
+        +editable(gananciaVeh!==null?fmtMon(gananciaVeh,true):'<span style="color:var(--t4)">\u2014</span>',bgVeh,'gananciaVeh',gananciaVeh,';border-right:2px solid var(--border);font-weight:700')
+        // BROKER (5): Comisi\u00f3n, Nombre, FT Comisi\u00f3n, Fecha Pago, Imp Pagada
+        +tdR(ext.brokerComision?fmtMon(ext.brokerComision):(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>'),bgBro)
+        +td(fmtTxt(ext.brokerName||ext.brokerSeller||''),bgBro)
         +td(fmtTxt(ext.brokerFt),bgBro)
         +td(fmtDate(ext.brokerDataInc),bgBro)
-        +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro)
-        +tdR(ext.realFees!==null?fmtMon(ext.realFees,true):'<span style="color:var(--t4)">\u2014</span>',bgBro,';font-weight:700')
+        +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro,';border-right:2px solid var(--border)')
+        // RESULTADO (1): Ganancia Final (editable)
+        +editable(gananciaFinal!==null?fmtMon(gananciaFinal,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaFinal',gananciaFinal,';font-weight:800;font-size:11px')
       +'</tr>';
     });
     html+='</tbody></table></div>';
     listEl.innerHTML=html;
+  };
+
+  // v10.02: Edit cell inline - dblclick su Ganancia → input numerico
+  window.numbersEditCell=function(td){
+    var rowKey=td.getAttribute('data-row-key');
+    var field=td.getAttribute('data-field');
+    var current=td.getAttribute('data-value')||'';
+    if(!field||!rowKey)return;
+    if(!window._nxManualGanancias)window._nxManualGanancias=LS('nxManualGanancias',{})||{};
+    // Sostituisci contenuto con input
+    var origHtml=td.innerHTML;
+    td.innerHTML='<input type="number" step="0.01" value="'+(current||'')+'" autofocus style="width:100%;padding:3px;font-size:10px;font-family:monospace;text-align:right;border:1px solid var(--acc);border-radius:3px" />';
+    var input=td.querySelector('input');
+    if(input){
+      input.focus();input.select();
+      input.onkeydown=function(ev){
+        if(ev.key==='Enter')input.blur();
+        if(ev.key==='Escape'){td.innerHTML=origHtml;input=null;}
+      };
+      input.onblur=function(){
+        if(!input)return;
+        var v=input.value.trim();
+        if(!window._nxManualGanancias[rowKey])window._nxManualGanancias[rowKey]={};
+        if(v===''){
+          // reset → torna a calcolato
+          delete window._nxManualGanancias[rowKey][field];
+          if(Object.keys(window._nxManualGanancias[rowKey]).length===0)delete window._nxManualGanancias[rowKey];
+        }else{
+          window._nxManualGanancias[rowKey][field]=parseFloat(v)||0;
+        }
+        SS('nxManualGanancias',window._nxManualGanancias);
+        if(typeof showToast==='function')showToast('\u270f Ganancia actualizada manualmente');
+        numbersRenderVista();
+      };
+    }
+  };
+
+  // v10.02: Reset override manuale di ganancia
+  window.numbersResetGananciaManual=function(rowKey,field){
+    if(!window._nxManualGanancias||!window._nxManualGanancias[rowKey])return;
+    delete window._nxManualGanancias[rowKey][field];
+    if(Object.keys(window._nxManualGanancias[rowKey]).length===0)delete window._nxManualGanancias[rowKey];
+    SS('nxManualGanancias',window._nxManualGanancias);
+    numbersRenderVista();
   };
 
   // v9.93: Helper - calcola dati estesi (provenienti da accDocs e formule)
@@ -23855,10 +23928,19 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var cliFt='';var cliDataSaldo='';
     if(r.invoices&&r.invoices.length){cliFt=r.invoices[0].number||'';cliDataSaldo=r.invoices[0].issueDate||r.invoices[0].createdAt||'';}
     else if(r.proformas&&r.proformas.length){cliFt='Pro '+(r.proformas[0].number||'');cliDataSaldo=r.proformas[0].date||r.proformas[0].createdAt||'';}
+    // v10.02: PF/FT separate da fornitore (per nuovo schema 5 blocchi)
+    var fornPFDoc=accDocs.find(function(d){return d.type==='proforma_proveedor';});
+    var fornFTDoc=accDocs.find(function(d){return d.type==='factura_proveedor';});
+    var fornNumPF=fornPFDoc?fornPFDoc.docNumber:'';
+    var fornNumFT=fornFTDoc?fornFTDoc.docNumber:'';
+    // PF venta transporte (separata da FT venta)
+    var traspPFVendDoc=accDocs.find(function(d){return d.type==='proforma_transporte_vend';});
     return {
       impresa:impresa,
       // Fornitore
       fornFt:fornDoc?fornDoc.docNumber:'',
+      fornNumPF:fornNumPF,
+      fornNumFT:fornNumFT,
       fornDataPag:fornDoc?fornDoc.paymentDate:'',
       fornAccDate:fornDoc?fornDoc.accDate:'',
       fornAccAmount:fornDoc?fornDoc.accAmount:null,
@@ -23872,6 +23954,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       traspFtAcq:traspAcqDoc?traspAcqDoc.docNumber:'',
       traspDataPag:traspAcqDoc?traspAcqDoc.paymentDate:'',
       traspAcqAmount:traspAcq,
+      traspPFVenta:traspPFVendDoc?traspPFVendDoc.docNumber:'',
       traspFtVend:traspVendDoc?traspVendDoc.docNumber:'',
       traspDataInc:traspVendDoc?traspVendDoc.paymentDate:'',
       traspVendAmount:traspVend,
@@ -23886,6 +23969,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
       // Broker
       brokerSeller:brokerDoc?brokerDoc.seller:'',
       brokerDest:brokerDoc?brokerDoc.destinatario:'',
+      brokerName:brokerDoc?(brokerDoc.brokerName||brokerDoc.supplier||brokerDoc.seller):'',
+      brokerComision:brokerDoc?(brokerDoc.commission||brokerDoc.amount):null,
       brokerFt:brokerDoc?brokerDoc.docNumber:'',
       brokerDataInc:brokerDoc?brokerDoc.paymentDate:'',
       brokerAmount:brokerAmount,
@@ -23908,58 +23993,79 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(!records.length){alert('Sin datos para exportar');return;}
     function doExport(){
       var headers=[
-        'DATA','NUM. EXP.','VIN',
-        'FORNITORE (AUTO)','N PF FORNITORE','DATA PAGAMENTO','IMPORTO ACQ',
-        'Data Acconto','Importo Acconto',
-        'CLIENTE','SELLER','FT/PROF VEN','DATA SALDO','IMPORTO VENDITA','Data Acconto V','Importo Acconto V',
-        'FORNITORE TRASPORTO','FT ACQ TRASPORTO','DATA PAG TRASPORTO','IMPORTO ACQ TRASPORTO',
-        'FT VEN TRASPORTO','DATA INC TRASPORTO','IMPORTO VEN TRASPORTO',
-        'BRAND','MODEL','VERSION','1\u00ba Reg','KM','COLOR','DAMAGE',
-        'PROFIT AUTO','PROFIT TRASPORTO',
-        'SELLER PROVVIGIONI','DESTINATARIO','FT PROVVIGIONI','DATA INCASSO PROV','IMPORTO PROVVIGIONI','REAL FEES'
+        'OWN',
+        // REGISTRO
+        'Fecha','N\u00ba Expediente','VIN',
+        // COMPRA
+        'Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra (\u20ac)','Fecha Dep\u00f3sito','Imp. Dep\u00f3sito (\u20ac)',
+        // VENTA
+        'Cliente','Vendedor DMCAR','N\u00ba PF Venta','Fecha Saldo','Imp. Venta (\u20ac)','Fecha Dep. Cliente','Imp. Dep. Cliente (\u20ac)',
+        // TRANSPORTE
+        'Empresa Transp.','N\u00ba FT Compra T.','Imp. Compra T. (\u20ac)','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T. (\u20ac)','Ganancia T. (\u20ac)',
+        // VEHICULO
+        'Marca','Modelo','Versi\u00f3n','1\u00aa Matriculaci\u00f3n','Kms','Color','Da\u00f1os (\u20ac)','Ganancia V. (\u20ac)',
+        // BROKER
+        'Comisi\u00f3n (\u20ac)','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Comisi\u00f3n','Imp. Pagada (\u20ac)',
+        // RESULTADO
+        'Ganancia Final (\u20ac)'
       ];
       var rows=records.map(function(r){
         var ext=nxAccGetExtended(r);
-        var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isLibre?'N/A':'');
+        var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isOwn?'N/D':(r.isLibre?'N/A':''));
+        var rowKey=r.stockId+'_'+r.lotIdx;
+        var manual=(window._nxManualGanancias&&window._nxManualGanancias[rowKey])||{};
+        var calcGV=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-(ext.damage||0)):null;
+        var calcGT=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
+        var gV=manual.gananciaVeh!==undefined?manual.gananciaVeh:calcGV;
+        var gT=manual.gananciaTrans!==undefined?manual.gananciaTrans:calcGT;
+        var gF=manual.gananciaFinal!==undefined?manual.gananciaFinal:((gV||0)+(gT||0)-(ext.brokerAmount||0));
         return [
+          r.isOwn?'OWN':'',
           r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
           expLabel,
           r.vin||'',
+          // COMPRA
           r.supplier||'',
-          ext.fornFt,
-          ext.fornDataPag,
+          ext.fornNumPF||'',
+          ext.fornNumFT||ext.fornFt||'',
+          ext.fornDataPag||'',
           r.buyPrice||0,
-          ext.fornAccDate,
+          ext.fornAccDate||'',
           ext.fornAccAmount||0,
+          // VENTA
           r.clientName||'',
           r.soldBy||'',
-          ext.cliFt,
-          ext.cliDataSaldo,
+          ext.cliFt||'',
+          ext.cliDataSaldo||'',
           r.salePrice||0,
-          ext.cliAccDate,
+          ext.cliAccDate||'',
           ext.cliAccAmount||0,
-          ext.traspFornitore,
-          ext.traspFtAcq,
-          ext.traspDataPag,
+          // TRANSPORTE
+          ext.traspFornitore||'',
+          ext.traspFtAcq||'',
           ext.traspAcqAmount||0,
-          ext.traspFtVend,
-          ext.traspDataInc,
+          ext.traspDataPag||'',
+          ext.traspPFVenta||'',
+          ext.traspFtVend||'',
           ext.traspVendAmount||0,
+          gT||0,
+          // VEHICULO
           r.brand||'',
           r.model||'',
-          ext.version,
-          ext.firstReg,
+          ext.version||'',
+          ext.firstReg||'',
           ext.km||0,
           r.color||'',
           ext.damage||0,
-          ext.profitAuto||0,
-          ext.profitTrasporto||0,
-          ext.brokerSeller,
-          ext.brokerDest,
-          ext.brokerFt,
-          ext.brokerDataInc,
+          gV||0,
+          // BROKER
+          ext.brokerComision||ext.brokerAmount||0,
+          ext.brokerName||ext.brokerSeller||'',
+          ext.brokerFt||'',
+          ext.brokerDataInc||'',
           ext.brokerAmount||0,
-          ext.realFees||0
+          // RESULTADO
+          gF||0
         ];
       });
       var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
@@ -23991,20 +24097,29 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='anuladas')records=records.filter(function(r){return !!r.isAnulada;});
     else records=records.filter(function(r){return !r.isAnulada;});
     if(!records.length){alert('Sin datos para exportar');return;}
-    var headers=['DATA','NUM EXP','VIN','FORNITORE','N PF','DATA PAG','IMP ACQ','ACC DATA','ACC IMP','CLIENTE','SELLER','FT VEND','DATA SALDO','IMP VEND','ACC V DATA','ACC V IMP','FORN TRASP','FT ACQ TR','DATA PAG TR','IMP ACQ TR','FT VEND TR','DATA INC TR','IMP VEND TR','BRAND','MODEL','VERSION','1A REG','KM','COLOR','DAMAGE','PROFIT AUTO','PROFIT TRASP','SELLER PROV','DESTINATARIO','FT PROV','DATA INC PROV','IMP PROV','REAL FEES'];
+    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Comisi\u00f3n','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia Final'];
     var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
     var lines=[headers.join(';')];
     records.forEach(function(r){
       var ext=nxAccGetExtended(r);
-      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isLibre?'N/A':'');
+      var expLabel=r.expediente?(r.expediente.companyCode+'-'+r.expediente.number):(r.isOwn?'N/D':(r.isLibre?'N/A':''));
+      var rowKey=r.stockId+'_'+r.lotIdx;
+      var manual=(window._nxManualGanancias&&window._nxManualGanancias[rowKey])||{};
+      var calcGV=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-(ext.damage||0)):null;
+      var calcGT=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
+      var gV=manual.gananciaVeh!==undefined?manual.gananciaVeh:calcGV;
+      var gT=manual.gananciaTrans!==undefined?manual.gananciaTrans:calcGT;
+      var gF=manual.gananciaFinal!==undefined?manual.gananciaFinal:((gV||0)+(gT||0)-(ext.brokerAmount||0));
       lines.push([
+        r.isOwn?'OWN':'',
         r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
-        expLabel,r.vin||'',r.supplier||'',ext.fornFt,ext.fornDataPag,r.buyPrice||0,ext.fornAccDate,ext.fornAccAmount||0,
-        r.clientName||'',r.soldBy||'',ext.cliFt,ext.cliDataSaldo,r.salePrice||0,ext.cliAccDate,ext.cliAccAmount||0,
-        ext.traspFornitore,ext.traspFtAcq,ext.traspDataPag,ext.traspAcqAmount||0,ext.traspFtVend,ext.traspDataInc,ext.traspVendAmount||0,
-        r.brand||'',r.model||'',ext.version,ext.firstReg,ext.km||0,r.color||'',ext.damage||0,
-        ext.profitAuto||0,ext.profitTrasporto||0,
-        ext.brokerSeller,ext.brokerDest,ext.brokerFt,ext.brokerDataInc,ext.brokerAmount||0,ext.realFees||0
+        expLabel,r.vin||'',
+        r.supplier||'',ext.fornNumPF||'',ext.fornNumFT||ext.fornFt||'',ext.fornDataPag||'',r.buyPrice||0,ext.fornAccDate||'',ext.fornAccAmount||0,
+        r.clientName||'',r.soldBy||'',ext.cliFt||'',ext.cliDataSaldo||'',r.salePrice||0,ext.cliAccDate||'',ext.cliAccAmount||0,
+        ext.traspFornitore||'',ext.traspFtAcq||'',ext.traspAcqAmount||0,ext.traspDataPag||'',ext.traspPFVenta||'',ext.traspFtVend||'',ext.traspVendAmount||0,gT||0,
+        r.brand||'',r.model||'',ext.version||'',ext.firstReg||'',ext.km||0,r.color||'',ext.damage||0,gV||0,
+        ext.brokerComision||ext.brokerAmount||0,ext.brokerName||ext.brokerSeller||'',ext.brokerFt||'',ext.brokerDataInc||'',ext.brokerAmount||0,
+        gF||0
       ].map(esc).join(';'));
     });
     var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
