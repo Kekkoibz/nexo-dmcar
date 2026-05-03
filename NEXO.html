@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.18 — DMCAR GROUP CRM | 2026-05-03 | 2 fix UI Import (da Foto 15 + Foto 16 utente):
+1) Foto 15 — Dialog "Falta luogo di carico" con dropdown HARDCODED (Madrid/Barcelona/etc) ignorava le info disponibili nei Provider. SPEC utente: il dropdown deve usare AUTOMATICAMENTE provider.logistica[] del fornitore identificato + sede fiscale come fallback se logistica vuota; deve mostrare anche tutti gli altri provider come opzione. FIX in askPickupForVehicles: popolazione DINAMICA del select #pk-sel a 4 sezioni: (a) "🚛 Logística de [Provider matched]" — entries di logistica ordinate (default first) + città fiscale come fallback con badge 📍 sede fiscal; (b) "📒 Otros proveedores registrados" — tutti gli altri provider con la loro città default; (c) "🌍 Ciudades comunes" — lista statica fallback (16 città EU); (d) "✏ Otra" — input custom. Auto-selection: prima entry default del provider matched. Smoke test 2/2 PASS (provider con logistica → 3 opzioni Tarragona/SantCugat/Barcelona-fiscal; provider senza → solo sede fiscale);
+2) Foto 16 — Input "Proveedor" durante Import era textbox semplice senza autocomplete: la dropdown system-native mostrava solo provider già visti recentemente (es. JARMAUTO/CARLINE) ma non SUPER RENT registrato in Providers. SPEC utente: deve fare auto-detection dal contenuto, e in caso non lo trovi mostrare TUTTI i provider registrati con autocomplete per lettere. FIX: input ora ha list="i-sup-datalist" + datalist popolato al focus via window.iSupBuildDatalist (legge tutti i providers con dedup case-insensitive, mostra primary name + legalName/company come label extra); validazione live via window.iSupDetectMatch al input event con feedback visivo: ✓ verde se match canonical (via nxNormalizeSupplierName), ⚠ arancio se non registrato + spiegazione "se añadirá al detectarlo";
+3) PRESERVA: tutto v10.10.17 (cancelar traslado), v10.10.16 (bulk trasladar), v10.10.15 (Persona Jurídica eliminata), v10.10.14 (4 mod Provider Logística+Móvil+Comercial+Fiscal), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.17 — DMCAR GROUP CRM | 2026-05-03 | Feature Cancelar Traslado (rollback):
 1) Feature richiesta utente: dopo aver fatto Trasladar (singolo o bulk) non c'era modo di tornare allo stato anteriore in caso di errore. Era un'asimmetria UX problematica: facile entrare in_transit, impossibile uscirne se non ricaricando un altro Trasladar manuale (e perdendo l'Ubicación originale);
 2) FIX: nuovo bottone "↩ Cancelar traslado" nel modal Trasladar, visibile SOLO se transferStatus='in_transit' o 'arrived'. Posizionato a sinistra accanto a "Confirmar llegada" (raggruppati come azioni di stato). Bottone in stile rosso outline (border-color:#dc2626) per indicare azione distruttiva;
@@ -1559,7 +1563,13 @@ En que te puedo ayudar hoy?</div></div>
         </div>
       </div>
     </div>
-    <div style="margin-top:12px"><label>Proveedor (opcional &mdash; se detecta automaticamente)</label><input type="text" id="i-sup" placeholder="Deja vacio si esta en el archivo o texto"></div>
+    <!-- v10.10.18: provider input con autocomplete dataset (Foto 16) + auto-detection da AI parser -->
+    <div style="margin-top:12px">
+      <label>Proveedor (opcional &mdash; se detecta automaticamente)</label>
+      <input type="text" id="i-sup" list="i-sup-datalist" placeholder="Empieza a escribir... (autocompletado de proveedores registrados)" autocomplete="off" oninput="iSupDetectMatch()" onfocus="iSupBuildDatalist()">
+      <datalist id="i-sup-datalist"></datalist>
+      <div id="i-sup-match" style="font-size:10px;color:var(--t3);min-height:14px;margin-top:3px"></div>
+    </div>
     <div id="i-status" style="font-size:12px;color:var(--acc);min-height:18px;margin:10px 0"></div>
     <button class="btn bp" style="width:100%" id="i-btn" onclick="iProcess()">&#9889; Extraer y anadir al Stock</button>
   </div>
@@ -9583,6 +9593,60 @@ function iEnsureXLSX(cb){
   document.head.appendChild(s);
 }
 
+// ============================================================================
+// v10.10.18: Import Provider — autocomplete + auto-detection (Foto 16)
+// ============================================================================
+// Popola il datalist #i-sup-datalist con TUTTI i providers registrati al focus.
+// L'utente vede la lista completa con autocomplete per lettere mentre digita.
+window.iSupBuildDatalist=function(){
+  var dl=document.getElementById('i-sup-datalist');
+  if(!dl||!Array.isArray(window.providers))return;
+  // Costruisci opzioni: usa il nombre comercial (name) come valore primario,
+  // mostra anche legalName tra parentesi se diverso
+  var html='';
+  var seen={};
+  window.providers.forEach(function(p){
+    var primary=p.name||p.company||p.legalName||'';
+    if(!primary)return;
+    var key=primary.toUpperCase().trim();
+    if(seen[key])return;
+    seen[key]=true;
+    var labelExtra='';
+    if(p.legalName&&p.legalName!==primary){
+      labelExtra=' \u2014 '+p.legalName;
+    }else if(p.company&&p.company!==primary){
+      labelExtra=' \u2014 '+p.company;
+    }
+    html+='<option value="'+esc(primary)+'">'+esc(primary)+esc(labelExtra)+'</option>';
+  });
+  dl.innerHTML=html;
+};
+
+// Live match detection: mentre l'utente digita, controlla se il valore matcha un provider
+// e mostra feedback (✅ provider trovato / ⚠ no match → si registrerà come nuovo)
+window.iSupDetectMatch=function(){
+  var inp=document.getElementById('i-sup');
+  var fb=document.getElementById('i-sup-match');
+  if(!inp||!fb)return;
+  var val=inp.value.trim();
+  if(!val){fb.textContent='';inp.style.borderColor='';return;}
+  if(!Array.isArray(window.providers)){fb.textContent='';return;}
+  var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(val):val.toUpperCase().trim();
+  var matched=null;
+  window.providers.forEach(function(p){
+    var pNm=p.name||p.company||p.legalName||'';
+    var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
+    if(pNorm===supNorm)matched=p;
+  });
+  if(matched){
+    fb.innerHTML='<span style="color:#16a34a;font-weight:600">\u2713 Proveedor encontrado: '+esc(matched.legalName||matched.name||matched.company)+'</span>';
+    inp.style.borderColor='#16a34a';
+  }else{
+    fb.innerHTML='<span style="color:#f59e0b">\u26a0 No registrado a\u00fan \u2014 se a\u00f1adir\u00e1 al detectarlo</span>';
+    inp.style.borderColor='#f59e0b';
+  }
+};
+
 function iProcess(){
   var sup=n('i-sup').value.trim();
   var panels=['file','text','img','email'];
@@ -10436,8 +10500,107 @@ function askPickupForVehicles(missing,allVehicles,onDone){
     (lines.length>5?'<div style="font-size:11px;color:var(--t3);font-style:italic;margin-top:4px">y '+(lines.length-5)+' m&aacute;s...</div>':'');
   n('pk-summary').innerHTML=summary;
 
-  // Reset
-  n('pk-sel').value='Madrid (ES)';
+  // v10.10.18: popolazione DINAMICA del dropdown a partire dai providers
+  // 1. Cerca provider del lotto (v.supplier match canonical via nxNormalizeSupplierName)
+  // 2. Se trovato: mostra logística[] (default in cima) + città fiscale come fallback se logistica vuota
+  // 3. Mostra anche TUTTI gli altri provider come fallback per il caso multi-provider
+  // 4. Mantiene la lista hardcoded come ultima fallback
+  var sel=n('pk-sel');
+  var supName=missing.length>0?(missing[0].supplier||''):'';
+  var matchedProvider=null;
+  if(supName&&Array.isArray(window.providers)){
+    var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(supName):String(supName).toUpperCase().trim();
+    window.providers.forEach(function(p){
+      var pNm=p.company||p.name||'';
+      var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
+      if(pNorm===supNorm)matchedProvider=p;
+    });
+  }
+  // Costruisci HTML dinamico
+  var html='';
+  // Helper: location string da {city, country, province}
+  function buildLoc(city,country,province){
+    if(!city)return '';
+    var coCode=({Espa\u00f1a:'ES',Italia:'IT',Francia:'FR',Alemania:'DE',Portugal:'PT','Pa\u00edses Bajos':'NL',B\u00e9lgica:'BE',UK:'UK'})[country]||country||'';
+    return city+(province&&province!==city?', '+province:'')+(coCode?' ('+coCode+')':'');
+  }
+  // Sezione 1: Provider del lotto (matched)
+  if(matchedProvider){
+    var pName=matchedProvider.legalName||matchedProvider.name||matchedProvider.company||'Provider';
+    html+='<optgroup label="\u{1F69B} Log\u00edstica de '+esc(pName.substring(0,30))+'">';
+    var addedAny=false;
+    // 1a. Logística entries (default first)
+    if(Array.isArray(matchedProvider.logistica)&&matchedProvider.logistica.length>0){
+      var sortedLog=matchedProvider.logistica.slice().sort(function(a,b){return (b.isDefault?1:0)-(a.isDefault?1:0);});
+      sortedLog.forEach(function(it){
+        if(!it.city)return;
+        var loc=buildLoc(it.city,it.country);
+        html+='<option value="'+esc(loc)+'"'+(it.isDefault?' selected':'')+'>'+esc(loc)+(it.isDefault?' \u2605 default':'')+'</option>';
+        addedAny=true;
+      });
+    }
+    // 1b. Città fiscale (fallback se logistica vuota o aggiuntiva)
+    if(matchedProvider.city){
+      var fLoc=buildLoc(matchedProvider.city,matchedProvider.fiscalCountry||matchedProvider.country,matchedProvider.province);
+      // Evita duplicato se già presente in logistica
+      var alreadyHas=Array.isArray(matchedProvider.logistica)&&matchedProvider.logistica.some(function(it){return it.city===matchedProvider.city;});
+      if(!alreadyHas&&fLoc){
+        html+='<option value="'+esc(fLoc)+'"'+(!addedAny?' selected':'')+'>'+esc(fLoc)+' \u{1F4CD} sede fiscal</option>';
+        addedAny=true;
+      }
+    }
+    if(!addedAny){
+      html+='<option value="" disabled>(sin log\u00edstica configurada)</option>';
+    }
+    html+='</optgroup>';
+  }
+  // Sezione 2: Altri providers (con logistica o sede fiscale)
+  if(Array.isArray(window.providers)&&window.providers.length>0){
+    var others=window.providers.filter(function(p){return p!==matchedProvider;});
+    if(others.length>0){
+      html+='<optgroup label="\u{1F4D2} Otros proveedores registrados">';
+      others.forEach(function(p){
+        var pName=p.legalName||p.name||p.company||'';
+        if(!pName)return;
+        // Default city: logistica[default] o city fiscale
+        var city='',country='';
+        if(Array.isArray(p.logistica)&&p.logistica.length>0){
+          var def=p.logistica.find(function(it){return it.isDefault;})||p.logistica[0];
+          if(def){city=def.city;country=def.country;}
+        }
+        if(!city&&p.city){city=p.city;country=p.fiscalCountry||p.country;}
+        if(!city)return;
+        var loc=buildLoc(city,country);
+        html+='<option value="'+esc(loc)+'">'+esc(loc)+' \u2014 '+esc(pName.substring(0,25))+'</option>';
+      });
+      html+='</optgroup>';
+    }
+  }
+  // Sezione 3: Lista statica fallback (città comuni EU)
+  html+='<optgroup label="\u{1F30D} Ciudades comunes">'
+    +'<option value="Madrid (ES)">Madrid (ES)</option>'
+    +'<option value="Barcelona (ES)">Barcelona (ES)</option>'
+    +'<option value="Valencia (ES)">Valencia (ES)</option>'
+    +'<option value="Bilbao (ES)">Bilbao (ES)</option>'
+    +'<option value="Sevilla (ES)">Sevilla (ES)</option>'
+    +'<option value="Roma (IT)">Roma (IT)</option>'
+    +'<option value="Milano (IT)">Milano (IT)</option>'
+    +'<option value="Bologna (IT)">Bologna (IT)</option>'
+    +'<option value="M\u00fcnchen (DE)">M\u00fcnchen (DE)</option>'
+    +'<option value="Berlin (DE)">Berlin (DE)</option>'
+    +'<option value="Frankfurt (DE)">Frankfurt (DE)</option>'
+    +'<option value="Paris (FR)">Paris (FR)</option>'
+    +'<option value="Lyon (FR)">Lyon (FR)</option>'
+    +'<option value="Lisboa (PT)">Lisboa (PT)</option>'
+    +'<option value="Bruxelles (BE)">Bruxelles (BE)</option>'
+    +'<option value="Rotterdam (NL)">Rotterdam (NL)</option>'
+  +'</optgroup>'
+  +'<optgroup label="\u270F Otra">'
+    +'<option value="__custom__">Otro... (escribir)</option>'
+  +'</optgroup>';
+  sel.innerHTML=html;
+  // Se nessun provider matched, default a Madrid; altrimenti il primo selected (logistica default)
+  if(!matchedProvider)sel.value='Madrid (ES)';
   n('pk-custom').value='';
   n('pk-custom-row').style.display='none';
 
