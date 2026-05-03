@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.21 — DMCAR GROUP CRM | 2026-05-03 | Memo #5 P1 — Auto-trigger workflow OWN dopo import:
+1) Bug osservato (utente Memo #5): finishImport() chiamava solo addStkItem + fStk + renderDash, ma NON triggerava nxOwnEntryWorkflow → il lotto andava SEMPRE in tab Trading di default. Per attivare il workflow OWN (Step1 selettore impresa, Step2 proforma cargo, notifica contable) l'utente doveva manualmente cambiare lo Status di ogni stock a "propio" (riga 8429 hook esistente solo su change manuale dello Status). Workflow inutilizzato per chi importava direttamente da PDF proforma proveedor;
+2) FIX UX (spec utente): nuovo dialog "📥 ¿Es adquisición para empresa propia?" mostrato post-import success (dopo i 1800ms del statusMsg). Dialog contiene: (a) riepilogo veicoli importati con conteggio per brand+modello, (b) provider info (se uniforme), (c) 2 bottoni grandi descrittivi: ✅ Sí → workflow OWN (Step1 selettore impresa, vincola proforma, notifica contable) / ❌ No → trading/venta directa (lotto resta in Trading);
+3) Implementazione: finishImport ora cattura newStockIds dei nuovi stock aggiunti (delta tra stock.length pre/post addStkItem), salva in window._nxNewImportStockIds, mostra dialog tramite nuova fn nxAskAdquisicionPropia. Nuova fn handler window.nxAskAdquisicionAnswer(choice): chiude modal Import + reset campi, se choice='yes' invoca window.nxOwnEntryWorkflow(ids) con setTimeout 250ms (per dare tempo al modal Import di chiudersi e evitare doppio backdrop), se choice='no' mostra toast "📥 Lote en Stock Trading. Conviértelo a OWN cuando quieras";
+4) Backward compatibility: se workflow OWN non disponibile (typeof nxOwnEntryWorkflow !== 'function') o newStockIds vuoti, finishImport esegue il flusso classico (chiusura immediata modal + render). X click sul modal dialog = scelta No (closeDynModal + flusso normale);
+5) PRESERVA: tutto v10.10.20 (kW→CV converter), v10.10.19 (matching Provider robusto), v10.10.18 (provider autocomplete + dialog dinamico), v10.10.17 (cancelar traslado), v10.10.16 (bulk trasladar), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.20 — DMCAR GROUP CRM | 2026-05-03 | Memo #3 P1 — kW→CV converter + nominale comerciale:
 1) Bug osservato sin da v10.09 (utente Memo #3): l'AI estrae spesso "Audi A3 Sportback S line TFSI 110 kW S tronic" dal PDF tedesco/europeo. Per il mercato spagnolo questa è denominazione COMMERCIALMENTE inutile: un commerciale parla di "35 TFSI 150 CV". Impatto economico diretto: 35 TFSI vs 30 TFSI vs 40 TFSI = differenze di migliaia € sul prezzo di listino;
 2) FIX architetturale: converter automatico kW→CV applicato post-AI parse in iHandleResp (subito prima del MOTOR UNVERIFIED flag, così la conversione può rendere "verificate" version che prima erano flaggate). Auto-conversione SILENZIOSA come da spec utente (no dialog, no flag UI);
@@ -4572,6 +4578,135 @@ window.nxExtractVin=function(text){
   // VIN standard: 17 caratteri, esclude I, O, Q
   var match=s.match(/\b[A-HJ-NPR-Z0-9]{17}\b/);
   return match?match[0]:null;
+};
+
+// ============================================================================
+// v10.10.20: kW→CV converter + nominale comerciale — global scope (per usabilità console + iHandleResp)
+// Memo #3 utente P1: AI estrae spesso "110 kW" dal PDF tedesco, ma in Spagna i motori
+// termici si vendono in CV. Senza conversione "Audi A3 110 kW" è denominazione inutile
+// commerciale (impatto: 30 TFSI vs 35 TFSI vs 40 TFSI = differenze migliaia €).
+// Regole: BEV preserva kW, termici → CV con nominale TFSI/TDI (solo VAG)
+// ============================================================================
+window.NX_KW_TO_NOMINAL={
+  // Audi/VW/Seat/Skoda — Diesel TDI
+  tdi:{
+    66:{nominal:'25 TDI',cv:90},
+    70:{nominal:'25 TDI',cv:95},
+    75:{nominal:'30 TDI',cv:102},
+    85:{nominal:'30 TDI',cv:116},
+    90:{nominal:'30 TDI',cv:122},
+    96:{nominal:'35 TDI',cv:130},
+    100:{nominal:'35 TDI',cv:136},
+    110:{nominal:'35 TDI',cv:150},
+    120:{nominal:'40 TDI',cv:163},
+    125:{nominal:'40 TDI',cv:170},
+    130:{nominal:'40 TDI',cv:177},
+    140:{nominal:'40 TDI',cv:190},
+    150:{nominal:'45 TDI',cv:204},
+    170:{nominal:'45 TDI',cv:231},
+    180:{nominal:'50 TDI',cv:245},
+    210:{nominal:'50 TDI',cv:286}
+  },
+  // Audi/VW/Seat/Skoda — Gasolina TFSI/TSI
+  tfsi:{
+    70:{nominal:'25 TFSI',cv:95},
+    81:{nominal:'30 TFSI',cv:110},
+    85:{nominal:'30 TFSI',cv:115},
+    90:{nominal:'30 TFSI',cv:122},
+    96:{nominal:'35 TFSI',cv:130},
+    110:{nominal:'35 TFSI',cv:150},
+    125:{nominal:'40 TFSI',cv:170},
+    140:{nominal:'40 TFSI',cv:190},
+    150:{nominal:'45 TFSI',cv:204},
+    180:{nominal:'45 TFSI',cv:245},
+    195:{nominal:'50 TFSI',cv:265},
+    210:{nominal:'55 TFSI',cv:286},
+    245:{nominal:'55 TFSI',cv:333},
+    270:{nominal:'S/RS',cv:367}
+  }
+};
+
+window.nxDetectMotorType=function(text){
+  var t=(text||'').toUpperCase();
+  if(/\b(BEV|FULL[\s-]?ELECTRIC|EV\b|E-TRON|ELECTRIC[\s-]?ONLY|100\s*%\s*ELECTRIC)/i.test(t))return 'bev';
+  if(/\b(PHEV|PLUG[\s-]?IN[\s-]?HYBRID|E-?HYBRID|HYBRID\s*PLUG)/i.test(t))return 'phev';
+  if(/\b(MHEV|MILD[\s-]?HYBRID|HEV\b|HYBRID|HIBRIDO|IBRIDO)/i.test(t))return 'hybrid';
+  if(/\b(TDI|HDI|DCI|CDI|JTD|JTDM|MULTIJET|BLUEHDI|D\d+|DIESEL|CRDI|BLUETEC|TDCI)\b/i.test(t))return 'diesel';
+  if(/\b(TFSI|TSI|TGDI|GASOLINA|BENZINA|ECOBOOST|MULTIAIR|TWINAIR|FIRE|VTEC|VVT|BOOSTERJET|MPI|FSI)\b/i.test(t))return 'gasolina';
+  return 'unknown';
+};
+
+window.nxDetectBrandFamily=function(brand){
+  var b=String(brand||'').toUpperCase();
+  if(/^(AUDI|VOLKSWAGEN|VW|SEAT|CUPRA|SKODA)/.test(b))return 'vag';
+  return 'other';
+};
+
+window.nxFindNominal=function(map,kw){
+  if(!map[kw]&&typeof map==='object'){
+    var keys=Object.keys(map).map(function(k){return parseInt(k,10);}).filter(function(k){return !isNaN(k);});
+    var best=null,bestDiff=99;
+    keys.forEach(function(k){
+      var d=Math.abs(k-kw);
+      if(d<bestDiff&&d<=5){best=k;bestDiff=d;}
+    });
+    if(best!==null)return map[best];
+    return null;
+  }
+  return map[kw]||null;
+};
+
+window.nxConvertKwToCV=function(versionStr,brand,equipStr){
+  if(!versionStr)return {version:versionStr,changed:false};
+  var fullText=(versionStr||'')+' '+(equipStr||'');
+  var motorType=window.nxDetectMotorType(fullText);
+  // BEV → preserva kW (regola hard)
+  if(motorType==='bev')return {version:versionStr,changed:false,reason:'BEV preserva kW'};
+  // Cerca pattern "NNN kW" (con varianti spazio/case)
+  var kwRe=/(\d{2,3})\s*kW\b/i;
+  var match=versionStr.match(kwRe);
+  if(!match)return {version:versionStr,changed:false};
+  var kw=parseInt(match[1],10);
+  if(isNaN(kw)||kw<30||kw>500)return {version:versionStr,changed:false};
+  // Per VAG (Audi/VW/Seat/Skoda) cerca nominal nella mappa TFSI/TDI
+  var family=window.nxDetectBrandFamily(brand);
+  var nominal='',cv=Math.round(kw*1.36);
+  if(family==='vag'){
+    var mapKey=motorType==='diesel'?'tdi':(motorType==='gasolina'||motorType==='hybrid'||motorType==='phev'?'tfsi':null);
+    if(mapKey&&window.NX_KW_TO_NOMINAL[mapKey]){
+      var found=window.nxFindNominal(window.NX_KW_TO_NOMINAL[mapKey],kw);
+      if(found){nominal=found.nominal;cv=found.cv;}
+    }
+  }
+  // Costruisci replacement: "35 TFSI 150 CV" o solo "150 CV"
+  var replacement=nominal?(nominal+' '+cv+' CV'):(cv+' CV');
+  // Rimuovi nominali generici DUPLICATI prima del kW match per evitare "TFSI 35 TFSI"
+  var newVersion=versionStr;
+  if(nominal){
+    var nominalKeyword=nominal.replace(/^\d+\s*/,'').trim();
+    var aliases=[nominalKeyword];
+    if(/^TFSI$/i.test(nominalKeyword))aliases.push('TSI');
+    if(/^TSI$/i.test(nominalKeyword))aliases.push('TFSI');
+    aliases.forEach(function(kwAlias){
+      var fullRe=new RegExp('(?:^|\\s)\\d{1,2}\\s+('+kwAlias+')\\s+(?=\\d+\\s*kW\\b)','i');
+      newVersion=newVersion.replace(fullRe,' ');
+      var orphRe=new RegExp('(?:^|\\s)('+kwAlias+')\\s+(?=\\d+\\s*kW\\b)','i');
+      newVersion=newVersion.replace(orphRe,' ');
+    });
+    newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
+  }
+  newVersion=newVersion.replace(kwRe,replacement);
+  newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
+  return {
+    version:newVersion,
+    changed:true,
+    original:versionStr,
+    kw:kw,
+    cv:cv,
+    nominal:nominal,
+    motorType:motorType,
+    family:family
+  };
 };
 
 // v10.10.5: VIN helpers robusti (spec utente formale)
@@ -10231,177 +10366,11 @@ function iHandleResp(resp,manualSup){
       }
     });
 
-    // ========================================================================
-    // v10.10.20: kW→CV CONVERTER + nominale comerciale (35 TFSI / 30 TDI / etc.)
-    // ========================================================================
-    // Spec utente Memo #3: l'AI estrae spesso "110 kW" dal PDF tedesco/europeo, ma in Spagna
-    // i motori termici si vendono in CV (caballos). Senza conversione, "Audi A3 110 kW" è
-    // un'identificazione COMMERCIALMENTE inutile (un commerciale parla di "35 TFSI 150 CV").
-    // Impatto: 35 TFSI vs 30 TFSI vs 40 TFSI → migliaia € differenza nel prezzo di listino.
-    //
-    // Regole:
-    //  • Termici (Diesel/Gasolina/Híbrido/PHEV) → kW si converte in CV (1 kW ≈ 1.36 CV)
-    //  • Elettrici (BEV) → kW si preserva (convenzione internazionale)
-    //  • Nominali TFSI/TDI/HDi/etc. → si aggiungono se la mappa kW→nominal è nota
-    //
-    // Sostituzione SILENZIOSA come da scelta utente.
-    // ========================================================================
-
-    // Mappa kW → {nominal, cv} per ogni famiglia motore (basata su listini reali Audi/VW/Seat/Skoda)
-    // Nota: i nominali sono brand-specific. La mappa è bilingue (TFSI/TDI per VAG; estendibile).
-    window.NX_KW_TO_NOMINAL={
-      // Audi/VW/Seat/Skoda — Diesel TDI
-      tdi:{
-        66:{nominal:'25 TDI',cv:90},
-        70:{nominal:'25 TDI',cv:95},
-        75:{nominal:'30 TDI',cv:102},
-        85:{nominal:'30 TDI',cv:116},
-        90:{nominal:'30 TDI',cv:122},
-        96:{nominal:'35 TDI',cv:130},
-        100:{nominal:'35 TDI',cv:136},
-        110:{nominal:'35 TDI',cv:150},
-        120:{nominal:'40 TDI',cv:163},
-        125:{nominal:'40 TDI',cv:170},
-        130:{nominal:'40 TDI',cv:177},
-        140:{nominal:'40 TDI',cv:190},
-        150:{nominal:'45 TDI',cv:204},
-        170:{nominal:'45 TDI',cv:231},
-        180:{nominal:'50 TDI',cv:245},
-        210:{nominal:'50 TDI',cv:286}
-      },
-      // Audi/VW/Seat/Skoda — Gasolina TFSI/TSI
-      tfsi:{
-        70:{nominal:'25 TFSI',cv:95},
-        81:{nominal:'30 TFSI',cv:110},
-        85:{nominal:'30 TFSI',cv:115},
-        90:{nominal:'30 TFSI',cv:122},
-        96:{nominal:'35 TFSI',cv:130},
-        110:{nominal:'35 TFSI',cv:150},
-        125:{nominal:'40 TFSI',cv:170},
-        140:{nominal:'40 TFSI',cv:190},
-        150:{nominal:'45 TFSI',cv:204},
-        180:{nominal:'45 TFSI',cv:245},
-        195:{nominal:'50 TFSI',cv:265},
-        210:{nominal:'55 TFSI',cv:286},
-        245:{nominal:'55 TFSI',cv:333},
-        270:{nominal:'S/RS',cv:367}
-      }
-    };
-
-    // Helper: rileva il tipo motore dalla version+equip combinati
-    function nxDetectMotorType(text){
-      var t=(text||'').toUpperCase();
-      // BEV — preserva kW
-      if(/\b(BEV|FULL[\s-]?ELECTRIC|EV\b|E-TRON|ELECTRIC[\s-]?ONLY|100\s*%\s*ELECTRIC)/i.test(t))return 'bev';
-      // PHEV / Hybrid plug-in — termico ibrido, usa CV
-      if(/\b(PHEV|PLUG[\s-]?IN[\s-]?HYBRID|E-?HYBRID|HYBRID\s*PLUG)/i.test(t))return 'phev';
-      // Mild Hybrid — termico, usa CV
-      if(/\b(MHEV|MILD[\s-]?HYBRID|HEV\b|HYBRID|HIBRIDO|IBRIDO)/i.test(t))return 'hybrid';
-      // Diesel
-      if(/\b(TDI|HDI|DCI|CDI|JTD|JTDM|MULTIJET|BLUEHDI|D\d+|DIESEL|CRDI|BLUETEC|TDCI)\b/i.test(t))return 'diesel';
-      // Gasolina
-      if(/\b(TFSI|TSI|TGDI|GASOLINA|BENZINA|ECOBOOST|MULTIAIR|TWINAIR|FIRE|VTEC|VVT|BOOSTERJET|MPI|FSI)\b/i.test(t))return 'gasolina';
-      return 'unknown';
-    }
-
-    // Helper: detecta brand family (vag = audi/vw/seat/skoda → usa TFSI/TDI)
-    function nxDetectBrandFamily(brand){
-      var b=String(brand||'').toUpperCase();
-      if(/^(AUDI|VOLKSWAGEN|VW|SEAT|CUPRA|SKODA)/.test(b))return 'vag';
-      // BMW: usa "118i 140 CV" (numero modello + CV) — diverso schema
-      // Mercedes: "A 200" + CV
-      // Per ora trattiamo solo VAG. Altri: solo conversione kW→CV senza nominale.
-      return 'other';
-    }
-
-    // Helper: trova nominale più vicino nella mappa data (entro ±5 kW)
-    function nxFindNominal(map,kw){
-      if(!map[kw]&&typeof map==='object'){
-        // Cerca la chiave più vicina entro ±5 kW
-        var keys=Object.keys(map).map(function(k){return parseInt(k,10);}).filter(function(k){return !isNaN(k);});
-        var best=null,bestDiff=99;
-        keys.forEach(function(k){
-          var d=Math.abs(k-kw);
-          if(d<bestDiff&&d<=5){best=k;bestDiff=d;}
-        });
-        if(best!==null)return map[best];
-        return null;
-      }
-      return map[kw]||null;
-    }
-
-    // Helper: applica conversione su singola version string
-    function nxConvertKwToCV(versionStr,brand,equipStr){
-      if(!versionStr)return {version:versionStr,changed:false};
-      var fullText=(versionStr||'')+' '+(equipStr||'');
-      var motorType=nxDetectMotorType(fullText);
-      // BEV → preserva kW (regola hard)
-      if(motorType==='bev')return {version:versionStr,changed:false,reason:'BEV preserva kW'};
-      // Cerca pattern "NNN kW" (con varianti spazio/case)
-      var kwRe=/(\d{2,3})\s*kW\b/i;
-      var match=versionStr.match(kwRe);
-      if(!match)return {version:versionStr,changed:false};
-      var kw=parseInt(match[1],10);
-      if(isNaN(kw)||kw<30||kw>500)return {version:versionStr,changed:false};
-      // Per VAG (Audi/VW/Seat/Skoda) cerca nominal nella mappa TFSI/TDI
-      var family=nxDetectBrandFamily(brand);
-      var nominal='',cv=Math.round(kw*1.36);
-      if(family==='vag'){
-        var mapKey=motorType==='diesel'?'tdi':(motorType==='gasolina'||motorType==='hybrid'||motorType==='phev'?'tfsi':null);
-        if(mapKey&&window.NX_KW_TO_NOMINAL[mapKey]){
-          var found=nxFindNominal(window.NX_KW_TO_NOMINAL[mapKey],kw);
-          if(found){nominal=found.nominal;cv=found.cv;}
-        }
-      }
-      // Costruisci replacement: "35 TFSI 150 CV" o solo "150 CV"
-      var replacement=nominal?(nominal+' '+cv+' CV'):(cv+' CV');
-      // v10.10.20: rimuovi nominali generici DUPLICATI prima del kW match per evitare "TFSI 35 TFSI"
-      // 4 casi da gestire:
-      // (a) "TFSI 110 kW" (nominale orfano senza numero)
-      // (b) "30 TDI 100 kW" (nominale completo NN TDI ma kW non coerente con NN)
-      // (c) "TSI 81 kW" → "30 TFSI" (TSI e TFSI sono alias VAG)
-      // (d) "1.0 TCe 67 kW" → ok, nessun nominale generato (brand non-VAG)
-      var newVersion=versionStr;
-      if(nominal){
-        // Estrai keyword del nominale ("TFSI" da "35 TFSI")
-        var nominalKeyword=nominal.replace(/^\d+\s*/,'').trim(); // es. "TFSI", "TDI"
-        // Aliases per VAG: TFSI ↔ TSI, TDI tra Audi/VW/Seat/Skoda è uguale
-        var aliases=[nominalKeyword];
-        if(/^TFSI$/i.test(nominalKeyword))aliases.push('TSI'); // alias VW/Seat/Skoda
-        if(/^TSI$/i.test(nominalKeyword))aliases.push('TFSI');
-        // Pattern combinato: rimuovi sia "NN KW " (completo) sia "KW " (orfano) prima del kW
-        aliases.forEach(function(kw){
-          // (b) "NN TFSI" completo (numero davanti) — rimuovilo perché kW sostituisce
-          var fullRe=new RegExp('(?:^|\\s)\\d{1,2}\\s+('+kw+')\\s+(?=\\d+\\s*kW\\b)','i');
-          newVersion=newVersion.replace(fullRe,' ');
-          // (a)(c) "TFSI" orfano (no numero davanti)
-          var orphRe=new RegExp('(?:^|\\s)('+kw+')\\s+(?=\\d+\\s*kW\\b)','i');
-          newVersion=newVersion.replace(orphRe,' ');
-        });
-        // Normalizza spazi
-        newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
-      }
-      newVersion=newVersion.replace(kwRe,replacement);
-      newVersion=newVersion.replace(/\s{2,}/g,' ').trim();
-      return {
-        version:newVersion,
-        changed:true,
-        original:versionStr,
-        kw:kw,
-        cv:cv,
-        nominal:nominal,
-        motorType:motorType,
-        family:family
-      };
-    }
-    // Esponi globalmente per debug/test
-    window.nxConvertKwToCV=nxConvertKwToCV;
-    window.nxDetectMotorType=nxDetectMotorType;
-
-    // Applica a tutti i veicoli del lotto
+    // v10.10.20: kW→CV CONVERTER (funzioni a global scope, definite vicino a nxValidateVIN)
+    // Applica conversione + propaga a sub-vehicles del lotto
     vehicles.forEach(function(v){
       var equipText=(v.equip||'')+' '+(v.brand||'')+' '+(v.model||'');
-      var res=nxConvertKwToCV(v.version,v.brand,equipText);
+      var res=window.nxConvertKwToCV(v.version,v.brand,equipText);
       if(res.changed){
         v._versionOriginal=res.original;
         v.version=res.version;
@@ -10410,7 +10379,6 @@ function iHandleResp(resp,manualSup){
         v._powerCv=res.cv;
         if(res.nominal)v._powerNominal=res.nominal;
         console.log('[v10.10.20] kW\u2192CV: "'+res.original+'" \u2192 "'+res.version+'" ('+res.kw+'kW='+res.cv+'CV, '+res.motorType+(res.nominal?', '+res.nominal:'')+')');
-        // Propaga a sub-vehicles (stessa version del lotto)
         if(v.vehicles&&v.vehicles.length){
           v.vehicles.forEach(function(u){
             if(!u.version||u.version===res.original){
@@ -10420,8 +10388,7 @@ function iHandleResp(resp,manualSup){
               u._powerCv=res.cv;
               if(res.nominal)u._powerNominal=res.nominal;
             }else{
-              // Sub-vehicle ha version diversa → applica conversione anche su questa
-              var resU=nxConvertKwToCV(u.version,v.brand,equipText);
+              var resU=window.nxConvertKwToCV(u.version,v.brand,equipText);
               if(resU.changed){
                 u._versionOriginal=resU.original;
                 u.version=resU.version;
@@ -10435,6 +10402,7 @@ function iHandleResp(resp,manualSup){
         }
       }
     });
+
 
     // v10.10.5: MOTOR UNVERIFIED FLAG — se la version non contiene keyword esplicite di
     // motorizzazione (Diesel/Benzina/TDI/TSI/HEV/PHEV/EV/BEV/Hybrid/etc.), segnala "da verificare"
@@ -10680,6 +10648,7 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
   function finishImport(){
     var added=0;
     var providerLinked=0;
+    var stockCountBefore=(window.stock||[]).length;
     vehicles.forEach(function(v){
       addStkItem(v);
       added++;
@@ -10687,6 +10656,11 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
       var lastAdded=stock[stock.length-1];
       if(lastAdded&&lastAdded.providerId)providerLinked++;
     });
+    // v10.10.21: cattura ID dei nuovi stock per workflow OWN
+    var newStockIds=[];
+    for(var i=stockCountBefore;i<window.stock.length;i++){
+      if(window.stock[i]&&window.stock[i].id)newStockIds.push(window.stock[i].id);
+    }
     window._currentImportBatch=null;
     SS('lastImportBatch',batchId);
     var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
@@ -10694,13 +10668,100 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
     if(providerLinked>0)statusMsg+=' \u2022 '+providerLinked+' enlazado'+(providerLinked!==1?'s':'')+' al Proveedor';
     n('i-status').textContent=statusMsg;
     if(typeof showToast==='function')showToast('\u2713 '+statusMsg,5000);
+    // v10.10.21: dialog "¿Es adquisición para empresa propia?" PRIMA di chiudere il modal Import
+    // Se Sì → chiude Import + apre Step1 workflow OWN (con i nuovi stockIds)
+    // Se No → flusso normale (lotto resta in Trading)
     setTimeout(function(){
-      closeM('m-import');
-      n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
-      n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
-      updBF();fStk();renderDash();
+      if(newStockIds.length>0&&typeof window.nxOwnEntryWorkflow==='function'){
+        nxAskAdquisicionPropia(newStockIds,vehicles);
+      }else{
+        // Nessun nuovo stock o workflow non disponibile → flusso classico
+        closeM('m-import');
+        n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+        n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+        updBF();fStk();renderDash();
+      }
     },1800);
   }
+
+  // v10.10.21: dialog post-import "¿Es adquisición para empresa propia?"
+  // Mostra riepilogo veicoli importati + 2 bottoni grandi (Sí workflow OWN / No solo Trading)
+  function nxAskAdquisicionPropia(newStockIds,importedVehicles){
+    var totalVeh=0;
+    importedVehicles.forEach(function(v){
+      totalVeh+=Array.isArray(v.vehicles)&&v.vehicles.length?v.vehicles.length:(parseInt(v.units,10)||1);
+    });
+    // Sintesi per dialog: brand + model + count
+    var summary={};
+    importedVehicles.forEach(function(v){
+      var key=(v.brand||'?')+' '+(v.model||'?');
+      var cnt=Array.isArray(v.vehicles)&&v.vehicles.length?v.vehicles.length:(parseInt(v.units,10)||1);
+      summary[key]=(summary[key]||0)+cnt;
+    });
+    var summaryLines=Object.keys(summary).map(function(k){
+      return '<div style="font-size:12px;color:var(--t1);font-weight:500">\u2022 '+esc(k)+' <strong style="color:var(--acc)">x'+summary[k]+'</strong></div>';
+    }).join('');
+    // Provider info (se uniforme)
+    var suppliers={};
+    importedVehicles.forEach(function(v){if(v.supplier)suppliers[v.supplier]=true;});
+    var supList=Object.keys(suppliers);
+    var supInfo=supList.length===1?'<div style="font-size:11px;color:var(--t3);margin-top:6px">Proveedor: <strong>'+esc(supList[0])+'</strong></div>':(supList.length>1?'<div style="font-size:11px;color:var(--t3);margin-top:6px">Proveedores: '+supList.length+'</div>':'');
+    var html='<div id="m-ask-own" class="modal-bg" style="display:flex" onclick="event.target===this&&nxCloseDynModal(\'m-ask-own\')">'
+      +'<div class="modal" style="max-width:520px">'
+        +'<div class="mh"><span>\u{1F4E5} \u00bfEs adquisici\u00f3n para empresa propia?</span><button class="mx" onclick="nxAskAdquisicionAnswer(\'no\')">&times;</button></div>'
+        +'<div class="mb">'
+          +'<div style="background:rgba(99,102,241,.06);border-left:3px solid #6366f1;padding:12px;border-radius:6px;margin-bottom:14px">'
+            +'<div style="font-size:11px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:6px">Acabas de importar</div>'
+            +summaryLines
+            +'<div style="font-size:11px;color:var(--t3);margin-top:6px">Total: <strong>'+totalVeh+' veh\u00edculo'+(totalVeh!==1?'s':'')+'</strong></div>'
+            +supInfo
+          +'</div>'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">\u00bfEsta importaci\u00f3n corresponde a una <strong>adquisici\u00f3n para una empresa propia</strong> (DMCAR / INNOQUEST / IMPEX / MERCEDES) \u2014 con proforma o factura del proveedor?</p>'
+          +'<div class="fc g8" style="flex-direction:column;align-items:stretch">'
+            +'<button class="btn bp" style="padding:14px 16px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;text-align:left" onclick="nxAskAdquisicionAnswer(\'yes\')">'
+              +'<div style="font-weight:700;font-size:14px">\u2705 S\u00ed, es adquisici\u00f3n propia</div>'
+              +'<div style="font-size:11px;opacity:.85;margin-top:4px;font-weight:400">Continuar con el workflow OWN \u2192 selectar empresa, vincular proforma/factura, generar notificaci\u00f3n contable</div>'
+            +'</button>'
+            +'<button class="btn bg" style="padding:14px 16px;text-align:left" onclick="nxAskAdquisicionAnswer(\'no\')">'
+              +'<div style="font-weight:700;font-size:14px">\u274C No, es para trading / venta directa</div>'
+              +'<div style="font-size:11px;opacity:.85;margin-top:4px;font-weight:400">El lote queda en <strong>Stock Trading</strong> (sin propiedad). Podr\u00e1s convertirlo a OWN m\u00e1s tarde manualmente</div>'
+            +'</button>'
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+    var old=document.getElementById('m-ask-own');if(old)old.parentNode.removeChild(old);
+    document.body.insertAdjacentHTML('beforeend',html);
+    // Salva newStockIds e vehicles per uso in nxAskAdquisicionAnswer
+    window._nxNewImportStockIds=newStockIds;
+  }
+
+  // v10.10.21: handler scelta dialog adquisicion
+  window.nxAskAdquisicionAnswer=function(choice){
+    nxCloseDynModal('m-ask-own');
+    // Chiudi modal Import + reset
+    closeM('m-import');
+    var nFn=function(id){return document.getElementById(id);};
+    if(nFn('i-text'))nFn('i-text').value='';
+    if(nFn('i-fn'))nFn('i-fn').textContent='';
+    if(nFn('i-status'))nFn('i-status').textContent='';
+    if(nFn('i-file'))nFn('i-file').value='';
+    if(typeof imgB64!=='undefined')imgB64=null;
+    if(nFn('i-img-prev'))nFn('i-img-prev').innerHTML='';
+    if(typeof updBF==='function')updBF();
+    if(typeof fStk==='function')fStk();
+    if(typeof renderDash==='function')renderDash();
+    if(choice==='yes'){
+      // Avvia workflow OWN con i nuovi stockIds
+      var ids=window._nxNewImportStockIds||[];
+      if(ids.length>0&&typeof window.nxOwnEntryWorkflow==='function'){
+        // Piccolo delay per dare tempo al modal Import di chiudersi
+        setTimeout(function(){window.nxOwnEntryWorkflow(ids);},250);
+      }
+    }else{
+      if(typeof showToast==='function')showToast('\u{1F4E5} Lote en Stock Trading. Conv\u00e9rtelo a OWN cuando quieras.',5000);
+    }
+    window._nxNewImportStockIds=null;
+  };
 
   function checkBuyAndFinish(){
     function hasBuy(p){return p&&String(p).trim()!==''&&String(p).trim()!=='--'&&String(p).trim()!=='0';}
