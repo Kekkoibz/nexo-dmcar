@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<!-- NEXO v10.10.23 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX critico v10.10.21 dialog non appare:
-ROOT CAUSE: finishImport calcolava stockCountBefore=(window.stock||[]).length e itera su window.stock, ma addStkItem fa stock.push(item) sulla variabile LOCALE `stock` (var stock=LS('stock',[]) dichiarata a riga 6689 dentro l'IIFE wrapper). window.stock è una reference SEPARATA aggiornata solo da SS('stock',stock) che fa anche window.stock=stock; ma il timing del delta calcolato su window.stock prima/dopo addStkItem dava sempre 0 newStockIds → fallback a flusso classico → dialog v10.10.21 mai mostrato → utente vedeva lotto direttamente in Trading.
-FIX: cambiato window.stock → stock (locale) nel calcolo stockCountBefore + iterazione delta. Aggiunto console.log diagnostico [v10.10.23] finishImport: stockBefore=X stockAfter=Y newIds=N per debug futuri.
-PRESERVA: v10.10.22 (status STOCK PROPIO + banner refresh), v10.10.21 (dialog adquisición), v10.10.20 (kW→CV converter), v10.10.19 (matching Provider robusto). -->
+<!-- NEXO v10.10.23 — DMCAR GROUP CRM | 2026-05-03 | DOUBLE HOTFIX critico v10.10.21+v10.10.22:
+ROOT CAUSE 1 (delta stockIds vuoto): finishImport calcolava stockCountBefore=(window.stock||[]).length e itera su window.stock, ma addStkItem fa stock.push(item) sulla variabile LOCALE `stock` (var stock=LS('stock',[]) dichiarata a riga 6689 dentro l'IIFE wrapper). window.stock è una reference SEPARATA aggiornata solo da SS('stock',stock); il timing del delta calcolato su window.stock prima/dopo addStkItem dava sempre 0 newStockIds → fallback a flusso classico → dialog v10.10.21 mai mostrato.
+FIX 1: cambiato window.stock → stock (locale) nel calcolo stockCountBefore + iterazione delta. Aggiunto console.log [v10.10.23] finishImport: stockBefore=X stockAfter=Y newIds=N.
+ROOT CAUSE 2 (workflow no-op dopo "Sí"): cliccando "Sí, es adquisición propia", nxAskAdquisicionAnswer chiamava nxOwnEntryWorkflow(ids) che internamente filtra `stockIds.indexOf(s.id)>=0 && s.ownership==='propio' && !s._ownNotified`. Ma i nuovi stock importati avevano s.ownership='live_trading' (default settato da addStkItem riga 9358) → stocksToProcess.length=0 → return silenzioso → nessun Step1, nessun cambio status.
+FIX 2: in nxAskAdquisicionAnswer prima del setTimeout, itera stock e setta s.ownership='propio' + s._ownNotified=false sui nuovi stock (matching per id) + SS('stock',stock). Aggiunto try/catch su nxCloseDynModal/closeM/reset UI/nxOwnEntryWorkflow per evitare fallimenti silenziosi e log diagnostici dettagliati.
+PRESERVA: v10.10.22 (status STOCK PROPIO + banner refresh in delItem/delSel), v10.10.21 (dialog adquisición), v10.10.20 (kW→CV converter), v10.10.19 (matching Provider robusto). -->
 <!-- NEXO v10.10.22 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 3 bug report tecnico utente (Foto 17/18/19):
 1) Bug 3 CRITICO (Foto 19) — dopo aver completato workflow OWN (Step1 selettore impresa + Step2a/2b proforma), il lotto restava in tab Trading invece di passare a OWN. ROOT CAUSE: nxOwnEntryStep2aChoice + nxOwnEntryStep2bChoice settavano _ownNotified, _ownPendingProforma, ownerCompany ma OMETTEVANO s.status='STOCK PROPIO' (chiave del filtro tab OWN vs Trading nel render fStk). Workflow completava silenziosamente senza spostare il lotto. FIX: aggiunta s.status='STOCK PROPIO' in tutte e 3 le branch (Step2a 'now', Step2a 'later', Step2b sì/no) + chiamata fStk() post-SS('stock') per refresh immediato della tabella;
 2) Bug 1 (Foto 17) — dopo eliminazione lotto, banner "1 vehículo sel." restava visibile sopra la tabella vuota. ROOT CAUSE: delItem e delSel chiamavano stkSel.delete() ma NON updSelBar() che gestisce display:none|block del #sel-bar e il testo #sel-cnt; inoltre stkVehSel (sub-vehicles selezionati) non veniva pulito quando si eliminava il lotto padre. FIX in delItem + delSel: (a) prima di rimuovere il lotto da stock, pulisce stkVehSel di tutti i sub-vehicles del lotto (chiave 'sid_vi'), (b) dopo SS+fStk chiama updSelBar() per nascondere il banner;
@@ -10774,25 +10776,54 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
 
   // v10.10.21: handler scelta dialog adquisicion
   window.nxAskAdquisicionAnswer=function(choice){
-    nxCloseDynModal('m-ask-own');
-    // Chiudi modal Import + reset
-    closeM('m-import');
-    var nFn=function(id){return document.getElementById(id);};
-    if(nFn('i-text'))nFn('i-text').value='';
-    if(nFn('i-fn'))nFn('i-fn').textContent='';
-    if(nFn('i-status'))nFn('i-status').textContent='';
-    if(nFn('i-file'))nFn('i-file').value='';
-    if(typeof imgB64!=='undefined')imgB64=null;
-    if(nFn('i-img-prev'))nFn('i-img-prev').innerHTML='';
-    if(typeof updBF==='function')updBF();
-    if(typeof fStk==='function')fStk();
-    if(typeof renderDash==='function')renderDash();
+    console.log('[v10.10.23] nxAskAdquisicionAnswer called with choice:',choice);
+    try{
+      nxCloseDynModal('m-ask-own');
+      console.log('[v10.10.23] m-ask-own closed OK');
+    }catch(e){console.warn('[v10.10.23] error closing m-ask-own:',e);}
+    try{
+      closeM('m-import');
+      console.log('[v10.10.23] m-import closed OK');
+    }catch(e){console.warn('[v10.10.23] error closing m-import:',e);}
+    try{
+      var nFn=function(id){return document.getElementById(id);};
+      if(nFn('i-text'))nFn('i-text').value='';
+      if(nFn('i-fn'))nFn('i-fn').textContent='';
+      if(nFn('i-status'))nFn('i-status').textContent='';
+      if(nFn('i-file'))nFn('i-file').value='';
+      try{if(typeof imgB64!=='undefined')imgB64=null;}catch(eImg){/* imgB64 non in scope */}
+      if(nFn('i-img-prev'))nFn('i-img-prev').innerHTML='';
+      if(typeof updBF==='function')updBF();
+      if(typeof fStk==='function')fStk();
+      if(typeof renderDash==='function')renderDash();
+    }catch(e){console.warn('[v10.10.23] error reset Import UI:',e);}
+    var ids=window._nxNewImportStockIds||[];
+    console.log('[v10.10.23] choice='+choice+' ids='+ids.length+' workflow available:'+(typeof window.nxOwnEntryWorkflow==='function'));
     if(choice==='yes'){
       // Avvia workflow OWN con i nuovi stockIds
-      var ids=window._nxNewImportStockIds||[];
       if(ids.length>0&&typeof window.nxOwnEntryWorkflow==='function'){
+        // v10.10.23 fix: setta ownership='propio' sui nuovi stock PRIMA del workflow,
+        // altrimenti nxOwnEntryWorkflow filtra via gli stock con ownership='live_trading' (default addStkItem)
+        var changedCount=0;
+        (stock||[]).forEach(function(s){
+          if(ids.indexOf(s.id)>=0){
+            s.ownership='propio';
+            // resetta _ownNotified nel caso fosse già stato settato
+            s._ownNotified=false;
+            changedCount++;
+          }
+        });
+        if(changedCount>0)SS('stock',stock);
+        console.log('[v10.10.23] Set ownership=propio on '+changedCount+' stocks before workflow');
         // Piccolo delay per dare tempo al modal Import di chiudersi
-        setTimeout(function(){window.nxOwnEntryWorkflow(ids);},250);
+        console.log('[v10.10.23] Launching nxOwnEntryWorkflow with ids:',ids);
+        setTimeout(function(){
+          try{window.nxOwnEntryWorkflow(ids);}
+          catch(e){console.error('[v10.10.23] nxOwnEntryWorkflow crash:',e);if(typeof showToast==='function')showToast('\u26a0\ufe0f Error workflow OWN: '+e.message,5000);}
+        },250);
+      }else{
+        console.warn('[v10.10.23] choice=yes ma workflow non disponibile o ids vuoti');
+        if(typeof showToast==='function')showToast('\u26a0\ufe0f Workflow OWN no disponible',4000);
       }
     }else{
       if(typeof showToast==='function')showToast('\u{1F4E5} Lote en Stock Trading. Conv\u00e9rtelo a OWN cuando quieras.',5000);
