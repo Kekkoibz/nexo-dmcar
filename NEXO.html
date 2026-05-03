@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.02 — DMCAR GROUP CRM | 2026-05-02 | Vista Contable schema rivisitato (basato su Excel cliente "STOCK_MASTER_2026"): 5 blocchi semantici + OWN + RESULTADO = 40 colonne tutte in spagnolo. Struttura: OWN(1 badge separato pre-REGISTRO) + REGISTRO(3: Fecha/Nº Expediente/VIN) + COMPRA(7: Proveedor/Nº PF/Nº FT separate/Fecha Pago/Imp. Compra/Fecha Depósito/Imp. Depósito) + VENTA(7: Cliente/Vendedor DMCAR/Nº PF Venta/Fecha Saldo/Imp. Venta/Fecha Dep. Cli./Imp. Dep. Cli.) + TRANSPORTE(8 incluye Ganancia T. editable) + VEHÍCULO(8 incluye Ganancia V. editable) + BROKER(5: Comisión/Broker/Nº FT/Fecha Pago/Imp. Pagada) + RESULTADO(1: Ganancia Final editable). Tooltip su ogni colonna con descrizione completa. Edit inline: dblclick su Ganancia → input numerico, persistito in nxManualGanancias{rowKey:{field:value}}. Override manuale ✏ icon viola se presente. Auto-calc: GV=Venta-Compra-Daños, GT=ImpVenta-ImpCompraT, GF=GV+GT-BrokerPagado. KPI labels aggiornati: Ganancia Vehículo, Ganancia Transporte, Ganancia Final. Export XLSX/CSV nuovi headers spagnoli + colonna OWN come prima. -->
+<!-- NEXO v10.03 — DMCAR GROUP CRM | 2026-05-03 | Provider Multi-Contatto + Auto-fill Datos Fiscales: 1) Estensione campo Rol con valori Comercial/Contabilidad/Logistica + Director/Stock manager/Otro (Comercial gestione vendita, Contabilidad emissione PF/FT, Logistica spedizioni); 2) Sezione "Staff de la empresa" multi-contatto 1→N (un'impresa può avere N contatti con ruoli diversi); ogni contatto ha name/email/role/phone; UI con add/remove + collapse + counter; persistenza in provider.staff[]; 3) Auto-fill Datos Fiscales da campi anagrafica: blur su pv-co (Empresa) → riempie pv-legal-name (Razón Social) se vuoto; blur su pv-country (País) → riempie pv-fiscal-country; auto-deduce Persona Jurídica da suffix nel nome (S.A./S.L./GmbH/SARL/Ltd/SRL/SpA/BV/AG); visual hint sfondo verde sui campi auto-rellenati; 4) Email recipient selector (nxProvSelectEmailRecipients): dato un provider mostra modal con tutti i contatti raggruppati per ruolo (Comercial/Contabilidad/Logistica), checkbox "Todo el staff" + checkbox singoli, badge PRINCIPAL su contatto primario, callback restituisce emails[] + names[] selezionati; pronto per uso da Vista Contable / Stock Vivo. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -2489,10 +2489,22 @@ En que te puedo ayudar hoy?</div></div>
       </div>
     </div>
     <div class="g2 mb10"><div><label>Nombre contacto</label><input type="text" id="pv-name" placeholder="Hans Müller"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
-    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option>Comercial</option><option>Director</option><option>Stock manager</option><option>Otro</option></select></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
     <div class="g2 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div></div>
+    <!-- v10.03: STAFF MULTI-CONTATTO (Comercial / Contabilidad / Log\u00edstica) -->
+    <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
+      <div onclick="provToggleStaff()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
+        <div style="font-size:12px;font-weight:600;color:var(--t2)">&#128101; Staff de la empresa <span style="font-size:10px;color:var(--t3);font-weight:400" id="pv-staff-count">(0 contactos)</span></div>
+        <span id="pv-staff-toggle-icon" style="font-size:10px;color:var(--t3);transition:transform .2s">&#9660;</span>
+      </div>
+      <div id="pv-staff-collapse" style="display:none;padding:0 12px 12px 12px">
+        <div style="font-size:11px;color:var(--t3);margin-bottom:8px;line-height:1.4">A\u00f1ade contactos adicionales con sus roles. Cada contacto puede tener su propio email, tel\u00e9fono y rol espec\u00edfico (Comercial, Contabilidad, Log\u00edstica). Al enviar emails podr\u00e1s elegir a qui\u00e9n notificar.</div>
+        <div id="pv-staff-list" style="margin-bottom:10px"></div>
+        <button type="button" class="btn bs" onclick="provAddStaffContact()" style="width:100%;font-size:11px">+ A\u00f1adir contacto staff</button>
+      </div>
+    </div>
     <!-- DATOS FISCALES (collassabile, chiusa di default) -->
     <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
       <div onclick="provToggleFiscal()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
@@ -13255,6 +13267,11 @@ function openNewProvider(){
   if(n('pp-text'))n('pp-text').value='';
   if(n('pp-status-msg'))n('pp-status-msg').textContent='';
   renderProvLabelsDisplay();
+  // v10.03: reset staff list + autofill listeners
+  if(typeof provLoadStaffToUI==='function')provLoadStaffToUI([]);
+  if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display='none';
+  if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML='\u25BC';
+  if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
   openM('m-provider');
 }
 
@@ -13301,6 +13318,12 @@ function editProvider(id){
   if(n('pp-text'))n('pp-text').value='';
   if(n('pp-status-msg'))n('pp-status-msg').textContent='';
   renderProvLabelsDisplay();
+  // v10.03: load staff + bind autofill
+  if(typeof provLoadStaffToUI==='function')provLoadStaffToUI(p.staff||[]);
+  var hasStaff=(p.staff||[]).length>0;
+  if(n('pv-staff-collapse'))n('pv-staff-collapse').style.display=hasStaff?'block':'none';
+  if(n('pv-staff-toggle-icon'))n('pv-staff-toggle-icon').innerHTML=hasStaff?'\u25B2':'\u25BC';
+  if(typeof provBindAutofillListeners==='function')provBindAutofillListeners();
   openM('m-provider');
 }
 
@@ -13336,6 +13359,8 @@ function saveProv(){
     fiscalCountry:n('pv-fiscal-country')?n('pv-fiscal-country').value.trim():'',
     sdi:n('pv-sdi')?n('pv-sdi').value.trim().toUpperCase():'',
     pec:n('pv-pec')?n('pv-pec').value.trim().toLowerCase():'',
+    // v10.03: Staff multi-contatto (1\u2192N relazione impresa\u2192contatti)
+    staff:provCollectStaffFromUI(),
     updatedAt:new Date().toISOString()
   };
   if(editId){
@@ -13360,6 +13385,121 @@ function saveProv(){
   if(typeof showToast==='function')showToast('\u2713 Provider guardado');
 }
 
+// v10.03: Staff multi-contatto helpers
+window.provToggleStaff=function(){
+  var c=document.getElementById('pv-staff-collapse');
+  var ic=document.getElementById('pv-staff-toggle-icon');
+  if(!c)return;
+  var hidden=c.style.display==='none';
+  c.style.display=hidden?'block':'none';
+  if(ic)ic.style.transform=hidden?'rotate(180deg)':'rotate(0deg)';
+};
+
+window.provAddStaffContact=function(data){
+  data=data||{};
+  var list=document.getElementById('pv-staff-list');
+  if(!list)return;
+  var row=document.createElement('div');
+  row.className='nx-staff-row';
+  row.style.cssText='border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px;background:var(--bg1);position:relative';
+  row.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr 130px;gap:6px;margin-bottom:6px">'
+    +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Nombre contacto</label><input type="text" class="staff-name" value="'+esc(data.name||'')+'" placeholder="Pedro Garc\u00eda" style="font-size:11px;padding:5px"></div>'
+    +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Email</label><input type="email" class="staff-email" value="'+esc(data.email||'')+'" placeholder="pedro@empresa.com" style="font-size:11px;padding:5px"></div>'
+    +'<div><label style="font-size:9px;color:var(--t3);margin-bottom:2px;display:block">Rol</label><select class="staff-role" style="font-size:11px;padding:5px">'
+      +'<option value="Comercial"'+(data.role==='Comercial'?' selected':'')+'>Comercial</option>'
+      +'<option value="Contabilidad"'+(data.role==='Contabilidad'?' selected':'')+'>Contabilidad</option>'
+      +'<option value="Logistica"'+(data.role==='Logistica'?' selected':'')+'>Log\u00edstica</option>'
+      +'<option value="Director"'+(data.role==='Director'?' selected':'')+'>Director</option>'
+      +'<option value="Otro"'+(data.role==='Otro'?' selected':'')+'>Otro</option>'
+    +'</select></div>'
+  +'</div>'
+  +'<div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:end">'
+    +'<input type="text" class="staff-phone" value="'+esc(data.phone||'')+'" placeholder="Tel\u00e9fono" style="font-size:11px;padding:5px">'
+    +'<button type="button" class="btn bd" onclick="this.closest(\'.nx-staff-row\').remove();provUpdateStaffCount()" style="font-size:11px;padding:4px 10px" title="Eliminar contacto">&#128465;</button>'
+  +'</div>';
+  list.appendChild(row);
+  provUpdateStaffCount();
+};
+
+window.provUpdateStaffCount=function(){
+  var list=document.getElementById('pv-staff-list');
+  var cnt=document.getElementById('pv-staff-count');
+  if(list&&cnt){
+    var n=list.children.length;
+    cnt.textContent='('+n+' contacto'+(n!==1?'s':'')+')';
+  }
+};
+
+window.provCollectStaffFromUI=function(){
+  var list=document.getElementById('pv-staff-list');
+  if(!list)return [];
+  var staff=[];
+  Array.prototype.forEach.call(list.children,function(row){
+    var name=(row.querySelector('.staff-name')||{}).value||'';
+    var email=(row.querySelector('.staff-email')||{}).value||'';
+    var role=(row.querySelector('.staff-role')||{}).value||'';
+    var phone=(row.querySelector('.staff-phone')||{}).value||'';
+    name=name.trim();email=email.trim().toLowerCase();phone=phone.trim();
+    if(name||email||phone){
+      staff.push({name:name,email:email,role:role,phone:phone,id:'st_'+Date.now()+'_'+Math.random().toString(36).slice(2,5)});
+    }
+  });
+  return staff;
+};
+
+window.provLoadStaffToUI=function(staffArr){
+  var list=document.getElementById('pv-staff-list');
+  if(!list)return;
+  list.innerHTML='';
+  (staffArr||[]).forEach(function(s){provAddStaffContact(s);});
+  provUpdateStaffCount();
+};
+
+// v10.03: Auto-fill datos fiscales da campi anagrafica
+window.provSyncFiscalFromAnagrafica=function(){
+  var legalNameEl=document.getElementById('pv-legal-name');
+  var fiscalCountryEl=document.getElementById('pv-fiscal-country');
+  var coEl=document.getElementById('pv-co');
+  var countryEl=document.getElementById('pv-country');
+  if(legalNameEl&&!legalNameEl.value.trim()&&coEl&&coEl.value.trim()){
+    legalNameEl.value=coEl.value.trim();
+    legalNameEl.style.background='rgba(34,197,94,.06)';
+    legalNameEl.title='Auto-rellenado desde Empresa';
+  }
+  if(fiscalCountryEl&&!fiscalCountryEl.value.trim()&&countryEl&&countryEl.value.trim()){
+    fiscalCountryEl.value=countryEl.value.trim();
+    fiscalCountryEl.style.background='rgba(34,197,94,.06)';
+    fiscalCountryEl.title='Auto-rellenado desde Pa\u00eds';
+  }
+  // Auto-deduce legalForm da suffix nel nome
+  var legalFormEl=document.getElementById('pv-legal-form');
+  if(legalFormEl&&!legalFormEl.value&&coEl){
+    var co=String(coEl.value).toUpperCase();
+    var detected='';
+    if(/\bS\.?\s*A\.?\b/.test(co))detected='S.A.';
+    else if(/\bS\.?\s*L\.?\b/.test(co))detected='S.L.';
+    else if(/\bGMBH\b/.test(co))detected='GmbH';
+    else if(/\bSARL\b/.test(co))detected='SARL';
+    else if(/\bSAS\b/.test(co))detected='SAS';
+    else if(/\bLTD\b/.test(co))detected='Ltd';
+    else if(/\bS\.?R\.?L\.?\b/.test(co))detected='S.r.l.';
+    else if(/\bSPA\b/.test(co)||/\bS\.?P\.?A\.?\b/.test(co))detected='S.p.A.';
+    else if(/\bBV\b/.test(co))detected='BV';
+    else if(/\bAG\b/.test(co))detected='AG';
+    if(detected){
+      var opts=legalFormEl.options;
+      for(var i=0;i<opts.length;i++){if(opts[i].value===detected){legalFormEl.value=detected;legalFormEl.style.background='rgba(34,197,94,.06)';break;}}
+    }
+  }
+};
+
+window.provBindAutofillListeners=function(){
+  var coEl=document.getElementById('pv-co');
+  var countryEl=document.getElementById('pv-country');
+  if(coEl&&!coEl._fillBound){coEl.addEventListener('blur',provSyncFiscalFromAnagrafica);coEl._fillBound=true;}
+  if(countryEl&&!countryEl._fillBound){countryEl.addEventListener('blur',provSyncFiscalFromAnagrafica);countryEl._fillBound=true;}
+};
+
 function delProvider(id){
   var p=providers.find(function(x){return String(x.id)===String(id);});
   if(!p)return;
@@ -13369,6 +13509,96 @@ function delProvider(id){
   renderProv();
   if(typeof showToast==='function')showToast('\u2713 Provider eliminado');
 }
+
+// v10.03: Email recipient selector — dato un provider, mostra dialog selezione destinatari per ruolo
+// Uso: nxProvSelectEmailRecipients(provider, function(emails, names){ ... })
+window.nxProvSelectEmailRecipients=function(provider,callback){
+  if(!provider){alert('Provider no v\u00e1lido');return;}
+  var contacts=[];
+  // Aggiungi contatto principale
+  if(provider.email){
+    contacts.push({
+      name:provider.name||provider.company||'Contacto principal',
+      email:provider.email,
+      role:provider.role||'Principal',
+      isPrimary:true
+    });
+  }
+  // Aggiungi staff
+  (provider.staff||[]).forEach(function(s){
+    if(s.email)contacts.push({name:s.name||'(sin nombre)',email:s.email,role:s.role||'Otro',isPrimary:false});
+  });
+  if(contacts.length===0){
+    alert('Este provider no tiene contactos con email. A\u00f1ade contactos en la ficha del provider.');
+    return;
+  }
+  // Raggruppa per ruolo
+  var byRole={};
+  contacts.forEach(function(c){if(!byRole[c.role])byRole[c.role]=[];byRole[c.role].push(c);});
+  // Build modal
+  var html='<div id="m-email-recipients" class="modal-bg" style="display:flex" onclick="if(event.target===this)closeM(\'m-email-recipients\')">'
+    +'<div class="modal" style="max-width:520px">'
+      +'<div class="mh"><span>\u2709 Seleccionar destinatarios &mdash; '+esc(provider.company||provider.name)+'</span><button class="mx" onclick="closeM(\'m-email-recipients\')">&times;</button></div>'
+      +'<div class="mb">'
+        +'<p style="font-size:12px;color:var(--t2);margin-bottom:14px">\u00bfA qui\u00e9n quieres enviar el email? Selecciona uno o varios destinatarios:</p>'
+        +'<div style="background:var(--bg2);border-radius:6px;padding:10px;margin-bottom:12px;border-left:3px solid var(--acc)">'
+          +'<label style="display:flex;align-items:center;cursor:pointer;font-size:12px;font-weight:600">'
+            +'<input type="checkbox" id="email-rec-all" onchange="nxToggleAllRecipients(this)" style="margin-right:8px;transform:scale(1.2)">'
+            +'\u2728 Todo el staff ('+contacts.length+' contacto'+(contacts.length!==1?'s':'')+')'
+          +'</label>'
+        +'</div>'
+        +'<div id="email-rec-list" style="max-height:380px;overflow-y:auto">';
+  // Render groups
+  Object.keys(byRole).forEach(function(role){
+    var roleColor={'Comercial':'#2563eb','Contabilidad':'#92400e','Logistica':'#0369a1','Director':'#7c3aed','Principal':'#16a34a','Otro':'#64748b'}[role]||'#64748b';
+    html+='<div style="margin-bottom:10px">'
+      +'<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:'+roleColor+';font-weight:700;margin-bottom:6px">'+esc(role)+'</div>';
+    byRole[role].forEach(function(c){
+      var cId='rec_'+btoa(c.email).replace(/[^a-z0-9]/gi,'').slice(0,12);
+      html+='<label class="email-rec-item" style="display:flex;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;background:var(--bg1);transition:background .15s" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'var(--bg1)\'">'
+        +'<input type="checkbox" class="email-rec-cb" data-email="'+esc(c.email)+'" data-name="'+esc(c.name)+'" id="'+cId+'" style="margin-right:10px;transform:scale(1.1)">'
+        +'<div style="flex:1">'
+          +'<div style="font-size:12px;font-weight:600;color:var(--t1)">'+esc(c.name)+(c.isPrimary?' <span style="font-size:9px;background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px;margin-left:6px">PRINCIPAL</span>':'')+'</div>'
+          +'<div style="font-size:11px;color:var(--t3);font-family:monospace">'+esc(c.email)+'</div>'
+        +'</div>'
+      +'</label>';
+    });
+    html+='</div>';
+  });
+  html+='</div>'
+        +'<div class="fc g8" style="justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'
+          +'<button class="btn bg" onclick="closeM(\'m-email-recipients\')">Cancelar</button>'
+          +'<button class="btn bp" onclick="nxConfirmEmailRecipients()" style="background:var(--acc);color:#fff;border:none">\u2713 Confirmar selecci\u00f3n</button>'
+        +'</div>'
+      +'</div>'
+    +'</div></div>';
+  var old=document.getElementById('m-email-recipients');if(old)old.parentNode.removeChild(old);
+  document.body.insertAdjacentHTML('beforeend',html);
+  window._nxEmailRecCb=callback;
+};
+
+window.nxToggleAllRecipients=function(masterCb){
+  var cbs=document.querySelectorAll('.email-rec-cb');
+  Array.prototype.forEach.call(cbs,function(cb){cb.checked=masterCb.checked;});
+};
+
+window.nxConfirmEmailRecipients=function(){
+  var cbs=document.querySelectorAll('.email-rec-cb:checked');
+  var emails=[],names=[];
+  Array.prototype.forEach.call(cbs,function(cb){
+    emails.push(cb.getAttribute('data-email'));
+    names.push(cb.getAttribute('data-name'));
+  });
+  if(emails.length===0){
+    alert('Selecciona al menos un destinatario');
+    return;
+  }
+  closeM('m-email-recipients');
+  if(typeof window._nxEmailRecCb==='function'){
+    window._nxEmailRecCb(emails,names);
+    window._nxEmailRecCb=null;
+  }
+};
 
 // -- WHATSAPP / TEL FROM MODAL --------------------------------------------
 function providerOpenWhatsAppBusiness(){
