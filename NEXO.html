@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.6 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX cleanup notifiche orfane: 1) Bug riportato: dopo eliminazione manuale degli stock dal Stock Vivo, le notifiche purchase in Nexo Numbers e i task collegati in Tareas restano "fantasma" perché legati a stockIds non più esistenti; 2) FIX: nuova fn window.nxCleanOrphanPurchaseNotifs() che scansiona nxNumbersNotifications, identifica quelle con type='purchase' i cui stockIds[] sono TUTTI eliminati, e le rimuove + cascade-elimina i task con purchaseNotifId match (preserva task generici senza link e notifiche non-purchase tipo 'sale'); 3) Hook in 4 punti: init() dopo migrazione (cleanup automatico al primo load), delItem (eliminazione singola), delSel (bulk delete), numbersUpdateBadges (cleanup ad ogni refresh badge); 4) Aggiorna anche badge sidebar Tareas + renderTareas dopo cleanup; 5) Smoke test 1/1 PASS: 2 notifiche orfane + task linkati eliminate, notifica sale e task generico preservati. PRESERVA: tutto v10.10.5 (parser PDF, VIN salvage, provider picker, autocomplete città), v10.10.4 (Ubicación/Pick-Up), v10.10.3 (notifica purchase architecture). -->
 <!-- NEXO v10.10.5 — DMCAR GROUP CRM | 2026-05-03 | Parser PDF + Anagrafica reuse + Trasladar UX:
 
 PARTE A — Parser PDF affidabile (P1):
@@ -9088,6 +9089,10 @@ function delSel(){
   stock=stock.filter(function(i){return!stkSel.has(i.id);});
   stkSel.clear();
   SS('stock',stock);updBF();fStk();renderDash();
+  // v10.10.6: cascade cleanup notifiche purchase orfane
+  if(typeof window.nxCleanOrphanPurchaseNotifs==='function')window.nxCleanOrphanPurchaseNotifs();
+  if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
 }
 
 function saveEquip(){
@@ -9362,6 +9367,10 @@ function delItem(id){
   if(!confirm('Eliminar esta entrada?')) return;
   stock=stock.filter(function(i){return i.id!=id;});
   stkSel.delete(id);SS('stock',stock);updBF();fStk();renderDash();
+  // v10.10.6: cascade cleanup notifiche purchase orfane
+  if(typeof window.nxCleanOrphanPurchaseNotifs==='function')window.nxCleanOrphanPurchaseNotifs();
+  if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+  if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
 }
 
 function exportStock(){
@@ -22545,6 +22554,19 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }
     }
   }catch(eMig){console.warn('[v10.10.4] Migrazione Ubicación errore:',eMig);}
+  // v10.10.6: cleanup notifiche purchase orfane all'init (utile dopo eliminazione stock)
+  // Si esegue dopo aver caricato stock + nxNumbersNotifications da localStorage.
+  setTimeout(function(){
+    try{
+      if(typeof window.nxCleanOrphanPurchaseNotifs==='function'){
+        var rem=window.nxCleanOrphanPurchaseNotifs();
+        if(rem>0){
+          if(typeof numbersUpdateBadges==='function')numbersUpdateBadges();
+          if(typeof numbersRenderDashboard==='function')numbersRenderDashboard();
+        }
+      }
+    }catch(eO){console.warn('[v10.10.6] Cleanup orfane init error:',eO);}
+  },500);
   updateApiStatus();
   renderDash();
   renderOfertaHist();
@@ -22716,7 +22738,49 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
   
   // Aggiorna badge sidebar + counter tab
+  // v10.10.6: Cleanup notifiche purchase orfane (stockIds tutti eliminati)
+  // Triggera anche cleanup task Tareas collegati per coerenza badge
+  window.nxCleanOrphanPurchaseNotifs=function(){
+    if(!Array.isArray(window.nxNumbersNotifications))return 0;
+    var stockIdSet={};
+    (window.stock||[]).forEach(function(s){stockIdSet[String(s.id)]=true;});
+    var removedNotifs=[];
+    window.nxNumbersNotifications=window.nxNumbersNotifications.filter(function(n){
+      if(!n||n.type!=='purchase')return true; // tieni notifiche non-purchase
+      if(!Array.isArray(n.stockIds)||n.stockIds.length===0)return true; // tieni se nessuna referenza
+      // Tieni solo se ALMENO uno degli stockIds esiste ancora
+      var hasLiving=n.stockIds.some(function(sid){return stockIdSet[String(sid)];});
+      if(!hasLiving)removedNotifs.push(n.id);
+      return hasLiving;
+    });
+    if(removedNotifs.length>0){
+      SS('nxNumbersNotifications',window.nxNumbersNotifications);
+      // Cascade cleanup task Tareas collegati
+      if(Array.isArray(window.tasks)){
+        var beforeTasks=window.tasks.length;
+        window.tasks=window.tasks.filter(function(t){
+          return !t||!t.purchaseNotifId||removedNotifs.indexOf(t.purchaseNotifId)<0;
+        });
+        if(window.tasks.length!==beforeTasks){
+          SS('tasks',window.tasks);
+          if(typeof renderTareas==='function')renderTareas();
+          // Aggiorna badge sidebar Tareas
+          var tareasBadge=document.getElementById('cnt-tareas');
+          if(tareasBadge){
+            var pendingT=window.tasks.filter(function(t){return t&&t.status==='pending';}).length;
+            tareasBadge.textContent=pendingT;
+            tareasBadge.style.display=pendingT>0?'':'none';
+          }
+        }
+      }
+      console.log('[v10.10.6] Cleanup notifiche orfane: '+removedNotifs.length+' rimosse');
+    }
+    return removedNotifs.length;
+  };
+
   window.numbersUpdateBadges=function(){
+    // v10.10.6: cleanup orfane PRIMA di calcolare il count
+    if(typeof window.nxCleanOrphanPurchaseNotifs==='function')window.nxCleanOrphanPurchaseNotifs();
     var pendingCount=(nxNumbersNotifications||[]).filter(function(n){return n&&n.status==='pending';}).length;
     var pfCount=(nxProformas||[]).length;
     var faCount=(nxInvoices||[]).length;
