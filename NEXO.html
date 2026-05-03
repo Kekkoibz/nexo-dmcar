@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.12 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX migrazione Provider fallback per stocks pre-esistenti:
+1) Bug riportato (Foto utente): in v10.10.11 il fallback Provider funzionava nella riga master ("Barcelona (ES)") ma i sub-vehicles del drilldown mostravano tutti "--" / "----" perché il fix v10.10.11 si applicava solo ai NUOVI import (in iHandleResp), non agli stocks già presenti in localStorage. ROOT CAUSE: nessuna migrazione idempotente all'init che applichi il fallback Provider a stocks esistenti + propagazione master→sub. FIX: nuovo blocco di migrazione all'init() che (a) per ogni stock con supplier compilato, cerca provider canonical via nxNormalizeSupplierName, (b) costruisce provLocation dal provider, (c) sostituisce master.pickup/ubicacion/location SE vuoto/blacklist, (d) PROPAGA master→sub-vehicles per ogni v in s.vehicles[] usando il valore master come ground truth. Console log "[v10.10.12] Migrazione Provider fallback: N stock corretti". Smoke test 1/1 PASS (master Praga→Ripollet+Barcelona, 2 sub vuoti ereditano, 1 sub Madrid preservato perché non blacklist);
+2) Aggiunta seconda linea di difesa: render runtime drilldown (riga 7407-7408) ora fa fallback al MASTER se il sub-vehicle è vuoto: vUbic=v.ubicacion||...||item.ubicacion||item.pickup||'--'. UX: l'utente non vede mai "--" nel drilldown se il master ha il dato. Doppia ridondanza per garantire coerenza visiva (Principio 2 utente);
+3) PRESERVA: tutto v10.10.11 (provider fallback in iHandleResp + badge MOT? sul Modelo + dialog ¿Buscar en web? Sí/No), v10.10.10 (3 anomalie report fix), v10.10.9 (defense-in-depth accDocs), v10.10.4 (modello Ubicación/Pick-Up). -->
 <!-- NEXO v10.10.11 — DMCAR GROUP CRM | 2026-05-03 | HOTFIX 2 problematiche report tecnico utente:
 1) Problematica 1 utente — Ubicación errata "Praha/Praga" (Foto 14): il PDF non specifica luogo di carico, l'AI deduceva erroneamente la sede del CLIENTE (DMCAR SRO = Praga). Spec utente: Ubicación deve ereditare dal Provider, non dal cliente. ROOT CAUSE: nessuna logica di fallback Provider → Stock. FIX: nuovo blocco post-AI parse in iHandleResp che (a) cerca provider canonical via nxNormalizeSupplierName, (b) costruisce provLocation = city + (province) + country (escluso España default), (c) sostituisce v.pickup + v.vehicles[].pickup + v.vehicles[].ubicacion + v.vehicles[].location SE: vuoto/placeholder OPPURE matcha blacklist /^(praha|prague|praga)/i (sedi clienti note, estendibile). Preserva _pickupOriginal per audit + flag _pickupFromProvider/_ubicacionFromProvider. Smoke test 8/8 PASS;
 2) Problematica 2 utente — badge ⚠ MOT? sul Modelo invece di Versión + dialog Sí/No (Foto 14): l'utente vuole che il badge incompleto stia nella colonna semanticamente corretta (Modelo è chiave indicizzazione, non Versión) e che apra un dialog "¿Buscar en web?" invece di partire direttamente con AI lookup. FIX: (a) badge spostato dalla cella Versión alla cella Modelo (class motor-verify-btn → modelo-verify-btn, label "⚠" semplificato), (b) nuova fn nxAskModeloLookup mostra modal con 2 opzioni grandi: "✅ Sí, buscar con AI" (avvia nxLookupVehicleVersion esistente) / "❌ No, ya está bien" (rimuove flag _motorUnverified + setta _motorUserAcknowledged + toast "Aviso eliminado — gestionado manualmente"); preserva tutta la logica AI lookup esistente di v10.10.5;
@@ -7404,8 +7408,9 @@ function renderStkTbl(){
         // v10.10.4: doppia cella Ubicación / Pick-Up
         // - Ubicación: storico, doppio click apre Trasladar dialog
         // - Pick-Up: effettivo, colore stato: 🟡 in_transit, 🟢 arrived, default
-        var vUbic=v.ubicacion||v.location||v.pickup||'--';
-        var vPickup=v.pickup||v.location||v.ubicacion||'--';
+        // v10.10.12: fallback runtime al master se sub-vehicle è vuoto (UX: non mostrare mai "--" se il master ha il dato)
+        var vUbic=v.ubicacion||v.location||v.pickup||item.ubicacion||item.location||item.pickup||'--';
+        var vPickup=v.pickup||v.location||v.ubicacion||item.pickup||item.location||item.ubicacion||'--';
         var vTransfer=v.transferStatus||'';
         var pickupBg='transparent';
         var pickupColor='var(--t3)';
@@ -22636,6 +22641,55 @@ document.querySelectorAll('.ovl').forEach(function(el){
       }
     }
   }catch(eMig){console.warn('[v10.10.4] Migrazione Ubicación errore:',eMig);}
+
+  // v10.10.12: Migrazione idempotente fallback Provider per stocks pre-esistenti
+  // Spec utente: Ubicación deve ereditare dal Provider quando vuoto o blacklist (Praga = sede cliente)
+  // Inoltre: propaga il valore del MASTER ai sub-vehicles se hanno valori vuoti
+  try{
+    if(Array.isArray(window.stock)&&Array.isArray(window.providers)&&window.providers.length>0){
+      var blacklist=/^(praha|prague|praga)/i;
+      var fixed=0;
+      function shouldUseProvider(currentVal){
+        if(!currentVal||currentVal==='--'||currentVal==='----'||String(currentVal).trim()==='')return true;
+        if(blacklist.test(String(currentVal).trim()))return true;
+        return false;
+      }
+      window.stock.forEach(function(s){
+        if(!s.supplier)return;
+        // Trova provider canonico
+        var supNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(s.supplier):String(s.supplier).toUpperCase().trim();
+        var prov=null;
+        window.providers.forEach(function(p){
+          var pNm=p.company||p.name||'';
+          var pNorm=(typeof window.nxNormalizeSupplierName==='function')?window.nxNormalizeSupplierName(pNm):pNm.toUpperCase().trim();
+          if(pNorm===supNorm)prov=p;
+        });
+        if(prov&&prov.city){
+          var provCity=(prov.city||'').trim();
+          var provProv=(prov.province||'').trim();
+          var provCountry=(prov.country||prov.fiscalCountry||'').trim();
+          var provLocation=provCity+(provProv&&provProv!==provCity?' ('+provProv+')':'')+(provCountry&&provCountry!=='Espa\u00f1a'?' '+provCountry:'');
+          // Master: applica solo se vuoto/blacklist
+          if(shouldUseProvider(s.pickup)){s._pickupOriginal=s.pickup||'';s.pickup=provLocation;s._pickupFromProvider=true;fixed++;}
+          if(shouldUseProvider(s.ubicacion)){s._ubicacionOriginal=s.ubicacion||'';s.ubicacion=provLocation;s._ubicacionFromProvider=true;}
+          if(shouldUseProvider(s.location)){s.location=provLocation;}
+        }
+        // Propaga ai sub-vehicles se vuoti — usa il MASTER come ground truth
+        if(Array.isArray(s.vehicles)){
+          s.vehicles.forEach(function(v){
+            if(shouldUseProvider(v.pickup)&&s.pickup){v.pickup=s.pickup;v._pickupFromMaster=true;}
+            if(shouldUseProvider(v.ubicacion)&&s.ubicacion){v.ubicacion=s.ubicacion;v._ubicacionFromMaster=true;}
+            if(shouldUseProvider(v.location)&&s.location){v.location=s.location;}
+          });
+        }
+      });
+      if(fixed>0){
+        console.log('[v10.10.12] Migrazione Provider fallback: '+fixed+' stock corretti (Praga/vuoto -> provider city)');
+        SS('stock',window.stock);
+      }
+    }
+  }catch(eMig2){console.warn('[v10.10.12] Migrazione Provider errore:',eMig2);}
+
   // v10.10.6: cleanup notifiche purchase orfane all'init (utile dopo eliminazione stock)
   // Si esegue dopo aver caricato stock + nxNumbersNotifications da localStorage.
   setTimeout(function(){
