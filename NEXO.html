@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.05 — DMCAR GROUP CRM | 2026-05-03 | Datos Bancarios provider: 1) Nuova sezione "Datos Bancarios" collassabile nel modal Provider con campi: Titular cuenta, Banco/Entidad, IBAN, BIC/SWIFT, Moneda (EUR/USD/GBP/CHF/JPY/CNY/Otra), País cuenta, Notas bancarias; 2) Modalità "Pegar info" - parser provParseBankText estrae IBAN (regex paese+22-32 alfanum), BIC (8 o 11 char), Banco (keyword Banco/Banca/Bank/Caixa + lista banche), Titular (keyword Titular/Holder/Beneficiario), Moneda (EUR/USD/GBP/CHF/JPY + simboli €$£¥), País (auto-deduzione da prefisso IBAN); 3) Modalità Upload certificato bancario (PDF/JPG/PNG) con AI extraction via Claude Haiku 4.5 (provAIExtractBankCert) - prompt strutturato JSON, base64 inline come document/image; 4) Validazione IBAN con algoritmo MOD-97 (ISO 13616) - nxValidateIBAN controlla lunghezza per paese (ES:24, IT:27, DE:22, FR:27...), checksum mod 97 = 1; UI feedback verde/rosso accanto al campo IBAN; 5) Persistenza certificato come allegato base64 nel provider.bankCertificate (name, type, size, base64, uploadedAt); 6) UI: bottoni Ver (download), ✖ (remove); 7) Auto-apertura sezione Datos Bancarios se provider ha già IBAN/banca/certificato; 8) saveProv aggiornato con bankTitular/Name/Iban/Bic/Currency/Country/Notes/Certificate. -->
+<!-- NEXO v10.06 — DMCAR GROUP CRM | 2026-05-03 | Stock Vivo Import enhancements: 1) AUTO-LINK Provider: addStkItem ora fa lookup providers[] per nome (case-insensitive + normalizzato + strip suffissi legali S.A./S.L./GmbH/etc) e collega via providerId + popola supplier con nome canonico (evita duplicati visivi tipo "Superwagen SA" vs "SUPERWAGEN, S.A"); helper nxFindProviderByName con match esatto + parziale; auto-popola providerEmail; 2) STATO INIZIALE 'libre' di default per ogni nuovo veicolo importato (era undefined → ora consistente); ownership default 'live_trading' (Trading); commercialUpdatedAt timestamp; 3) DUPLICATE VIN CHECK pre-import: scansiona stock esistente + intra-batch, classifica veicoli in {ok, duplicateVins[], missingVin[]}; 4) IMPORT REPORT DIALOG con stats KPI (Listos/VIN duplic./Sin VIN), lista duplicati con badge [ya en stock] vs [duplicado en este lote], 3 azioni: Cancelar / Importar todo / Saltar duplicados; 5) Status post-import esteso: mostra anche "X enlazado al Proveedor"; toast 5s con summary completo. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -8958,6 +8958,20 @@ function addStkItem(item){
   item.pickup=item.pickup||'--';
   item.status=item.status||'Stock';
   item.vehicles=item.vehicles||[];
+  // v10.06: Stato iniziale 'Libre' di default
+  item.commercialStatus=item.commercialStatus||'libre';
+  item.commercialUpdatedAt=item.commercialUpdatedAt||new Date().toISOString();
+  item.ownership=item.ownership||'live_trading';
+  // v10.06: Auto-link al Provider esistente per nome (case-insensitive + normalizzato)
+  if(item.supplier&&item.supplier!=='Desconocido'&&!item.providerId){
+    var matchedProv=nxFindProviderByName(item.supplier);
+    if(matchedProv){
+      item.providerId=matchedProv.id;
+      // Normalizza il nome al canonico per evitare duplicati visivi
+      item.supplier=matchedProv.company||matchedProv.name||item.supplier;
+      item.providerEmail=matchedProv.email||'';
+    }
+  }
   // v9.35: normaliza versión (Used/New/Km 0 + reglas kW/CV)
   if(item.version&&typeof nxNormalizeVersion==='function'){
     var ctx=((item.brand||'')+' '+(item.model||'')+' '+item.version);
@@ -8968,6 +8982,30 @@ function addStkItem(item){
   stock.push(item);stkCnt++;
   SS('stock',stock);SS('stkCnt',stkCnt);
 }
+
+// v10.06: Helper per trovare Provider per nome con normalizzazione (evita duplicati)
+window.nxFindProviderByName=function(name){
+  if(!name||!Array.isArray(window.providers))return null;
+  var norm=function(s){return String(s||'').toLowerCase().replace(/[\s\.,;]+/g,'').replace(/[\u00e0\u00e1\u00e2]/g,'a').replace(/[\u00e8\u00e9\u00ea]/g,'e').replace(/[\u00ec\u00ed\u00ee]/g,'i').replace(/[\u00f2\u00f3\u00f4]/g,'o').replace(/[\u00f9\u00fa\u00fb]/g,'u').replace(/[\u00f1]/g,'n').replace(/[^a-z0-9]/g,'');};
+  // Strip suffissi legali per matching robusto
+  var stripLegal=function(s){return String(s||'').replace(/\b(s\.?\s*a|s\.?\s*l|s\.?\s*r\.?\s*l|s\.?\s*p\.?\s*a|gmbh|ag|sas|sarl|ltd|llc|bv|aktiengesellschaft|sociedad|limitada|s\.?n\.?c)\.?\b/gi,'').trim();};
+  var target=norm(stripLegal(name));
+  if(!target)return null;
+  // Match esatto
+  for(var i=0;i<providers.length;i++){
+    var p=providers[i];
+    if(norm(stripLegal(p.company||''))===target)return p;
+    if(norm(stripLegal(p.name||''))===target)return p;
+    if(norm(stripLegal(p.legalName||''))===target)return p;
+  }
+  // Match parziale (nome contiene)
+  for(var j=0;j<providers.length;j++){
+    var p2=providers[j];
+    var c=norm(stripLegal(p2.company||p2.name||''));
+    if(c&&target&&(c.indexOf(target)>=0||target.indexOf(c)>=0)&&Math.abs(c.length-target.length)<=4)return p2;
+  }
+  return null;
+};
 
 function undoLastImport(){
   var batch=LS('lastImportBatch','');
@@ -9591,52 +9629,191 @@ function iHandleResp(resp,manualSup){
     // Set supplier
     vehicles.forEach(function(v){v.supplier=manualSup||v.supplier||detSup;});
 
-    // Check which vehicles are missing pickup
-    function hasPickup(p){return p&&p!=='--'&&String(p).trim()!=='';}
-    var missing=vehicles.filter(function(v){return !hasPickup(v.pickup);});
-
-    function finishImport(){
-      var added=0;
-      vehicles.forEach(function(v){addStkItem(v);added++;});
-      window._currentImportBatch=null;
-      SS('lastImportBatch',batchId);  // remember for undo
-      var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
-      n('i-status').textContent=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
-      setTimeout(function(){
-        closeM('m-import');
-        n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
-        n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
-        updBF();fStk();renderDash();
-      },1500);
-    }
-
-    // v9.62: validation chain — pickup poi buy poi finishImport
-    function checkBuyAndFinish(){
-      // Verifica veicoli senza buy (precio compra)
-      function hasBuy(p){return p&&String(p).trim()!==''&&String(p).trim()!=='--'&&String(p).trim()!=='0';}
-      var missingBuy=vehicles.filter(function(v){return !hasBuy(v.buy);});
-      if(missingBuy.length===0){
-        finishImport();
-      }else{
-        askBuyForVehicles(missingBuy,vehicles,finishImport,function(){
-          // onCancel: annulla import completamente — nessun veicolo aggiunto
-          window._currentImportBatch=null;
-          if(typeof showToast==='function')showToast('\u2716 Importaci\u00f3n cancelada');
-        });
+    // v10.06: Pre-validation report — duplicati VIN + mancante campi essenziali
+    var existingVins={};
+    (stock||[]).forEach(function(s){
+      if(s.vehicles&&s.vehicles.length){
+        s.vehicles.forEach(function(v){if(v.vin)existingVins[String(v.vin).toUpperCase().trim()]=s.internalId||s.id;});
       }
+    });
+    var report={
+      total:vehicles.length,
+      duplicateVins:[],   // {vin, brand, model, existingId}
+      missingVin:[],      // {brand, model}
+      ok:[]               // count veicoli "puliti"
+    };
+    var importVins={};   // VIN già nel batch corrente per detect duplicati intra-batch
+    vehicles.forEach(function(v,idx){
+      // Per ogni unità (vehicles[]) interna al lotto
+      if(v.vehicles&&v.vehicles.length){
+        v.vehicles.forEach(function(unit){
+          var uvin=String(unit.vin||'').toUpperCase().trim();
+          if(!uvin){
+            report.missingVin.push({brand:v.brand,model:v.model,version:v.version});
+          }else if(existingVins[uvin]){
+            report.duplicateVins.push({vin:uvin,brand:v.brand,model:v.model,existingId:existingVins[uvin],source:'stock'});
+          }else if(importVins[uvin]){
+            report.duplicateVins.push({vin:uvin,brand:v.brand,model:v.model,existingId:importVins[uvin],source:'batch'});
+          }else{
+            importVins[uvin]=v.brand+' '+v.model;
+          }
+        });
+      }else{
+        // Lotto senza VIN dettagliati - skip dup check
+      }
+    });
+    report.ok=report.total-report.duplicateVins.length;
+
+    // Se ci sono duplicati o mancanze, mostra dialog di conferma
+    if(report.duplicateVins.length>0||report.missingVin.length>0){
+      stkShowImportReport(report,function(action){
+        if(action==='cancel'){
+          window._currentImportBatch=null;
+          n('i-status').textContent='Importaci\u00f3n cancelada';
+          n('i-btn').disabled=false;
+          return;
+        }
+        if(action==='skipDups'){
+          // Filtra fuori i veicoli con VIN duplicati
+          var dupSet={};report.duplicateVins.forEach(function(d){dupSet[d.vin]=true;});
+          vehicles.forEach(function(v){
+            if(v.vehicles&&v.vehicles.length){
+              v.vehicles=v.vehicles.filter(function(u){return !dupSet[String(u.vin||'').toUpperCase().trim()];});
+              if(v.units)v.units=v.vehicles.length;
+            }
+          });
+          // Rimuovi lotti rimasti vuoti
+          vehicles=vehicles.filter(function(v){return !v.vehicles||v.vehicles.length>0||(!v.vin);});
+        }
+        // Continua con import
+        proceedToImport(vehicles,manualSup,batchId);
+      });
+      return;
     }
 
-    if(missing.length===0){
-      checkBuyAndFinish();
-    } else {
-      // Open the pickup modal asking for the missing pickup(s)
-      askPickupForVehicles(missing,vehicles,checkBuyAndFinish);
-    }
+    // Caso normale: nessun duplicato, prosegui
+    proceedToImport(vehicles,manualSup,batchId);
+
   }catch(ex){
+    console.error('iHandleResp error:',ex);
     n('i-status').textContent='Error parseando. Intenta de nuevo.';
     n('i-btn').disabled=false;
   }
 }
+
+// v10.06: Mostra report importazione con dialog azioni
+window.stkShowImportReport=function(report,callback){
+  var html='<div id="m-import-report" class="modal-bg" style="display:flex" onclick="if(event.target===this)stkImportReportClose(\'cancel\')">'
+    +'<div class="modal" style="max-width:560px">'
+      +'<div class="mh"><span>\u26a0\ufe0f Reporte de importaci\u00f3n</span><button class="mx" onclick="stkImportReportClose(\'cancel\')">&times;</button></div>'
+      +'<div class="mb">';
+  // Stats
+  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
+    +'<div style="background:rgba(34,197,94,.1);border-left:3px solid #22c55e;padding:10px;border-radius:6px">'
+      +'<div style="font-size:11px;color:var(--t3);text-transform:uppercase">Listos</div>'
+      +'<div style="font-size:24px;font-weight:800;color:#15803d">'+report.ok+'</div>'
+    +'</div>'
+    +'<div style="background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:10px;border-radius:6px">'
+      +'<div style="font-size:11px;color:var(--t3);text-transform:uppercase">VIN duplic.</div>'
+      +'<div style="font-size:24px;font-weight:800;color:#92400e">'+report.duplicateVins.length+'</div>'
+    +'</div>'
+    +'<div style="background:rgba(220,38,38,.1);border-left:3px solid #dc2626;padding:10px;border-radius:6px">'
+      +'<div style="font-size:11px;color:var(--t3);text-transform:uppercase">Sin VIN</div>'
+      +'<div style="font-size:24px;font-weight:800;color:#991b1b">'+report.missingVin.length+'</div>'
+    +'</div>'
+  +'</div>';
+  // Duplicati
+  if(report.duplicateVins.length>0){
+    html+='<div style="margin-bottom:14px"><div style="font-weight:700;font-size:12px;color:#92400e;margin-bottom:6px">\u26a0\ufe0f VIN duplicados detectados</div>';
+    html+='<div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg2);padding:8px">';
+    report.duplicateVins.slice(0,8).forEach(function(d){
+      var srcLabel=d.source==='batch'?'<span style="color:#dc2626;font-size:9px;font-weight:700"> [duplicado en este lote]</span>':'<span style="color:#f59e0b;font-size:9px;font-weight:700"> [ya en stock]</span>';
+      html+='<div style="font-size:11px;padding:3px 0;border-bottom:1px dashed var(--border)"><strong>'+esc(d.vin)+'</strong> &middot; '+esc(d.brand+' '+d.model)+srcLabel+(d.existingId?' &rarr; <code style="font-size:10px">'+esc(d.existingId)+'</code>':'')+'</div>';
+    });
+    if(report.duplicateVins.length>8)html+='<div style="font-size:10px;font-style:italic;color:var(--t3);padding-top:4px">y '+(report.duplicateVins.length-8)+' m\u00e1s...</div>';
+    html+='</div></div>';
+  }
+  // Senza VIN
+  if(report.missingVin.length>0){
+    html+='<div style="margin-bottom:14px"><div style="font-weight:700;font-size:12px;color:#991b1b;margin-bottom:6px">\u2718 Veh\u00edculos sin VIN</div>';
+    html+='<div style="font-size:11px;color:var(--t3);background:var(--bg2);padding:8px;border-radius:6px">'+report.missingVin.length+' veh\u00edculo(s) no tienen VIN. Se importar\u00e1n con VIN vac\u00edo (revisar manualmente).</div></div>';
+  }
+  // Actions
+  html+='<div style="background:rgba(59,130,246,.06);border-left:3px solid var(--acc);padding:10px;border-radius:6px;margin-bottom:14px;font-size:11px;color:var(--t2)">'
+    +'<strong>\u00bfQu\u00e9 hacer?</strong><br>'
+    +'\u2022 <strong>Saltar duplicados</strong>: importa solo los '+report.ok+' veh\u00edculos nuevos<br>'
+    +'\u2022 <strong>Importar todo</strong>: incluye VIN duplicados (puede crear lotes redundantes)<br>'
+    +'\u2022 <strong>Cancelar</strong>: no importa nada'
+  +'</div>';
+  html+='<div class="fc g8" style="justify-content:flex-end">'
+    +'<button class="btn bg" onclick="stkImportReportClose(\'cancel\')">Cancelar</button>'
+    +(report.duplicateVins.length>0?'<button class="btn bs" onclick="stkImportReportClose(\'all\')">Importar todo</button>':'')
+    +'<button class="btn bp" onclick="stkImportReportClose(\''+(report.duplicateVins.length>0?'skipDups':'all')+'\')" style="background:var(--green);color:#fff;border:none">\u2713 '+(report.duplicateVins.length>0?'Saltar duplicados':'Importar')+'</button>'
+  +'</div>';
+  html+='</div></div></div>';
+  var old=document.getElementById('m-import-report');if(old)old.parentNode.removeChild(old);
+  document.body.insertAdjacentHTML('beforeend',html);
+  window._nxImportReportCb=callback;
+};
+
+window.stkImportReportClose=function(action){
+  closeM('m-import-report');
+  if(typeof window._nxImportReportCb==='function'){
+    window._nxImportReportCb(action);
+    window._nxImportReportCb=null;
+  }
+};
+
+// v10.06: separato in funzione per riusare dopo dialog confirm
+window.proceedToImport=function(vehicles,manualSup,batchId){
+  // Check which vehicles are missing pickup
+  function hasPickup(p){return p&&p!=='--'&&String(p).trim()!=='';}
+  var missing=vehicles.filter(function(v){return !hasPickup(v.pickup);});
+
+  function finishImport(){
+    var added=0;
+    var providerLinked=0;
+    vehicles.forEach(function(v){
+      addStkItem(v);
+      added++;
+      // Conta quanti sono stati linkati a provider
+      var lastAdded=stock[stock.length-1];
+      if(lastAdded&&lastAdded.providerId)providerLinked++;
+    });
+    window._currentImportBatch=null;
+    SS('lastImportBatch',batchId);
+    var withD=vehicles.filter(function(v){return v.vehicles&&v.vehicles.length>0;}).length;
+    var statusMsg=added+' modelos importados'+(withD>0?' con '+withD+' lotes detallados':'');
+    if(providerLinked>0)statusMsg+=' \u2022 '+providerLinked+' enlazado'+(providerLinked!==1?'s':'')+' al Proveedor';
+    n('i-status').textContent=statusMsg;
+    if(typeof showToast==='function')showToast('\u2713 '+statusMsg,5000);
+    setTimeout(function(){
+      closeM('m-import');
+      n('i-text').value='';n('i-fn').textContent='';n('i-status').textContent='';
+      n('i-file').value='';imgB64=null;n('i-img-prev').innerHTML='';
+      updBF();fStk();renderDash();
+    },1800);
+  }
+
+  function checkBuyAndFinish(){
+    function hasBuy(p){return p&&String(p).trim()!==''&&String(p).trim()!=='--'&&String(p).trim()!=='0';}
+    var missingBuy=vehicles.filter(function(v){return !hasBuy(v.buy);});
+    if(missingBuy.length===0){
+      finishImport();
+    }else{
+      askBuyForVehicles(missingBuy,vehicles,finishImport,function(){
+        window._currentImportBatch=null;
+        if(typeof showToast==='function')showToast('\u2716 Importaci\u00f3n cancelada');
+      });
+    }
+  }
+
+  if(missing.length===0){
+    checkBuyAndFinish();
+  } else {
+    askPickupForVehicles(missing,vehicles,checkBuyAndFinish);
+  }
+};
 
 // Ask for missing pickup location during import. Applies the chosen value to all vehicles in `missing`,
 // then calls onDone(). The user can also skip (leaves pickup as '--').
