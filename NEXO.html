@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NEXO v10.07 — DMCAR GROUP CRM | 2026-05-03 | Stock Import fix blocco a "Extrayendo datos" + dialog z-index: 1) Pre-parser deterministico (tryNativeBlockParse) per formato "block-of-rows" tipico subasta/lista veicoli - riconosce pattern 6-7 righe per blocco: Brand+Model+Version, Fecha matriculacion DD/MM/YYYY, Color codice+nome (Métal), Kms, Pickup/Campa CAT/Berge, Daños €, [Venta €]; rileva 30+ brand (VW/Volkswagen/Audi/BMW/Mercedes/MB/Renault/Peugeot/etc); espande abbreviazioni VW→VOLKSWAGEN, MB→MERCEDES-BENZ; salta header rows (Marca/Modelo/Color/etc); 2) parseVehicleBlock estrae brand+model+version dalla prima riga, identifica fecha (regex DD/MM/YYYY), color (codice [A-Z0-9]2-8 + nome), kms (numero), pickup (CAT/Berge keyword), importi € (primo=daños, secondo=venta); 3) Try pre-parser PRIMA della chiamata AI - se ok, no AI call; 4) Timeout 60s su API call per evitare blocco UI; 5) FIX dialog z-index: aggiunto CSS .modal-bg (z-index:300) per dialog dinamici (m-import-report, m-email-recipients, m-doc-upload) che prima non erano stilizzati e non visibili; alzato z-index a 250 per #m-pickup/#m-buy-ask così non vengono nascosti da m-import (z-index 200); 6) Dialog "Reporte de importación" si apre ora SOLO se ci sono VIN duplicati - NON per missingVin alone (normale in liste subasta senza VIN); 7) detectSupplierFromText e fallback chain: pre-parser → AI → user feedback. -->
+<!-- NEXO v10.08 — DMCAR GROUP CRM | 2026-05-03 | Fix mappatura importi pre-parser block: 1) FIX BUG semantico: nel formato "lista subasta del fornitore" il 2° importo € è "Venta sin IVA (daños descontados)" del fornitore → ovvero il NOSTRO prezzo di acquisto (buy), non il prezzo di vendita futura (sell). Mappatura corretta ora: 1° importo € = daños, 2° importo € = buy (era erroneamente sell); 2) Normalizzazione importi: convert number → string formattata es. 15200 → "15.200 €" per damage, "450,00 €" per daños (compat con il resto del codice che si aspetta string); 3) Effetto: import dei 14 VW Taigo ora popola correttamente buy=15.200 € → no più dialog "Falta precio de compra", import diretto. -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -9521,14 +9521,16 @@ window.parseVehicleBlock=function(blockLines,brandLine){
       var num=parseInt(l.replace(/\./g,'').replace(/,/g,''),10);
       if(!isNaN(num)&&num>=10&&num<999999){v.km=num;continue;}
     }
-    // Daños / Venta - cerca importo €
+    // v10.07: Daños / Buy - cerca importo €
+    // Pattern lista subasta: 1° importo = daños sin IVA, 2° importo = "Venta sin IVA (daños descontados)"
+    // → questo "Venta del fornitore" = il NOSTRO prezzo di acquisto (BUY)
     var euroMatch=l.match(/([\d\.\,]+)\s*\u20ac/);
     if(euroMatch){
       var amt=parseFloat(euroMatch[1].replace(/\./g,'').replace(/,/g,'.'));
       if(!isNaN(amt)){
-        // Primo importo trovato = daños, secondo = venta
+        // Primo importo = daños, secondo = buy (prezzo del fornitore)
         if(!v.damage)v.damage=amt;
-        else if(!v.sell)v.sell=amt;
+        else if(!v.buy)v.buy=amt;
       }
       continue;
     }
@@ -9539,6 +9541,10 @@ window.parseVehicleBlock=function(blockLines,brandLine){
   }
   // Sanity check: deve avere almeno brand+model
   if(!v.brand||!v.model)return null;
+  // v10.07: normalizza importi come stringhe formattate (compat con resto del codice)
+  if(typeof v.buy==='number')v.buy=v.buy.toLocaleString('es-ES')+' \u20ac';
+  if(typeof v.sell==='number')v.sell=v.sell.toLocaleString('es-ES')+' \u20ac';
+  if(typeof v.damage==='number')v.damage=v.damage.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' \u20ac';
   return v;
 };
 
