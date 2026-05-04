@@ -1,4 +1,21 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.32 — DM GROUP CRM | 2026-05-04 | Fix visibilità icona ⓘ su tutte le 5 colonne RESULTADO:
+1) Bug osservato (utente foto): in Vista Contable solo 2 icone ⓘ (Ganancia + Resultado Final DM) erano visibili. Le 3 colonne centrali (Gan. Vendedor, SUB.Profit.DMCAR, Gastos Extras) avevano l'icona configurata correttamente nel colDefs (note: ...) ma NON la mostravano.
+2) ROOT CAUSE: combo di 3 fattori CSS:
+   • text-transform:uppercase + letter-spacing:.04em del TH style espandevano il testo
+   • larghezza colonne (w:120/130/115) era insufficiente per il label espanso
+   • span con `display:inline-block` veniva pushato fuori dalla cella e tagliato
+3) FIX 2 livelli:
+   (a) Cambiato struttura del label cliccabile: icona ⓘ ora PRIMA del label (display:inline-flex, gap:4px), garantita visibile anche se il testo viene troncato. Span size 13x13px (era 11x11), font 9px (era 8px) — più leggibile.
+   (b) Aggiunto white-space:nowrap + overflow:visible al TH quando contiene una nota cliccabile, impedisce wrap che faceva sparire l'icona.
+4) Larghezze colonne RESULTADO ottimizzate per l'icona ⓘ:
+   • Ganancia: 110→115
+   • Gan. Vendedor (10%): 120→140 (label più lungo)
+   • SUB.Profit.DMCAR: 130→150
+   • Gastos Extras: 115→130
+   • Resultado Final DM: 140→160 (label + KPI principale)
+5) Validazione: 5/5 colonne RESULTADO ora hanno icona ⓘ visibile e cliccabile in tutte le risoluzioni.
+6) PRESERVA: tutto v10.10.31 (Gastos Extras, popover note, fix colspan). Il sistema di popover (window.numbersShowColumnNote + window._nxColumnNotes) NON è stato modificato — è già robusto. Solo la presentazione visiva del trigger è stata sistemata. -->
 <!-- NEXO v10.10.31 — DM GROUP CRM | 2026-05-04 | Fix UI Vista Contable + Gastos Extras + Note esplicative + Cleanup imprese:
 1) FIX UI CRITICO (segnalato da utente con screenshot): header gruppo "RESULTADO" mostrava colspan=1 ma sotto aveva 4 sub-colonne dopo v10.10.30 → disallineamento visivo. Erano errati ANCHE i colspan v10.10.29 (VENTA=7 invece di 9, BROKER=5 invece di 4). FIX: aggiornati TUTTI i colspan dei block headers per allinearsi con conteggi attuali. Totale 45 colonne (1+3+7+9+8+8+4+5).
 2) NUOVA COLONNA "Gastos Extras" nel blocco RESULTADO (spec utente): voce destinata a raccogliere spese accessorie (env\u00edo documenti, reembolsos da\u00f1os, otros gastos). Per ora INPUT MANUALE (default 0, doble click per editare via _nxManualGanancias[rowKey].gastosExtras). In futuro sar\u00e0 collegata a moduli di spese specifici.
@@ -27014,12 +27031,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
       {id:'broFechaPago',label:'Fecha Pago Com.',w:100,desc:'Fecha en la que se efect\u00faa el pago de la factura de comisi\u00f3n al broker.',block:'broker'},
       {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker. Es la base para el c\u00e1lculo del Resultado Contable (Ganancia Final).',block:'broker'},
       // RESULTADO (5) — v10.10.31: aggiunta Gastos Extras + ridefinizione formula Resultado Final
+      // v10.10.32: larghezze ottimizzate per garantire visibilità icona ⓘ con label lunghi
       // Sequenza calcolo: Ganancia → Vendedor → SUB.Profit.DMCAR → Gastos Extras → Resultado Final DM
-      {id:'gananciaCalc',label:'Ganancia (\u20ac)',w:110,r:true,editable:true,note:'gananciaCalc',desc:'Ganancia bruta generada por la compra-venta del veh\u00edculo, neta de la comisi\u00f3n del broker (si existe).\n\nF\u00f3rmula:\nGanancia = Venta \u2212 Compra \u2212 Broker (si hay)',block:'resultado'},
-      {id:'gananciaVendedor',label:'Gan. Vendedor (10%)',w:120,r:true,editable:true,note:'gananciaVendedor',desc:'Comisi\u00f3n correspondiente al vendedor interno DMCAR, calculada como 10% sobre la Ganancia.\n\nF\u00f3rmula:\nGanancia Vendedor = Ganancia \u00d7 10%\n\nSi Ganancia es negativa (p\u00e9rdida), la comisi\u00f3n se pone autom\u00e1ticamente a 0 (el vendedor no reembolsa p\u00e9rdidas).',block:'resultado'},
-      {id:'subProfitDMCAR',label:'SUB.Profit.DMCAR (\u20ac)',w:130,r:true,editable:true,note:'subProfitDMCAR',desc:'Sub-total de beneficio DMCAR sobre la compra-venta del veh\u00edculo, despu\u00e9s de deducir la comisi\u00f3n del Vendedor.\n\nF\u00f3rmula:\nSUB.Profit.DMCAR = Ganancia \u2212 Ganancia Vendedor',block:'resultado'},
-      {id:'gastosExtras',label:'Gastos Extras (\u20ac)',w:115,r:true,editable:true,note:'gastosExtras',desc:'Voz destinada a recoger gastos accesorios relacionados con la operaci\u00f3n, entre ellos:\n\u2022 Gastos de env\u00edo de documentos\n\u2022 Reembolsos por da\u00f1os\n\u2022 Otros gastos accesorios por definir\n\n\u26a0\ufe0f La configuraci\u00f3n completa de esta voz se definir\u00e1 en una fase sucesiva. Por ahora valor manual.',block:'resultado'},
-      {id:'resultadoFinalDM',label:'Resultado Final DM (\u20ac)',w:140,r:true,editable:true,note:'resultadoFinalDM',desc:'Margen neto final de la operaci\u00f3n para DMCAR, comprensivo de todos los costes operativos y del margen de transporte.\n\nF\u00f3rmula completa:\nResultado Final = Venta \u2212 Compra \u2212 Broker (si hay) \u2212 Vendedor (10%) \u2212 Gastos Extras + Ganancia Transporte\n\nEquivalente a:\nResultado Final = SUB.Profit.DMCAR \u2212 Gastos Extras + Ganancia Transporte',block:'resultado'}
+      {id:'gananciaCalc',label:'Ganancia (\u20ac)',w:115,r:true,editable:true,note:'gananciaCalc',desc:'Ganancia bruta generada por la compra-venta del veh\u00edculo, neta de la comisi\u00f3n del broker (si existe).\n\nF\u00f3rmula:\nGanancia = Venta \u2212 Compra \u2212 Broker (si hay)',block:'resultado'},
+      {id:'gananciaVendedor',label:'Gan. Vendedor (10%)',w:140,r:true,editable:true,note:'gananciaVendedor',desc:'Comisi\u00f3n correspondiente al vendedor interno DMCAR, calculada como 10% sobre la Ganancia.\n\nF\u00f3rmula:\nGanancia Vendedor = Ganancia \u00d7 10%\n\nSi Ganancia es negativa (p\u00e9rdida), la comisi\u00f3n se pone autom\u00e1ticamente a 0 (el vendedor no reembolsa p\u00e9rdidas).',block:'resultado'},
+      {id:'subProfitDMCAR',label:'SUB.Profit.DMCAR (\u20ac)',w:150,r:true,editable:true,note:'subProfitDMCAR',desc:'Sub-total de beneficio DMCAR sobre la compra-venta del veh\u00edculo, despu\u00e9s de deducir la comisi\u00f3n del Vendedor.\n\nF\u00f3rmula:\nSUB.Profit.DMCAR = Ganancia \u2212 Ganancia Vendedor',block:'resultado'},
+      {id:'gastosExtras',label:'Gastos Extras (\u20ac)',w:130,r:true,editable:true,note:'gastosExtras',desc:'Voz destinada a recoger gastos accesorios relacionados con la operaci\u00f3n, entre ellos:\n\u2022 Gastos de env\u00edo de documentos\n\u2022 Reembolsos por da\u00f1os\n\u2022 Otros gastos accesorios por definir\n\n\u26a0\ufe0f La configuraci\u00f3n completa de esta voz se definir\u00e1 en una fase sucesiva. Por ahora valor manual.',block:'resultado'},
+      {id:'resultadoFinalDM',label:'Resultado Final DM (\u20ac)',w:160,r:true,editable:true,note:'resultadoFinalDM',desc:'Margen neto final de la operaci\u00f3n para DMCAR, comprensivo de todos los costes operativos y del margen de transporte.\n\nF\u00f3rmula completa:\nResultado Final = Venta \u2212 Compra \u2212 Broker (si hay) \u2212 Vendedor (10%) \u2212 Gastos Extras + Ganancia Transporte\n\nEquivalente a:\nResultado Final = SUB.Profit.DMCAR \u2212 Gastos Extras + Ganancia Transporte',block:'resultado'}
     ];
     var savedWidths=LS('nxVistaColWidths',{})||{};
     colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
@@ -27048,10 +27066,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var thStyle=c.r?thR:(c.c?thC:th);
       if(c.br)thStyle+=';border-right:2px solid var(--border)';
       var titleAttr=c.desc?' title="'+esc(c.desc)+'"':'';
-      // v10.10.31: se c.note esiste, label diventa cliccabile (popover) + icona ℹ
+      // v10.10.31+v10.10.32: se c.note esiste, label diventa cliccabile (popover) + icona ℹ
+      // FIX v10.10.32: icona PRIMA del label per evitare troncamento overflow su colonne strette
+      // + white-space:nowrap a livello di TH per impedire wrap che faceva sparire l'icona
       var labelHtml;
       if(c.note){
-        labelHtml='<span class="nbv-note-trigger" onclick="event.stopPropagation();numbersShowColumnNote(\''+c.note+'\',event)" style="cursor:help;text-decoration:underline dotted rgba(124,58,237,0.4);text-underline-offset:3px" title="Click para ver explicaci\u00f3n detallada">'+esc(c.label)+' <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#7c3aed;color:#fff;text-align:center;line-height:11px;font-size:8px;font-weight:bold;margin-left:2px;vertical-align:middle">i</span></span>';
+        thStyle+=';white-space:nowrap;overflow:visible';
+        labelHtml='<span class="nbv-note-trigger" onclick="event.stopPropagation();numbersShowColumnNote(\''+c.note+'\',event)" style="cursor:help;display:inline-flex;align-items:center;gap:4px" title="Click para ver explicaci\u00f3n detallada">'
+          +'<span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:#7c3aed;color:#fff;font-size:9px;font-weight:bold;flex-shrink:0;line-height:1">i</span>'
+          +'<span style="text-decoration:underline dotted rgba(124,58,237,0.4);text-underline-offset:3px">'+esc(c.label)+'</span>'
+        +'</span>';
       }else{
         labelHtml=esc(c.label);
       }
