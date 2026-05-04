@@ -1,4 +1,15 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1.6 — DM GROUP CRM | 2026-05-04 | Bump versione + footer dinamico:
+1) BUMP: window.NEXO_VERSION da '10.11.1.5' a '10.11.1.6' per testare il sistema auto-notifica appena rilasciato.
+2) FOOTER LOGIN DINAMICO: il numero versione nel footer del login overlay (v10.11.1.X) ora si aggiorna automaticamente da window.NEXO_VERSION, eliminando la necessit\u00e0 di aggiornare manualmente il testo HTML ad ogni release. ID: #nx-login-footer-version.
+3) PERCH\u00c9 QUESTA RELEASE: dopo aver rilasciato v10.11.1.5, l'utente ha aperto NEXO sul PC di Massi con la versione nuova \u2014 questo ha aggiornato Massi alla v10.11.1.5 senza che il sistema notifica avesse modo di triggerarsi (perch\u00e9 Massi era gi\u00e0 alla versione corrente). Bumpando a 10.11.1.6, ora c'\u00e8 di nuovo un mismatch di versione che permette di testare il banner update.
+4) FLOW DI TEST atteso:
+   • Tu deployi v10.11.1.6 \u2192 GitHub Pages
+   • Tu apri NEXO sul tuo PC come Super Admin \u2192 v10.11.1.6 viene auto-pubblicata su Firebase
+   • Massi sul suo PC \u00e8 ancora con v10.11.1.5 in cache + sessione attiva
+   • Entro 60-120 secondi Massi vede banner viola "\ud83d\udd14 Nueva versi\u00f3n disponible v10.11.1.6"
+   • Click "\u26a1 Recargar ahora" \u2192 reload con cache buster \u2192 ora Massi \u00e8 su v10.11.1.6
+5) PRESERVA: tutto v10.11.1.5 (sistema NX_UPDATE auto-notifica), v10.11.1.4 (banner Firebase + warning login), v10.11.1.3 (placeholder password), v10.11.1.2 (auto-strip @, footer), v10.11.1.1 (sync Firebase + watchdog), v10.11.1 (CRUD utenti + Mi Perfil), v10.11.0 (login base). -->
 <!-- NEXO v10.11.1.5 — DM GROUP CRM | 2026-05-04 | Sistema auto-notifica aggiornamenti software:
 1) NUOVO: sistema NX_UPDATE per notifica automatica nuove versioni a tutti i collaboratori connessi.
    Risolve il problema "ogni volta che rilascio update devo avvisare manualmente Massi/Maria/etc su WhatsApp di fare hard reload".
@@ -881,7 +892,7 @@ body.fb-banner-on #app{padding-top:30px}
       </button>
       <div style="text-align:center;margin-top:16px;font-size:10.5px;color:#94a3b8">
         Acceso restringido al equipo DM Group<br>
-        <span style="opacity:.7">v10.11.1.2 &mdash; &iquest;Olvidaste contrase&ntilde;a? Contacta al Super Admin</span>
+        <span style="opacity:.7" id="nx-login-footer-version">v10.11.1.6 &mdash; &iquest;Olvidaste contrase&ntilde;a? Contacta al Super Admin</span>
       </div>
     </form>
   </div>
@@ -4244,7 +4255,7 @@ var FB_KEY_RENDER={
 // Funziona via Firebase: la versione viene salvata in nx5_app_version
 // e viene controllata ogni 60 secondi su tutti i client.
 // ====================================================================
-window.NEXO_VERSION='10.11.1.5';
+window.NEXO_VERSION='10.11.1.6';
 window.NEXO_VERSION_DATE='2026-05-04';
 
 var NX_UPDATE={
@@ -4602,6 +4613,11 @@ var NX_AUTH={
     // Nasconde l'app sottostante
     var app=document.getElementById('app');
     if(app)app.style.visibility='hidden';
+    // v10.11.1.6: aggiorna footer con versione dinamica da window.NEXO_VERSION
+    var ftrEl=document.getElementById('nx-login-footer-version');
+    if(ftrEl&&window.NEXO_VERSION){
+      ftrEl.innerHTML='v'+esc(window.NEXO_VERSION)+' &mdash; &iquest;Olvidaste contrase&ntilde;a? Contacta al Super Admin';
+    }
     // v10.11.1.4: mostra warning Firebase se sync non attivo (utili nuovi dispositivi)
     this.checkFirebaseStatusForLogin();
   },
