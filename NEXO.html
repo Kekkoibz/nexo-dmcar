@@ -1,4 +1,38 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.33 — DM GROUP CRM | 2026-05-04 | Solleciti documenti multilingua + Idioma de Contacto:
+1) NUOVA FEATURE: gestione automatica documenti mancanti (Proforma/Factura) con generazione email solleciti pre-compilate nella lingua del provider.
+2) CAMPO "Idioma de Contacto" aggiunto in 2 moduli (spec utente):
+   • Registro Provider: nuovo dropdown 'pv-language' nella riga Marcas/Payment (g3 layout). 7 opzioni con bandiere: ES, IT, EN, FR, DE, PT, RO. Default ES. Salvato in p.language.
+   • Contactos B2B: nuovo dropdown 'cn-language' come riga separata. Stesse 7 opzioni. Salvato in c.language.
+   • Backward compat: record esistenti senza language → default ES.
+3) TRIANGOLO ⚠️ CLICCABILE in Vista Contable: helper window.numbersMissingDocBadge(docType,stockId,lotIdx) renderizza badge "⚠️ FALTANTE" quando cella PF/FT del provider è vuota. Stile: ambra #d97706 con bg semi-trasparente, hover effect, cursor:pointer. Solo per blocco COMPRA (provider) per ora; le PF/FT cliente in blocco VENTA restano "—" senza badge.
+4) DIALOG 2-STEP on click triangolo (window.numbersOpenMissingDocDialog):
+   • Header arancione gradient con bottone X chiusura
+   • Box info riepilogativo (provider, veicoli, unidades)
+   • STEP 1: scelta tipo documento (radio Factura/Proforma) — preselezionato in base al click (PF→Proforma, FT→Factura)
+   • STEP 2: scope (radio Todo/Selezionati). "Selezionati" disabled in v10.10.33 (TODO future)
+   • Box info lingua: mostra in tempo reale la lingua risolta del provider (con flag emoji + nome) o avviso fallback ES se lingua non supportata
+   • Bottone "📧 Generar email" arancione gradient
+5) GENERAZIONE EMAIL (window.numbersGenerateMissingDocEmail):
+   • Risolve lingua via numbersResolveProviderLanguage(stock): legge providers DB, match per supplier name (esatto), legge p.language, fallback ES.
+   • Risolve destinatario: prima cerca Contabilidad in staff[], poi p.email, fallback vuoto.
+   • Costruisce lista veicoli formattata "1. BRAND MODEL VERSION — VIN: XXX"
+   • Sostituisce 6 variabili template: {nombre_proveedor} {empresa_dmcar} {numero_expediente} {lista_vehiculos} {fecha_actual} {usuario_emisor}
+   • Apre mailto: con fallback clipboard (riusa nxOpenMailtoFallback se disponibile)
+   • Console log audit per future tracciabilità multi-utente
+6) TEMPLATE LIBRARY (window._nxDocReclamTemplates):
+   • REQ_FACTURA + REQ_PROFORMA × 5 lingue: ES, IT, EN, FR, DE (PT/RO TODO)
+   • Tono formale "Estimado/a", "Gentile", "Dear", "Cher/Chère", "Sehr geehrte/r"
+   • Struttura: subject + body con saluto, intro, lista veicoli, request, chiusura, firma
+7) Smoke test 3/3 PASS:
+   • Provider ES + FACTURA: lingua ES, email da staff Contabilidad ✅
+   • Provider IT + PROFORMA: lingua IT, template italiano ✅
+   • Provider sconosciuto: fallback ES, email vuota ✅
+8) ROADMAP futura:
+   • v10.10.34: aggiungere PT, RO + invio cliente (PF/FT venta)
+   • v10.10.35: tracciabilità solleciti (audit log) + contatore "Documenti reclamati N volte"
+   • v10.10.36: editing template dal Super Admin (richiede Multi-utente)
+9) PRESERVA: tutto v10.10.32 (icona ⓘ visibile su 5 colonne RESULTADO), v10.10.31 (Gastos Extras), v10.10.30 (4 colonne Resultado), v10.10.29 (Venta 9 cols). -->
 <!-- NEXO v10.10.32 — DM GROUP CRM | 2026-05-04 | Fix visibilità icona ⓘ su tutte le 5 colonne RESULTADO:
 1) Bug osservato (utente foto): in Vista Contable solo 2 icone ⓘ (Ganancia + Resultado Final DM) erano visibili. Le 3 colonne centrali (Gan. Vendedor, SUB.Profit.DMCAR, Gastos Extras) avevano l'icona configurata correttamente nel colDefs (note: ...) ma NON la mostravano.
 2) ROOT CAUSE: combo di 3 fattori CSS:
@@ -2696,6 +2730,8 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este número" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
+    <!-- v10.10.33: Idioma de Contacto B2B -->
+    <div class="g2 mb10"><div><label>Idioma de Contacto <span style="font-size:9px;color:var(--t3)">(comunicaci&oacute;n)</span></label><select id="cn-language"><option value="ES">&#127466;&#127480; Espa&ntilde;ol</option><option value="IT">&#127470;&#127481; Italiano</option><option value="EN">&#127468;&#127463; English</option><option value="FR">&#127467;&#127479; Fran&ccedil;ais</option><option value="DE">&#127465;&#127466; Deutsch</option><option value="PT">&#127477;&#127481; Portugu&ecirc;s</option><option value="RO">&#127479;&#127476; Rom&acirc;n&#259;</option></select></div><div></div></div>
     <div class="mb10"><label>Etiquetas <button class="btn bs" onclick="openLabelsManagerForContact()" style="font-size:10px;padding:2px 8px;margin-left:8px">&#127991; Gestionar / Asignar</button></label><div id="cn-labels-display" style="min-height:32px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:pointer" onclick="openLabelsManagerForContact()"><span style="color:var(--t3);font-size:11px;padding:0 6px" id="cn-labels-empty">Click para asignar etiquetas...</span></div><input type="hidden" id="cn-labels"></div>
     <div class="mb14"><label>Notas</label><textarea id="cn-notes" rows="3" placeholder="Interesado en..."></textarea></div>
     <!-- Related tasks (visible only when editing existing contact) -->
@@ -2778,7 +2814,7 @@ En que te puedo ayudar hoy?</div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
-    <div class="g2 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div></div>
+    <div class="g3 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div><div><label>Idioma de Contacto <span style="font-size:9px;color:var(--t3)">(comunicaci&oacute;n)</span></label><select id="pv-language"><option value="ES">&#127466;&#127480; Espa&ntilde;ol</option><option value="IT">&#127470;&#127481; Italiano</option><option value="EN">&#127468;&#127463; English</option><option value="FR">&#127467;&#127479; Fran&ccedil;ais</option><option value="DE">&#127465;&#127466; Deutsch</option><option value="PT">&#127477;&#127481; Portugu&ecirc;s</option><option value="RO">&#127479;&#127476; Rom&acirc;n&#259;</option></select></div></div>
     <!-- v10.03: STAFF MULTI-CONTATTO (Comercial / Contabilidad / Log\u00edstica) -->
     <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
       <div onclick="provToggleStaff()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
@@ -13166,6 +13202,8 @@ function openNewContact(){
   if(n('cn-role'))n('cn-role').value='Comprador';
   if(n('cn-ctype'))n('cn-ctype').value='';
   if(n('cn-tag'))n('cn-tag').value='new';
+  // v10.10.33: Idioma default ES
+  if(n('cn-language'))n('cn-language').value='ES';
   // Hide related tasks (only shown when editing existing contact)
   if(n('cn-tasks-section'))n('cn-tasks-section').style.display='none';
   n('m-contact').removeAttribute('data-edit-id');
@@ -13229,6 +13267,8 @@ function editContact(id){
   n('cn-country').value=c.country||'';
   n('cn-role').value=c.role||'Comprador';
   if(n('cn-ctype'))n('cn-ctype').value=c.clientType||'';
+  // v10.10.33: Idioma de Contacto (backward compat: default ES)
+  if(n('cn-language'))n('cn-language').value=c.language||'ES';
   n('cn-phone').value=c.phone||'';
   if(n('cn-email'))n('cn-email').value=c.email||'';
   n('cn-notes').value=c.notes||'';
@@ -13499,6 +13539,8 @@ function saveCont(){
     country:n('cn-country').value.trim(),
     role:n('cn-role').value,
     clientType:n('cn-ctype')?n('cn-ctype').value:'',
+    // v10.10.33: Idioma de Contacto per email solleciti documenti
+    language:(n('cn-language')&&n('cn-language').value)||'ES',
     phone:n('cn-phone').value.trim(),
     email:n('cn-email')?n('cn-email').value.trim():'',
     notes:n('cn-notes').value.trim(),
@@ -15399,6 +15441,8 @@ function openNewProvider(){
   n('pv-tag').value='activo';
   n('pv-brands').value='';
   n('pv-payment').value='';
+  // v10.10.33: Idioma de Contacto default ES (comunicación)
+  if(n('pv-language'))n('pv-language').value='ES';
   n('pv-notes').value='';
   n('pv-labels').value='';
   n('m-provider').removeAttribute('data-edit-id');
@@ -15447,6 +15491,8 @@ function editProvider(id){
   n('pv-tag').value=p.tag||'activo';
   n('pv-brands').value=p.brands||'';
   n('pv-payment').value=p.payment||'';
+  // v10.10.33: Idioma de Contacto (backward compat: default ES per record vecchi)
+  if(n('pv-language'))n('pv-language').value=p.language||'ES';
   n('pv-notes').value=p.notes||'';
   n('pv-labels').value=(p.labels||[]).join(',');
   // Carica campi fiscales (potrebbero essere undefined su provider vecchi)
@@ -15526,6 +15572,8 @@ function saveProv(){
     tag:n('pv-tag').value.trim()||'activo',
     brands:n('pv-brands').value.trim(),
     payment:n('pv-payment').value.trim(),
+    // v10.10.33: Idioma de Contacto per email solleciti documenti
+    language:(n('pv-language')&&n('pv-language').value)||'ES',
     notes:n('pv-notes').value.trim(),
     labels:labels,
     // Datos fiscales (v10.10.15: legalForm rimosso da UI; preservato dal record originale per retrocompatibilità)
@@ -27189,10 +27237,11 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(expLabel,bgReg,';font-weight:600')
         +td(vinHtml,bgReg,';border-right:2px solid var(--border)')
         // COMPRA (7): Proveedor, PF, FT, Pago, Compra, Dep.Date, Dep.\u20ac
-        // v10.10.13: tooltip su Proveedor con nome completo (la colonna è 130px e i nomi lunghi vengono troncati visivamente)
+        // v10.10.13: tooltip su Proveedor con nome completo
+        // v10.10.33: triangolo \u26a0\ufe0f cliccabile su PF/FT mancanti per richiedere documento al provider
         +'<td style="padding:6px 7px;background:'+bgCompra+';font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+rowExtra+'" title="'+esc(r.supplier||'')+'">'+fmtTxt(r.supplier)+'</td>'
-        +td(fmtTxt(ext.fornNumPF||''),bgCompra)
-        +td(fmtTxt(ext.fornNumFT||''),bgCompra)
+        +td(ext.fornNumPF?fmtTxt(ext.fornNumPF):numbersMissingDocBadge('proforma',r.stockId,r.lotIdx),bgCompra)
+        +td(ext.fornNumFT?fmtTxt(ext.fornNumFT):numbersMissingDocBadge('factura',r.stockId,r.lotIdx),bgCompra)
         +td(fmtDate(ext.fornDataPag),bgCompra)
         +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgCompra)
         +td(fmtDate(ext.fornAccDate),bgCompra)
@@ -27695,6 +27744,250 @@ document.querySelectorAll('.ovl').forEach(function(el){
       };
       document.addEventListener('click',closeOnOut);
     },50);
+  };
+
+  // ========================================================================
+  // v10.10.33: SISTEMA "DOCUMENTI MANCANTI" — Triangolo \u26a0\ufe0f + Dialog 2-step + Email mailto multilingua
+  // ========================================================================
+  // Quando una cella PF/FT del provider è vuota, mostra triangolo \u26a0\ufe0f cliccabile.
+  // Click apre dialog 2-step: (1) tipo documento — (2) scope — (3) genera email pre-compilata mailto:
+  // nella lingua del provider (provider.language fallback ES).
+
+  // Renderizza badge \u26a0\ufe0f cliccabile per cella PF/FT mancante
+  window.numbersMissingDocBadge=function(docType,stockId,lotIdx){
+    // docType: 'proforma' | 'factura'
+    var label=docType==='factura'?'Factura':'Proforma';
+    var dataAttr=' data-stock-id="'+esc(stockId||'')+'" data-lot-idx="'+(lotIdx!=null?lotIdx:0)+'" data-doc-type="'+docType+'"';
+    return '<span class="nbv-missing-doc" onclick="event.stopPropagation();numbersOpenMissingDocDialog(this)" title="'+label+' faltante \u2014 click para reclamar"'+dataAttr
+      +' style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#d97706;font-weight:600;font-size:11px;padding:1px 4px;border-radius:4px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);transition:all .15s" '
+      +'onmouseover="this.style.background=\'rgba(245,158,11,0.25)\'" onmouseout="this.style.background=\'rgba(245,158,11,0.12)\'">'
+      +'<span style="font-size:10px">\u26a0\ufe0f</span>'
+      +'<span style="font-size:9px;text-transform:uppercase;letter-spacing:.04em">Faltante</span>'
+      +'</span>';
+  };
+
+  // Templates email solleciti documenti — multilingua
+  // ID: REQ_PROFORMA / REQ_FACTURA
+  // Variabili supportate: {nombre_proveedor} {empresa_dmcar} {numero_expediente} {lista_vehiculos} {fecha_actual} {usuario_emisor}
+  window._nxDocReclamTemplates={
+    REQ_PROFORMA:{
+      ES:{
+        subject:'Solicitud de proforma \u2014 Expediente {numero_expediente}',
+        body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la proforma correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      IT:{
+        subject:'Richiesta proforma \u2014 Pratica {numero_expediente}',
+        body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della proforma relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      EN:{
+        subject:'Proforma invoice request \u2014 File {numero_expediente}',
+        body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the proforma invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      FR:{
+        subject:'Demande de proforma \u2014 Dossier {numero_expediente}',
+        body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture proforma correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      DE:{
+        subject:'Proforma-Anfrage \u2014 Vorgang {numero_expediente}',
+        body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Proforma-Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'
+      }
+    },
+    REQ_FACTURA:{
+      ES:{
+        subject:'Solicitud de factura \u2014 Expediente {numero_expediente}',
+        body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la factura correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      IT:{
+        subject:'Richiesta fattura \u2014 Pratica {numero_expediente}',
+        body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della fattura relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      EN:{
+        subject:'Invoice request \u2014 File {numero_expediente}',
+        body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      FR:{
+        subject:'Demande de facture \u2014 Dossier {numero_expediente}',
+        body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'
+      },
+      DE:{
+        subject:'Rechnungsanfrage \u2014 Vorgang {numero_expediente}',
+        body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'
+      }
+    }
+  };
+
+  // Render dialog 2-step on click triangolo
+  window.numbersOpenMissingDocDialog=function(badgeEl){
+    var stockId=badgeEl.getAttribute('data-stock-id');
+    var lotIdx=parseInt(badgeEl.getAttribute('data-lot-idx'),10)||0;
+    var preselectDocType=badgeEl.getAttribute('data-doc-type'); // 'proforma' o 'factura'
+    // Trova il record nel stock
+    var stockArr=[];
+    try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
+    var s=stockArr.find(function(x){return x.id===stockId;});
+    if(!s){alert('No se ha encontrado el lote.');return;}
+    // Costruisci dialog
+    var existingModal=document.getElementById('nbv-missing-doc-modal');
+    if(existingModal)existingModal.remove();
+    var modal=document.createElement('div');
+    modal.id='nbv-missing-doc-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML=''
+      +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:480px;max-width:95vw;max-height:90vh;overflow-y:auto">'
+      +'  <div style="background:linear-gradient(135deg,#d97706 0%,#b45309 100%);color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center">'
+      +'    <strong style="font-size:14px">\u26a0\ufe0f Reclamar documento al proveedor</strong>'
+      +'    <span onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">\u00d7</span>'
+      +'  </div>'
+      +'  <div style="padding:18px">'
+      +'    <div style="background:rgba(245,158,11,0.07);border-left:3px solid #d97706;padding:10px 12px;border-radius:0 6px 6px 0;font-size:11.5px;color:var(--t2);margin-bottom:14px;line-height:1.5">'
+      +'      <strong>Proveedor:</strong> '+esc(s.supplier||'(no especificado)')+'<br>'
+      +'      <strong>Veh\u00edculos:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?(' \u2014 '+s.version):''))+'<br>'
+      +'      <strong>Unidades en lote:</strong> '+(Array.isArray(s.vehicles)?s.vehicles.length:1)+''
+      +'    </div>'
+      +'    <!-- STEP 1: Tipo documento -->'
+      +'    <div style="margin-bottom:14px">'
+      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">1. \u00bfQu\u00e9 desea reclamar?</div>'
+      +'      <div style="display:flex;gap:10px">'
+      +'        <label style="flex:1;padding:9px 12px;border:1.5px solid '+(preselectDocType==='factura'?'#d97706':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;background:'+(preselectDocType==='factura'?'rgba(245,158,11,0.07)':'transparent')+'">'
+      +'          <input type="radio" name="missing-doc-type" value="factura" '+(preselectDocType==='factura'?'checked':'')+'> <span>\ud83d\udcc4 Reclamar la <strong>Factura</strong></span>'
+      +'        </label>'
+      +'        <label style="flex:1;padding:9px 12px;border:1.5px solid '+(preselectDocType==='proforma'?'#d97706':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;background:'+(preselectDocType==='proforma'?'rgba(245,158,11,0.07)':'transparent')+'">'
+      +'          <input type="radio" name="missing-doc-type" value="proforma" '+(preselectDocType==='proforma'?'checked':'')+'> <span>\ud83d\udccb Reclamar la <strong>Proforma</strong></span>'
+      +'        </label>'
+      +'      </div>'
+      +'    </div>'
+      +'    <!-- STEP 2: Scope -->'
+      +'    <div style="margin-bottom:14px">'
+      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">2. \u00bfReclamar para?</div>'
+      +'      <div style="display:flex;gap:10px;flex-direction:column">'
+      +'        <label style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px">'
+      +'          <input type="radio" name="missing-doc-scope" value="all" checked> <span>Todo el expediente <span style="color:var(--t3);font-size:10px">('+(Array.isArray(s.vehicles)?s.vehicles.length:1)+' veh\u00edculo(s))</span></span>'
+      +'        </label>'
+      +'        <label style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;opacity:.5">'
+      +'          <input type="radio" name="missing-doc-scope" value="selected" disabled> <span>Solo veh\u00edculos seleccionados <span style="color:var(--t3);font-size:10px">(disponible pr\u00f3ximamente)</span></span>'
+      +'        </label>'
+      +'      </div>'
+      +'    </div>'
+      +'    <!-- Lingua info -->'
+      +'    <div id="nbv-missing-doc-lang-info" style="font-size:11px;color:var(--t3);background:rgba(124,58,237,0.06);border-left:3px solid #7c3aed;padding:8px 10px;border-radius:0 6px 6px 0;margin-bottom:14px">'
+      +'      <span id="nbv-missing-doc-lang-text">Cargando idioma del proveedor\u2026</span>'
+      +'    </div>'
+      +'    <!-- Actions -->'
+      +'    <div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'      <button class="btn bg" onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="font-size:12px">Cancelar</button>'
+      +'      <button class="btn bp" onclick="numbersGenerateMissingDocEmail(\''+esc(stockId)+'\','+lotIdx+')" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-size:13px;font-weight:700">\ud83d\udce7 Generar email</button>'
+      +'    </div>'
+      +'  </div>'
+      +'</div>';
+    document.body.appendChild(modal);
+    // Risolvi lingua del provider e mostra info
+    setTimeout(function(){
+      var lang=numbersResolveProviderLanguage(s);
+      var langNames={ES:'Espa\u00f1ol',IT:'Italiano',EN:'English',FR:'Fran\u00e7ais',DE:'Deutsch',PT:'Portugu\u00eas',RO:'Rom\u00e2n\u0103'};
+      var flag={ES:'\ud83c\uddea\ud83c\uddf8',IT:'\ud83c\uddee\ud83c\uddf9',EN:'\ud83c\uddec\ud83c\udde7',FR:'\ud83c\uddeb\ud83c\uddf7',DE:'\ud83c\udde9\ud83c\uddea',PT:'\ud83c\uddf5\ud83c\uddf9',RO:'\ud83c\uddf7\ud83c\uddf4'}[lang]||'';
+      var supported=window._nxDocReclamTemplates&&window._nxDocReclamTemplates.REQ_FACTURA&&window._nxDocReclamTemplates.REQ_FACTURA[lang];
+      var info=document.getElementById('nbv-missing-doc-lang-text');
+      if(info){
+        if(supported)info.innerHTML='El email se generar\u00e1 en idioma <strong>'+flag+' '+(langNames[lang]||lang)+'</strong> (configurado en la ficha del proveedor).';
+        else info.innerHTML='\u26a0\ufe0f Idioma <strong>'+lang+'</strong> no tiene plantilla disponible \u2014 se usar\u00e1 <strong>\ud83c\uddea\ud83c\uddf8 Espa\u00f1ol</strong> como fallback.';
+      }
+    },50);
+  };
+
+  // Risolve la lingua del provider (default ES)
+  window.numbersResolveProviderLanguage=function(stock){
+    if(!stock)return 'ES';
+    // 1. Se il provider ha la lingua configurata (DB providers), usala
+    try{
+      var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
+      var match=null;
+      if(stock.providerId)match=providers.find(function(p){return p.id===stock.providerId;});
+      if(!match&&stock.supplier){
+        var supLow=String(stock.supplier).toLowerCase().trim();
+        match=providers.find(function(p){
+          if(!p)return false;
+          return (p.name&&p.name.toLowerCase()===supLow)||(p.legalName&&p.legalName.toLowerCase()===supLow)||(p.company&&p.company.toLowerCase()===supLow);
+        });
+      }
+      if(match&&match.language)return match.language;
+    }catch(e){}
+    return 'ES'; // fallback
+  };
+
+  // Genera email mailto: e apre client di posta
+  window.numbersGenerateMissingDocEmail=function(stockId,lotIdx){
+    var modal=document.getElementById('nbv-missing-doc-modal');
+    if(!modal)return;
+    var docTypeRadio=modal.querySelector('input[name="missing-doc-type"]:checked');
+    if(!docTypeRadio){alert('Por favor seleccione el tipo de documento.');return;}
+    var docType=docTypeRadio.value;
+    // Risolvi stock
+    var stockArr=[];
+    try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
+    var s=stockArr.find(function(x){return x.id===stockId;});
+    if(!s){alert('No se ha encontrado el lote.');return;}
+    // Risolvi lingua + provider data
+    var lang=numbersResolveProviderLanguage(s);
+    var templateId=docType==='factura'?'REQ_FACTURA':'REQ_PROFORMA';
+    var tplLang=window._nxDocReclamTemplates[templateId][lang]||window._nxDocReclamTemplates[templateId].ES;
+    // Risolvi provider details (email, nome)
+    var provEmail='',provName=s.supplier||'';
+    try{
+      var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
+      var match=null;
+      if(s.providerId)match=providers.find(function(p){return p.id===s.providerId;});
+      if(!match&&s.supplier){
+        var supLow=String(s.supplier).toLowerCase().trim();
+        match=providers.find(function(p){
+          if(!p)return false;
+          return (p.name&&p.name.toLowerCase()===supLow)||(p.legalName&&p.legalName.toLowerCase()===supLow)||(p.company&&p.company.toLowerCase()===supLow);
+        });
+      }
+      if(match){
+        provEmail=match.email||'';
+        provName=match.name||match.legalName||match.company||provName;
+        // Cerca Contabilidad in staff (preferito)
+        if(Array.isArray(match.staff)){
+          var contab=match.staff.find(function(st){return st&&st.role&&String(st.role).toLowerCase().indexOf('contab')>=0;});
+          if(contab&&contab.email)provEmail=contab.email;
+          if(contab&&contab.name)provName=contab.name;
+        }
+      }
+    }catch(e){console.warn('[v10.10.33] Cannot resolve provider:',e);}
+    // Variabili template
+    var lista=Array.isArray(s.vehicles)&&s.vehicles.length
+      ? s.vehicles.map(function(v,i){return (i+1)+'. '+(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+(v.vin?(' \u2014 VIN: '+v.vin):'');}).join('\n')
+      : '1. '+(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+(s.vin?(' \u2014 VIN: '+s.vin):'');
+    var empresaDM=s.ownerCompany||'DMCAR GROUP';
+    var numExp=s.internalId||s.id||'-';
+    var fechaActual=new Date().toLocaleDateString(lang==='IT'?'it-IT':lang==='EN'?'en-GB':lang==='FR'?'fr-FR':lang==='DE'?'de-DE':'es-ES');
+    var usuario='DM Group'; // TODO v10.11: utente loggato
+    // Sostituisci variabili
+    var subject=tplLang.subject
+      .replace(/\{nombre_proveedor\}/g,provName)
+      .replace(/\{empresa_dmcar\}/g,empresaDM)
+      .replace(/\{numero_expediente\}/g,numExp)
+      .replace(/\{fecha_actual\}/g,fechaActual)
+      .replace(/\{usuario_emisor\}/g,usuario);
+    var body=tplLang.body
+      .replace(/\{nombre_proveedor\}/g,provName)
+      .replace(/\{empresa_dmcar\}/g,empresaDM)
+      .replace(/\{numero_expediente\}/g,numExp)
+      .replace(/\{lista_vehiculos\}/g,lista)
+      .replace(/\{fecha_actual\}/g,fechaActual)
+      .replace(/\{usuario_emisor\}/g,usuario);
+    // Log audit (per future tracciabilità)
+    console.log('[v10.10.33] Reclamación generada:',{stockId:stockId,docType:docType,lang:lang,to:provEmail,subject:subject});
+    // mailto: con fallback clipboard
+    var mailtoUrl='mailto:'+encodeURIComponent(provEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    if(typeof nxOpenMailtoFallback==='function'){
+      nxOpenMailtoFallback(mailtoUrl,{subject:subject,body:body,to:provEmail});
+    }else{
+      try{window.open(mailtoUrl,'_blank');}catch(e){alert('No se ha podido abrir el cliente de correo.');}
+    }
+    // Chiudi dialog + toast
+    modal.remove();
+    if(typeof showToast==='function')showToast('\u2713 Email de reclamaci\u00f3n generada en '+lang,4000);
   };
 
   // ========================================================================
