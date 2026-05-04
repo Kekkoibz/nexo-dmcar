@@ -1,4 +1,60 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.0 — DM GROUP CRM | 2026-05-04 | INIZIO modulo Multi-utente Fase 1 (auth base):
+1) NUOVA INFRASTRUTTURA AUTENTICAZIONE INTERNA: introdotto sistema Multi-utente NEXO completamente separato dall'auth Firebase Google esistente (NX_FB.currentUser \u00e8 PRESERVATO senza modifiche). Il nuovo sistema NX_AUTH gestisce login interno username+password, sessioni, ruoli, audit log.
+2) STRUTTURA DATI definita (localStorage):
+   • nx5_users    = array {id, username, password, name, role, lang, isActive, createdAt}
+   • nx5_session  = {userId, username, role, name, lang, loginAt, expiresAt}
+   • nx5_audit    = log eventi {ts, userId, username, action, details}
+3) 4 RUOLI predefiniti (matrice permessi sar\u00e0 implementata in v10.11.1-2):
+   • super_admin: TUTTO (gestione utenti + modifica software)
+   • manager: vede tutto MA non amministra
+   • contable: focus contabilit\u00e0/Nexo Numbers/dati fiscali
+   • vendedor: focus vendite/Stock Vivo/B2B/Leads
+4) SUPER ADMIN HARDCODED: fallback sempre disponibile per accesso emergenza.
+   • username='admin', password='DMCAR2026'
+   • Definito come window.NX_AUTH.HARDCODED_ADMIN
+   • Garantisce accesso anche se localStorage utenti vuoto/cancellato
+5) LOGIN OVERLAY: overlay full-screen che appare se !sessione attiva.
+   • Design moderno: gradient #7c3aed→#3b82f6, logo NX, form centrato 420px max
+   • Campi: username (autofocus), password con toggle eye visibility, checkbox "Ricordami 30 giorni"
+   • Validazione client-side + messaggi feedback (error/success/info)
+   • Submit blocca propagazione + chiama NX_AUTH.attemptLogin()
+   • z-index 99999 sopra tutto, app sottostante nascosta con visibility:hidden
+6) FUNZIONI CHIAVE NX_AUTH:
+   • init() → check sessione, mostra overlay se necessario, carica currentUser
+   • attemptLogin() → validazione + sessione + redirect
+   • logout() → clear sessione + reshow overlay + reset form
+   • findUserByUsername(u) → cerca utente (case-insensitive) + fallback hardcoded admin
+   • isSessionValid(s) → check expiresAt vs Date.now()
+   • saveSession/clearSession con localStorage
+   • logAudit(action,details) → log circolare max 500 entries
+   • isAuthenticated/hasRole/isSuperAdmin → helper enforcement (uso v10.11.2)
+7) USER MENU INTERATTIVO: avatar topbar trasformato da statico "FD" a dropdown interattivo.
+   • Click avatar → menu 240px: header gradient con nome+ruolo+username, voci Mi perfil, Idioma, Gesti\u00f3n Usuarios (solo Super Admin), Cerrar sesi\u00f3n
+   • Avatar mostra iniziali utente (es. "MG" per Maria Garcia)
+   • Click outside chiude menu (closeOnOut listener)
+   • Sezione admin "Gesti\u00f3n Usuarios" hidden se !super_admin
+8) BOOTSTRAP: NX_AUTH.init() chiamato in DOMContentLoaded PRIMA di tutto il resto.
+   • Se sessione valida → carica utente, nasconde overlay, app visibile
+   • Se sessione scaduta/assente → mostra overlay, blocca interazione app
+9) RENAME: title page e sidebar logo aggiornati da "DMCAR GROUP" a "DM GROUP" (allineato al rebranding 3 imprese gruppo: DMCAR/INNOQUEST/IMPEX).
+10) DEFERRED a fasi successive (link verso roadmap):
+   • v10.11.1 Fase 2: pannello Gesti\u00f3n Usuarios CRUD (oggi alert placeholder)
+   • v10.11.2 Fase 3: enforcement permessi (sidebar adattiva, blocco azioni read-only)
+   • v10.11.3 Fase 4: multilingua UI ES/IT/EN + audit log viewer
+11) Smoke test 7/7 PASS:
+   • Login admin/DMCAR2026 ✅
+   • Username sconosciuto → null ✅
+   • Case-insensitive (4 varianti admin) ✅
+   • Aggiunta utente nuovo + lookup ✅
+   • Hardcoded admin sempre disponibile ✅
+   • Empty/null username → null ✅
+   • Session expiry future/past ✅
+12) PRESERVA: tutto v10.10.35 (triangolo \u26a0\ufe0f 8 zone, multilingua), Firebase auth Google (NX_FB.currentUser intoccato), tutti i moduli esistenti.
+13) NOTE TECNICHE:
+   • Password in localStorage NON sono hashate \u2014 sufficiente per uso interno team trusted, NON usare per esposizione pubblica.
+   • Compatibile con Firebase sync esistente: l'utente DM Group si autentica dopo NX_AUTH (interno) e separatamente con Google per sync remoto.
+   • Per testare: hard reload, vedrai login overlay. Inserisci admin/DMCAR2026 → entra come Super Admin. -->
 <!-- NEXO v10.10.35 — DM GROUP CRM | 2026-05-04 | Estensione triangolo ⚠️ a tutte le zone (Compra/Venta/Transporte/Broker):
 1) NUOVA FEATURE: estensione completa del sistema "Documenti Mancanti" v10.10.33-34 a TUTTE le zone della Vista Contable. Oggi 8 celle hanno il triangolo ⚠️ cliccabile (era 2 in v10.10.33-34):
    • COMPRA: PF Compra (provider/req/proforma) + FT Compra (provider/req/factura) → email Provider
@@ -357,7 +413,7 @@ PRESERVA: workflow OWN v10.10.1, fix CSS v10.10.2, dati per-veicolo Vista Contab
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>NEXO — DMCAR GROUP</title>
+<title>NEXO — DM GROUP</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Firebase SDK v10 compat (ES5 compatible) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -621,6 +677,46 @@ body.fb-banner-on #app{padding-top:30px}
 </style>
 </head>
 <body>
+<!-- =================================================================== -->
+<!-- v10.11.0: OVERLAY LOGIN — appare se !sessione attiva                -->
+<!-- =================================================================== -->
+<div id="nx-login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#1e293b 0%,#0f172a 50%,#1e1b4b 100%);align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:420px;background:#fff;border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden">
+    <!-- Header gradient -->
+    <div style="background:linear-gradient(135deg,#7c3aed 0%,#3b82f6 100%);color:#fff;padding:32px 28px;text-align:center">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;background:rgba(255,255,255,0.15);border-radius:16px;font-size:26px;font-weight:900;letter-spacing:-.02em;margin-bottom:12px;backdrop-filter:blur(10px)">NX</div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.01em">NEXO</div>
+      <div style="font-size:11px;opacity:.85;letter-spacing:.08em;text-transform:uppercase;margin-top:2px">DM GROUP CRM</div>
+    </div>
+    <!-- Form -->
+    <form id="nx-login-form" onsubmit="event.preventDefault();NX_AUTH.attemptLogin();return false" style="padding:28px">
+      <div id="nx-login-msg" style="display:none;font-size:12px;padding:10px 12px;border-radius:8px;margin-bottom:14px;border-left:3px solid"></div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">USUARIO</label>
+        <input type="text" id="nx-login-username" autocomplete="username" autofocus placeholder="admin" style="width:100%;padding:11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
+      </div>
+      <div style="margin-bottom:18px">
+        <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">CONTRASE&Ntilde;A</label>
+        <div style="position:relative">
+          <input type="password" id="nx-login-password" autocomplete="current-password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" style="width:100%;padding:11px 38px 11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
+          <span onclick="NX_AUTH.togglePasswordVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:14px;user-select:none" title="Mostrar/Ocultar contrase&ntilde;a">&#128065;</span>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;margin-bottom:18px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="nx-login-remember" checked style="cursor:pointer;width:14px;height:14px;accent-color:#7c3aed">
+        <span>Recordarme en este dispositivo (30 d&iacute;as)</span>
+      </label>
+      <button type="submit" id="nx-login-submit" style="width:100%;padding:12px;background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:transform .12s,box-shadow .12s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 8px 20px rgba(124,58,237,.3)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+        Iniciar sesi&oacute;n
+      </button>
+      <div style="text-align:center;margin-top:16px;font-size:10.5px;color:#94a3b8">
+        Acceso restringido al equipo DM Group<br>
+        <span style="opacity:.7">v10.11.0 \u2014 \u00bfOlvidaste contrase&ntilde;a? Contacta al Super Admin</span>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div id="fb-banner" onclick="NX_FB.bannerClick()">
   <span class="fb-dot"></span>
   <span id="fb-banner-text">Inicializando...</span>
@@ -631,7 +727,7 @@ body.fb-banner-on #app{padding-top:30px}
 <nav id="sb">
   <div class="sb-head">
     <div class="sb-logo">NX</div>
-    <div><div class="sb-nm">NEXO</div><div style="font-size:9px;color:var(--t4);letter-spacing:.06em">DMCAR GROUP</div></div>
+    <div><div class="sb-nm">NEXO</div><div style="font-size:9px;color:var(--t4);letter-spacing:.06em">DM GROUP</div></div>
   </div>
   <div class="sb-nav">
     <div class="sb-sec">Principal</div>
@@ -665,7 +761,35 @@ body.fb-banner-on #app{padding-top:30px}
     <div class="tb-title" id="tb-t">Dashboard</div>
     <div class="tb-right">
       <div style="font-size:11px;color:var(--t3)" id="tb-d"></div>
-      <div class="avatar">FD</div>
+      <!-- v10.11.0: User menu interattivo (sostituisce avatar statico FD) -->
+      <div id="nx-user-menu-wrap" style="position:relative">
+        <div class="avatar" id="nx-user-avatar" onclick="nxAuthToggleUserMenu()" style="cursor:pointer;user-select:none" title="Mi cuenta">FD</div>
+        <div id="nx-user-menu" style="display:none;position:absolute;right:0;top:46px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.15);min-width:240px;z-index:99000;overflow:hidden">
+          <div style="padding:14px 16px;background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff">
+            <div id="nx-user-menu-name" style="font-size:13px;font-weight:700;letter-spacing:-.01em">--</div>
+            <div id="nx-user-menu-role" style="font-size:10.5px;opacity:.85;margin-top:2px;letter-spacing:.04em;text-transform:uppercase">--</div>
+            <div id="nx-user-menu-username" style="font-size:10px;opacity:.7;margin-top:4px;font-family:ui-monospace,monospace">--</div>
+          </div>
+          <div style="padding:6px 0">
+            <div onclick="nxAuthOpenProfile()" style="padding:9px 16px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:9px;color:var(--t1)" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+              <span style="font-size:14px">&#128100;</span> Mi perfil
+            </div>
+            <div onclick="nxAuthOpenLanguageSwitcher()" style="padding:9px 16px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:9px;color:var(--t1)" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+              <span style="font-size:14px">&#127760;</span> <span>Idioma</span> <span id="nx-user-menu-lang" style="margin-left:auto;font-size:10px;color:var(--t3);font-weight:600">ES</span>
+            </div>
+            <div id="nx-user-menu-admin-section" style="display:none;border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
+              <div onclick="nxAuthOpenUsersPanel()" style="padding:9px 16px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:9px;color:#7c3aed;font-weight:600" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+                <span style="font-size:14px">&#128101;</span> Gesti&oacute;n de Usuarios
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px">
+              <div onclick="NX_AUTH.logout()" style="padding:9px 16px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:9px;color:#dc2626" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='transparent'">
+                <span style="font-size:14px">&#128274;</span> Cerrar sesi&oacute;n
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div id="content">
@@ -3801,6 +3925,306 @@ var FB_KEY_RENDER={
   mkLists:'renderMarketing',mkListsCounter:null
 };
 
+// ====================================================================
+// v10.11.0: SISTEMA MULTI-UTENTE NEXO (auth interna)
+// ====================================================================
+// Login username+password, sessione localStorage con expiry.
+// 4 ruoli: super_admin, manager, contable, vendedor.
+// Super Admin hardcoded fallback: admin/DMCAR2026 (modificabile dal pannello).
+// Storage keys:
+//   nx5_users    = array di {id, username, password, name, role, lang, isActive, createdAt}
+//   nx5_session  = {userId, username, role, name, lang, loginAt, expiresAt}
+//   nx5_audit    = log eventi (riservato a v10.11.3)
+// ====================================================================
+var NX_AUTH={
+  // Costanti
+  SESSION_KEY:'nx5_session',
+  USERS_KEY:'nx5_users',
+  AUDIT_KEY:'nx5_audit',
+  REMEMBER_DAYS:30,
+  SHORT_DAYS:1,
+  // Ruolo Super Admin hardcoded (fallback se localStorage utenti vuoto)
+  HARDCODED_ADMIN:{
+    id:'sysadmin',
+    username:'admin',
+    password:'DMCAR2026',
+    name:'Super Administrator',
+    role:'super_admin',
+    lang:'es',
+    isActive:true,
+    isHardcoded:true,
+    createdAt:'2026-05-04'
+  },
+  // Lista ruoli definiti (usata in fase 2-3)
+  ROLES:['super_admin','manager','contable','vendedor'],
+  ROLE_LABELS:{super_admin:'Super Admin',manager:'Manager',contable:'Contable',vendedor:'Vendedor'},
+  // Stato runtime
+  currentUser:null,
+
+  // Inizializzazione: chiamata al boot dell'app
+  init:function(){
+    try{
+      var session=this.loadSession();
+      if(session&&session.userId&&this.isSessionValid(session)){
+        // Sessione valida → carica utente e nasconde overlay
+        var user=this.findUserById(session.userId);
+        if(user&&user.isActive){
+          this.currentUser=user;
+          console.log('[NX_AUTH v10.11.0] Sessione attiva:',user.username,'('+user.role+')');
+          this.hideLoginOverlay();
+          return true;
+        }else{
+          console.warn('[NX_AUTH] Sessione invalida \u2014 utente non trovato o inattivo');
+          this.clearSession();
+        }
+      }
+      // No session → mostra login
+      console.log('[NX_AUTH v10.11.0] Nessuna sessione \u2014 mostro login overlay');
+      this.showLoginOverlay();
+      return false;
+    }catch(e){
+      console.error('[NX_AUTH] init error:',e);
+      this.showLoginOverlay();
+      return false;
+    }
+  },
+
+  // === SESSIONE ===
+  loadSession:function(){
+    try{
+      var raw=localStorage.getItem(this.SESSION_KEY);
+      return raw?JSON.parse(raw):null;
+    }catch(e){return null;}
+  },
+  saveSession:function(session){
+    try{localStorage.setItem(this.SESSION_KEY,JSON.stringify(session));}
+    catch(e){console.error('[NX_AUTH] saveSession error:',e);}
+  },
+  clearSession:function(){
+    try{localStorage.removeItem(this.SESSION_KEY);}catch(e){}
+    this.currentUser=null;
+  },
+  isSessionValid:function(session){
+    if(!session||!session.expiresAt)return false;
+    return new Date(session.expiresAt).getTime()>Date.now();
+  },
+
+  // === UTENTI ===
+  loadUsers:function(){
+    try{
+      var raw=localStorage.getItem(this.USERS_KEY);
+      var arr=raw?JSON.parse(raw):[];
+      // Garantisce che il Super Admin hardcoded sia SEMPRE accessibile
+      // (anche se l'utente cancella tutti gli utenti dal pannello)
+      if(!arr.find(function(u){return u&&u.username==='admin';})){
+        // Se non c'\u00e8 nessun admin, l'hardcoded \u00e8 il fallback per il login (non viene salvato in storage)
+      }
+      return arr;
+    }catch(e){return [];}
+  },
+  saveUsers:function(arr){
+    try{localStorage.setItem(this.USERS_KEY,JSON.stringify(arr));}
+    catch(e){console.error('[NX_AUTH] saveUsers error:',e);}
+  },
+  findUserByUsername:function(username){
+    if(!username)return null;
+    var u=username.toLowerCase().trim();
+    var users=this.loadUsers();
+    var found=users.find(function(usr){return usr&&usr.username&&usr.username.toLowerCase()===u;});
+    if(found)return found;
+    // Fallback Super Admin hardcoded (se non sovrascritto dall'utente)
+    if(u===this.HARDCODED_ADMIN.username.toLowerCase())return this.HARDCODED_ADMIN;
+    return null;
+  },
+  findUserById:function(id){
+    if(!id)return null;
+    var users=this.loadUsers();
+    var found=users.find(function(usr){return usr&&usr.id===id;});
+    if(found)return found;
+    if(id===this.HARDCODED_ADMIN.id)return this.HARDCODED_ADMIN;
+    return null;
+  },
+
+  // === LOGIN/LOGOUT ===
+  attemptLogin:function(){
+    var username=(document.getElementById('nx-login-username')||{}).value||'';
+    var password=(document.getElementById('nx-login-password')||{}).value||'';
+    var remember=(document.getElementById('nx-login-remember')||{}).checked||false;
+    username=username.trim();
+    if(!username||!password){
+      this.showLoginMessage('Por favor introduce usuario y contrase\u00f1a.','error');
+      return;
+    }
+    var user=this.findUserByUsername(username);
+    if(!user){
+      this.showLoginMessage('Usuario no encontrado.','error');
+      this.logAudit('login_fail',{username:username,reason:'user_not_found'});
+      return;
+    }
+    if(!user.isActive){
+      this.showLoginMessage('Cuenta desactivada. Contacta al Super Admin.','error');
+      this.logAudit('login_fail',{username:username,reason:'inactive'});
+      return;
+    }
+    if(user.password!==password){
+      this.showLoginMessage('Contrase\u00f1a incorrecta.','error');
+      this.logAudit('login_fail',{username:username,reason:'wrong_password'});
+      return;
+    }
+    // Login successful
+    this.currentUser=user;
+    var days=remember?this.REMEMBER_DAYS:this.SHORT_DAYS;
+    var session={
+      userId:user.id,
+      username:user.username,
+      role:user.role,
+      name:user.name,
+      lang:user.lang||'es',
+      loginAt:new Date().toISOString(),
+      expiresAt:new Date(Date.now()+days*24*60*60*1000).toISOString()
+    };
+    this.saveSession(session);
+    this.logAudit('login_success',{username:user.username,role:user.role,remember:remember});
+    this.showLoginMessage('\u00a1Bienvenido, '+user.name+'!','success');
+    var self=this;
+    setTimeout(function(){self.hideLoginOverlay();},600);
+  },
+
+  logout:function(){
+    if(this.currentUser){
+      this.logAudit('logout',{username:this.currentUser.username});
+    }
+    this.clearSession();
+    this.showLoginOverlay();
+    // Reset campi form
+    var u=document.getElementById('nx-login-username');if(u)u.value='';
+    var p=document.getElementById('nx-login-password');if(p)p.value='';
+    this.showLoginMessage('Sesi\u00f3n cerrada correctamente.','info');
+    setTimeout(function(){
+      var msg=document.getElementById('nx-login-msg');if(msg)msg.style.display='none';
+    },3000);
+  },
+
+  // === UI ===
+  showLoginOverlay:function(){
+    var ov=document.getElementById('nx-login-overlay');
+    if(ov)ov.style.display='flex';
+    // Nasconde l'app sottostante
+    var app=document.getElementById('app');
+    if(app)app.style.visibility='hidden';
+  },
+  hideLoginOverlay:function(){
+    var ov=document.getElementById('nx-login-overlay');
+    if(ov)ov.style.display='none';
+    var app=document.getElementById('app');
+    if(app)app.style.visibility='visible';
+    // Aggiorna user menu se esiste
+    if(typeof window.nxAuthUpdateUserMenu==='function')window.nxAuthUpdateUserMenu();
+  },
+  showLoginMessage:function(text,type){
+    var box=document.getElementById('nx-login-msg');
+    if(!box)return;
+    var colors={
+      error:{bg:'#fef2f2',border:'#dc2626',color:'#991b1b'},
+      success:{bg:'#f0fdf4',border:'#16a34a',color:'#166534'},
+      info:{bg:'#eff6ff',border:'#3b82f6',color:'#1e40af'}
+    };
+    var c=colors[type]||colors.info;
+    box.style.background=c.bg;
+    box.style.borderColor=c.border;
+    box.style.color=c.color;
+    box.textContent=text;
+    box.style.display='block';
+  },
+  togglePasswordVisibility:function(){
+    var p=document.getElementById('nx-login-password');
+    if(!p)return;
+    p.type=p.type==='password'?'text':'password';
+  },
+
+  // === AUDIT LOG (semplice, completato in v10.11.3) ===
+  logAudit:function(action,details){
+    try{
+      var raw=localStorage.getItem(this.AUDIT_KEY);
+      var log=raw?JSON.parse(raw):[];
+      log.push({
+        ts:new Date().toISOString(),
+        userId:(this.currentUser&&this.currentUser.id)||null,
+        username:(this.currentUser&&this.currentUser.username)||(details&&details.username)||null,
+        action:action,
+        details:details||{}
+      });
+      // Mantieni max 500 entries
+      if(log.length>500)log=log.slice(-500);
+      localStorage.setItem(this.AUDIT_KEY,JSON.stringify(log));
+    }catch(e){console.warn('[NX_AUTH] logAudit error:',e);}
+  },
+
+  // === HELPER PUBBLICI (per uso futuro v10.11.2 enforcement) ===
+  isAuthenticated:function(){return !!this.currentUser;},
+  hasRole:function(role){
+    return this.currentUser&&this.currentUser.role===role;
+  },
+  isSuperAdmin:function(){return this.hasRole('super_admin');}
+};
+
+// Esposizione globale per debug console
+window.NX_AUTH=NX_AUTH;
+
+// === HELPER UI USER MENU (v10.11.0) ===
+window.nxAuthToggleUserMenu=function(){
+  var menu=document.getElementById('nx-user-menu');
+  if(!menu)return;
+  if(menu.style.display==='none'||!menu.style.display){
+    nxAuthUpdateUserMenu();
+    menu.style.display='block';
+    // Click outside to close
+    setTimeout(function(){
+      var closeOnOut=function(ev){
+        var wrap=document.getElementById('nx-user-menu-wrap');
+        if(wrap&&!wrap.contains(ev.target)){
+          menu.style.display='none';
+          document.removeEventListener('click',closeOnOut);
+        }
+      };
+      document.addEventListener('click',closeOnOut);
+    },50);
+  }else{
+    menu.style.display='none';
+  }
+};
+
+window.nxAuthUpdateUserMenu=function(){
+  if(!NX_AUTH.currentUser)return;
+  var u=NX_AUTH.currentUser;
+  var initials=(u.name||u.username||'U').split(/\s+/).slice(0,2).map(function(w){return w.charAt(0).toUpperCase();}).join('');
+  var avatar=document.getElementById('nx-user-avatar');
+  if(avatar)avatar.textContent=initials||'U';
+  var nm=document.getElementById('nx-user-menu-name');if(nm)nm.textContent=u.name||u.username||'Usuario';
+  var rl=document.getElementById('nx-user-menu-role');if(rl)rl.textContent=NX_AUTH.ROLE_LABELS[u.role]||u.role||'-';
+  var un=document.getElementById('nx-user-menu-username');if(un)un.textContent='@'+u.username;
+  var lg=document.getElementById('nx-user-menu-lang');if(lg)lg.textContent=(u.lang||'es').toUpperCase();
+  // Show admin section solo per Super Admin
+  var adminSec=document.getElementById('nx-user-menu-admin-section');
+  if(adminSec)adminSec.style.display=NX_AUTH.isSuperAdmin()?'block':'none';
+};
+
+window.nxAuthOpenProfile=function(){
+  alert('Mi perfil — disponible en v10.11.1\n\n(Pannello cambio password, nome, lingua)');
+  document.getElementById('nx-user-menu').style.display='none';
+};
+
+window.nxAuthOpenLanguageSwitcher=function(){
+  alert('Selector de idioma — disponible en v10.11.3\n\n(ES / IT / EN)');
+  document.getElementById('nx-user-menu').style.display='none';
+};
+
+window.nxAuthOpenUsersPanel=function(){
+  alert('Gesti\u00f3n de Usuarios — disponible en v10.11.1\n\n(CRUD utenti + matrice permessi)');
+  document.getElementById('nx-user-menu').style.display='none';
+};
+
+
 var NX_FB={
   app:null, auth:null, db:null,
   currentUser:null,
@@ -5713,6 +6137,15 @@ window.spReset=function(){
   spUpdateConfigUI();
   if(typeof showToast==='function')showToast('\u2713 Configuraci\u00f3n SharePoint reseteada');
 };
+
+// v10.11.0: bootstrap login overlay PRIMA di tutto il resto
+document.addEventListener('DOMContentLoaded',function(){
+  try{
+    if(typeof NX_AUTH!=='undefined'&&NX_AUTH.init){
+      NX_AUTH.init();
+    }
+  }catch(e){console.error('[NX_AUTH] boot error:',e);}
+});
 
 // Init UI all'apertura tab Configuracion
 document.addEventListener('DOMContentLoaded',function(){
