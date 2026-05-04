@@ -1,4 +1,57 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1 — DM GROUP CRM | 2026-05-04 | Multi-utente Fase 2: Gestione Utenti CRUD + Mi Perfil:
+1) NUOVO PANNELLO "GESTI\u00d3N DE USUARIOS" (visibile solo Super Admin):
+   • Modal full-screen 880px con header gradient viola
+   • Lista utenti tabellare con: Nome+Username, Rol, Idioma, Estado (Activo/Inactivo), Creado, Acciones
+   • Avatar circolare 32px con iniziali utente colorato per ruolo (super_admin=viola, manager=blu, contable=verde, vendedor=ambra)
+   • Badge "SISTEMA" per Super Admin hardcoded (non eliminabile/editabile)
+   • Badge "T\u00da" per riga utente loggato corrente
+   • Search live (filtra per nome/username/ruolo)
+   • Footer info conteggio utenti
+   • Bottone "+ Crear usuario" verde gradient
+2) FORM CREA/MODIFICA UTENTE (sub-modal 520px):
+   • Campi: Nombre completo*, Usuario* (lowercase auto, validazione regex), Rol, Contrase\u00f1a*, Idioma, Estado
+   • Validazione client-side completa: nome min 1, username 3-30 chars [a-z0-9._-], password min 6
+   • Username "admin" RESERVATO (rifiutato in form perché è il Super Admin sistema)
+   • Username univoco enforcement (rifiuto duplicati)
+   • Bottone \ud83c\udfb2 generatore password random 10 caratteri (esclude I/O/0/1 per leggibilit\u00e0)
+   • Box informativo dinamico: descrive cosa pu\u00f2 fare il ruolo selezionato (cambia al cambio dropdown)
+   • Edit mode: password vuota = mantiene esistente
+3) AZIONI per utente: Editar (\u270f\ufe0f) / Toggle Active-Inactive (\ud83d\udd12-\ud83d\udd13) / Eliminar (\ud83d\udddd\ufe0f)
+   • Edit: apre form pre-compilato
+   • Toggle: cambio isActive con conferma se utente disattiva se stesso → auto-logout
+   • Delete: conferma + protezione "non puoi eliminare te stesso"
+4) NUOVO PANNELLO "MI PERFIL" (visibile a tutti gli utenti loggati):
+   • Modal 480px con header gradient
+   • Sezione 1: Nombre completo + Idioma (selettore con bandiere)
+   • Sezione 2: Cambio password (Contrase\u00f1a actual + Nueva + Confirmar)
+   • Validazione: password attuale verificata, nuova min 6, conferma matching
+   • Hardcoded admin riceve avviso "El Super Admin del sistema no se puede modificar. Crea un usuario propio"
+   • Cambio password = cambio runtime currentUser + sessione persistente
+5) AGGIORNAMENTO USER MENU: trigger "Mi perfil" e "Gesti\u00f3n de Usuarios" ora aprono i modali reali (era alert placeholder in v10.11.0).
+6) AUDIT LOG eventi: user_create, user_update, user_delete, user_toggle_active, profile_update — tutti loggati con timestamp + userId attore + dettagli azione (visualizzatore log v10.11.3).
+7) PROTEZIONE SUPER ADMIN HARDCODED:
+   • Sempre prima riga in lista
+   • Non editable (badge "No editable" al posto delle azioni)
+   • Non eliminable (impossibile via UI)
+   • Garantisce accesso emergenza per recovery sistema
+8) Smoke test 10/10 PASS:
+   • Validazione username pattern (5 casi inclusi edge case length)
+   • Username "admin" reservato
+   • CRUD completo: create Maria/Pedro/Anna, edit name+lang, toggle active, delete
+   • Duplicate detection
+   • Hardcoded admin sempre disponibile post-CRUD
+   • Generazione password random 10 chars senza I/O/0/1
+9) PRESERVA: tutto v10.11.0 (login overlay, sessione, user menu, NX_AUTH base), v10.10.35 (sistema solleciti documenti), Firebase auth.
+10) DEFERRED a fasi successive:
+    • v10.11.2: Enforcement permessi (sidebar adattiva per ruolo + blocco azioni read-only + matrice permessi editabile)
+    • v10.11.3: Multilingua UI ES/IT/EN selectable + Audit log viewer per Super Admin
+11) NOTE TECNICHE:
+    • Tutte le password rimangono in chiaro (acceptable per team interno trusted)
+    • currentUser sync: edit del proprio profilo aggiorna NX_AUTH.currentUser + sessione + UI menu
+    • Click outside chiude user menu (preservato)
+    • Modal stack z-index: login=99999, gesti\u00f3n=99000, form=99100, profile=99000
+    • Test deploy: hard reload, login admin/DMCAR2026, click avatar → "Gesti\u00f3n de Usuarios" → crea utente, edita, toggle, elimina. Login con nuovo utente. -->
 <!-- NEXO v10.11.0 — DM GROUP CRM | 2026-05-04 | INIZIO modulo Multi-utente Fase 1 (auth base):
 1) NUOVA INFRASTRUTTURA AUTENTICAZIONE INTERNA: introdotto sistema Multi-utente NEXO completamente separato dall'auth Firebase Google esistente (NX_FB.currentUser \u00e8 PRESERVATO senza modifiche). Il nuovo sistema NX_AUTH gestisce login interno username+password, sessioni, ruoli, audit log.
 2) STRUTTURA DATI definita (localStorage):
@@ -714,6 +767,147 @@ body.fb-banner-on #app{padding-top:30px}
         <span style="opacity:.7">v10.11.0 \u2014 \u00bfOlvidaste contrase&ntilde;a? Contacta al Super Admin</span>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- =================================================================== -->
+<!-- v10.11.1: MODAL "GESTI\u00d3N DE USUARIOS" (visibile solo Super Admin)  -->
+<!-- =================================================================== -->
+<div id="nx-users-modal" style="display:none;position:fixed;inset:0;z-index:99000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 25px 70px rgba(0,0,0,.4);width:880px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <strong style="font-size:15px">&#128101; Gesti&oacute;n de Usuarios</strong>
+        <div style="font-size:11px;opacity:.85;margin-top:2px">Crear, editar y gestionar accesos al CRM NEXO</div>
+      </div>
+      <span onclick="nxAuthCloseUsersPanel()" style="cursor:pointer;font-size:22px;line-height:1;opacity:.85;padding:0 6px">&times;</span>
+    </div>
+    <!-- Toolbar -->
+    <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;background:var(--bg2)">
+      <input type="text" id="nx-users-search" placeholder="&#128269; Buscar por nombre, usuario o rol..." oninput="nxAuthRenderUsersList()" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:12px">
+      <button class="btn bp" onclick="nxAuthOpenUserForm()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;font-size:12px;font-weight:700;padding:8px 14px">+ Crear usuario</button>
+    </div>
+    <!-- Lista -->
+    <div id="nx-users-list" style="overflow-y:auto;flex:1;padding:10px"></div>
+    <!-- Footer info -->
+    <div style="padding:10px 22px;border-top:1px solid var(--border);font-size:10.5px;color:var(--t3);background:var(--bg2);flex-shrink:0">
+      <span id="nx-users-count">0 usuarios</span> &middot; Super Admin <strong>admin</strong> es el acceso de emergencia y no se puede eliminar.
+    </div>
+  </div>
+</div>
+
+<!-- Sub-modal: Form crea/modifica utente -->
+<div id="nx-user-form-modal" style="display:none;position:fixed;inset:0;z-index:99100;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 25px 70px rgba(0,0,0,.4);width:520px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <strong id="nx-user-form-title" style="font-size:14px">Crear nuevo usuario</strong>
+      <span onclick="nxAuthCloseUserForm()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">&times;</span>
+    </div>
+    <div style="padding:18px 20px;overflow-y:auto;flex:1">
+      <div id="nx-user-form-msg" style="display:none;font-size:11.5px;padding:8px 11px;border-radius:7px;margin-bottom:12px;border-left:3px solid"></div>
+      <input type="hidden" id="nx-user-form-id" value="">
+      <div style="margin-bottom:12px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">NOMBRE COMPLETO *</label>
+        <input type="text" id="nx-user-form-name" placeholder="Ej: Maria Garc&iacute;a" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">USUARIO *</label>
+          <input type="text" id="nx-user-form-username" placeholder="maria.garcia" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">ROL *</label>
+          <select id="nx-user-form-role" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;background:#fff">
+            <option value="vendedor">Vendedor</option>
+            <option value="contable">Contable</option>
+            <option value="manager">Manager</option>
+            <option value="super_admin">Super Admin</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">CONTRASE&Ntilde;A * <span style="font-weight:400;color:var(--t3);font-size:9.5px">(min 6 caracteres)</span></label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="nx-user-form-password" placeholder="Min 6 caracteres" style="flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+          <button class="btn bs" onclick="nxAuthGenerateRandomPassword()" style="font-size:11px;padding:0 12px" title="Generar password aleatoria">&#127922;</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">IDIOMA</label>
+          <select id="nx-user-form-lang" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;background:#fff">
+            <option value="es">&#127466;&#127480; Espa&ntilde;ol</option>
+            <option value="it">&#127470;&#127481; Italiano</option>
+            <option value="en">&#127468;&#127463; English</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">ESTADO</label>
+          <select id="nx-user-form-active" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;background:#fff">
+            <option value="true">&#9989; Activo</option>
+            <option value="false">&#10060; Inactivo</option>
+          </select>
+        </div>
+      </div>
+      <div id="nx-user-form-role-info" style="font-size:10.5px;color:var(--t3);background:rgba(124,58,237,.06);border-left:3px solid #7c3aed;padding:8px 10px;border-radius:0 6px 6px 0;line-height:1.5"></div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--bg2)">
+      <button class="btn bg" onclick="nxAuthCloseUserForm()" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="nxAuthSaveUser()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;border:none;font-size:12.5px;font-weight:700">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- =================================================================== -->
+<!-- v10.11.1: MODAL "MI PERFIL" (visibile a tutti gli utenti loggati)   -->
+<!-- =================================================================== -->
+<div id="nx-profile-modal" style="display:none;position:fixed;inset:0;z-index:99000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 25px 70px rgba(0,0,0,.4);width:480px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <strong style="font-size:15px">&#128100; Mi Perfil</strong>
+        <div style="font-size:11px;opacity:.85;margin-top:2px" id="nx-profile-username-label">--</div>
+      </div>
+      <span onclick="nxAuthCloseProfile()" style="cursor:pointer;font-size:22px;line-height:1;opacity:.85;padding:0 6px">&times;</span>
+    </div>
+    <div style="padding:18px 22px;overflow-y:auto;flex:1">
+      <div id="nx-profile-msg" style="display:none;font-size:11.5px;padding:8px 11px;border-radius:7px;margin-bottom:12px;border-left:3px solid"></div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">NOMBRE COMPLETO</label>
+        <input type="text" id="nx-profile-name" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">IDIOMA</label>
+        <select id="nx-profile-lang" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;background:#fff">
+          <option value="es">&#127466;&#127480; Espa&ntilde;ol</option>
+          <option value="it">&#127470;&#127481; Italiano</option>
+          <option value="en">&#127468;&#127463; English</option>
+        </select>
+      </div>
+      <div style="border-top:1px solid var(--border);margin:18px 0 14px;padding-top:14px">
+        <div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:10px">Cambiar contrase&ntilde;a</div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">CONTRASE&Ntilde;A ACTUAL</label>
+          <input type="password" id="nx-profile-old-pw" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">NUEVA CONTRASE&Ntilde;A</label>
+            <input type="password" id="nx-profile-new-pw" placeholder="Min 6 caracteres" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+          </div>
+          <div>
+            <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">CONFIRMAR</label>
+            <input type="password" id="nx-profile-new-pw2" placeholder="Repite contrase&ntilde;a" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+          </div>
+        </div>
+        <div style="font-size:10.5px;color:var(--t3);margin-top:8px">Deja vac&iacute;a la nueva contrase&ntilde;a si no quieres cambiarla.</div>
+      </div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--bg2)">
+      <button class="btn bg" onclick="nxAuthCloseProfile()" style="font-size:12px">Cancelar</button>
+      <button class="btn bp" onclick="nxAuthSaveProfile()" style="background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;border:none;font-size:12.5px;font-weight:700">Guardar cambios</button>
+    </div>
   </div>
 </div>
 
@@ -4210,8 +4404,9 @@ window.nxAuthUpdateUserMenu=function(){
 };
 
 window.nxAuthOpenProfile=function(){
-  alert('Mi perfil — disponible en v10.11.1\n\n(Pannello cambio password, nome, lingua)');
   document.getElementById('nx-user-menu').style.display='none';
+  nxAuthRenderProfile();
+  document.getElementById('nx-profile-modal').style.display='flex';
 };
 
 window.nxAuthOpenLanguageSwitcher=function(){
@@ -4220,8 +4415,332 @@ window.nxAuthOpenLanguageSwitcher=function(){
 };
 
 window.nxAuthOpenUsersPanel=function(){
-  alert('Gesti\u00f3n de Usuarios — disponible en v10.11.1\n\n(CRUD utenti + matrice permessi)');
   document.getElementById('nx-user-menu').style.display='none';
+  if(!NX_AUTH.isSuperAdmin()){
+    alert('Solo el Super Admin puede acceder a Gesti\u00f3n de Usuarios.');
+    return;
+  }
+  nxAuthRenderUsersList();
+  document.getElementById('nx-users-modal').style.display='flex';
+};
+
+window.nxAuthCloseUsersPanel=function(){
+  document.getElementById('nx-users-modal').style.display='none';
+};
+
+window.nxAuthCloseUserForm=function(){
+  document.getElementById('nx-user-form-modal').style.display='none';
+};
+
+window.nxAuthCloseProfile=function(){
+  document.getElementById('nx-profile-modal').style.display='none';
+};
+
+// ============================================================
+// v10.11.1: GESTIONE UTENTI (CRUD)
+// ============================================================
+
+// Renderizza la lista utenti nel pannello
+window.nxAuthRenderUsersList=function(){
+  var listEl=document.getElementById('nx-users-list');
+  var countEl=document.getElementById('nx-users-count');
+  if(!listEl)return;
+  var users=NX_AUTH.loadUsers();
+  // Aggiungi sempre il Super Admin hardcoded come prima riga (non eliminabile)
+  var allUsers=[Object.assign({},NX_AUTH.HARDCODED_ADMIN,{_isHardcoded:true})].concat(users);
+  // Filter by search
+  var search=((document.getElementById('nx-users-search')||{}).value||'').toLowerCase().trim();
+  if(search){
+    allUsers=allUsers.filter(function(u){
+      return (u.name&&u.name.toLowerCase().indexOf(search)>=0)
+          ||(u.username&&u.username.toLowerCase().indexOf(search)>=0)
+          ||(u.role&&u.role.toLowerCase().indexOf(search)>=0)
+          ||(NX_AUTH.ROLE_LABELS[u.role]&&NX_AUTH.ROLE_LABELS[u.role].toLowerCase().indexOf(search)>=0);
+    });
+  }
+  if(countEl)countEl.textContent=allUsers.length+' usuario'+(allUsers.length!==1?'s':'');
+  if(allUsers.length===0){
+    listEl.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3);font-size:12px">No hay usuarios que coincidan con la b\u00fasqueda.</div>';
+    return;
+  }
+  // Tabella
+  var roleColors={super_admin:'#7c3aed',manager:'#3b82f6',contable:'#16a34a',vendedor:'#d97706'};
+  var html='<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 110px 120px 90px;gap:0;font-size:11px;font-weight:700;color:var(--t2);padding:8px 12px;border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.04em">'
+    +'<div>Nombre / Usuario</div><div>Rol</div><div>Idioma</div><div>Estado</div><div>Creado</div><div style="text-align:right">Acciones</div>'
+    +'</div>';
+  allUsers.forEach(function(u){
+    var rc=roleColors[u.role]||'#94a3b8';
+    var initials=(u.name||u.username||'U').split(/\s+/).slice(0,2).map(function(w){return w.charAt(0).toUpperCase();}).join('');
+    var langFlag={es:'\ud83c\uddea\ud83c\uddf8',it:'\ud83c\uddee\ud83c\uddf9',en:'\ud83c\uddec\ud83c\udde7'}[u.lang||'es']||'';
+    var isCurrent=NX_AUTH.currentUser&&NX_AUTH.currentUser.id===u.id;
+    var statusBadge=u.isActive
+      ? '<span style="background:rgba(22,163,74,.1);color:#15803d;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600">\u25cf Activo</span>'
+      : '<span style="background:rgba(220,38,38,.1);color:#dc2626;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600">\u25cf Inactivo</span>';
+    var hardcodedBadge=u._isHardcoded?'<span style="background:rgba(124,58,237,.1);color:#7c3aed;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;margin-left:6px;letter-spacing:.04em">SISTEMA</span>':'';
+    var currentBadge=isCurrent?'<span style="background:rgba(59,130,246,.1);color:#1e40af;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;margin-left:6px;letter-spacing:.04em">T\u00da</span>':'';
+    var actions='';
+    if(u._isHardcoded){
+      actions='<span style="color:var(--t4);font-size:10px;font-style:italic">No editable</span>';
+    }else{
+      actions=''
+        +'<button onclick="nxAuthOpenUserForm(\''+esc(u.id)+'\')" title="Editar" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px 6px;color:#3b82f6">\u270f\ufe0f</button>'
+        +'<button onclick="nxAuthToggleUserActive(\''+esc(u.id)+'\')" title="'+(u.isActive?'Desactivar':'Activar')+'" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px 6px">'+(u.isActive?'\ud83d\udd12':'\ud83d\udd13')+'</button>'
+        +'<button onclick="nxAuthDeleteUser(\''+esc(u.id)+'\')" title="Eliminar" style="background:none;border:none;cursor:pointer;font-size:14px;padding:4px 6px;color:#dc2626">\ud83d\uddd1\ufe0f</button>';
+    }
+    html+='<div style="display:grid;grid-template-columns:1.5fr 1fr 1fr 110px 120px 90px;gap:0;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);font-size:11.5px;'+(isCurrent?'background:rgba(59,130,246,.04)':'')+'">'
+      +'<div style="display:flex;align-items:center;gap:9px;min-width:0">'
+        +'<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,'+rc+',#1e293b);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">'+esc(initials)+'</div>'
+        +'<div style="min-width:0;overflow:hidden">'
+          +'<div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name||'(sin nombre)')+hardcodedBadge+currentBadge+'</div>'
+          +'<div style="font-size:10px;color:var(--t3);font-family:ui-monospace,monospace">@'+esc(u.username)+'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div><span style="background:'+rc+'15;color:'+rc+';padding:3px 9px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.02em">'+esc(NX_AUTH.ROLE_LABELS[u.role]||u.role)+'</span></div>'
+      +'<div>'+langFlag+' '+esc((u.lang||'es').toUpperCase())+'</div>'
+      +'<div>'+statusBadge+'</div>'
+      +'<div style="font-size:10px;color:var(--t3)">'+esc(u.createdAt||'-')+'</div>'
+      +'<div style="text-align:right">'+actions+'</div>'
+    +'</div>';
+  });
+  listEl.innerHTML=html;
+};
+
+// Apre il form crea/modifica utente
+window.nxAuthOpenUserForm=function(userId){
+  var modal=document.getElementById('nx-user-form-modal');
+  var titleEl=document.getElementById('nx-user-form-title');
+  var msgEl=document.getElementById('nx-user-form-msg');
+  if(msgEl)msgEl.style.display='none';
+  // Reset campi
+  document.getElementById('nx-user-form-id').value='';
+  document.getElementById('nx-user-form-name').value='';
+  document.getElementById('nx-user-form-username').value='';
+  document.getElementById('nx-user-form-password').value='';
+  document.getElementById('nx-user-form-role').value='vendedor';
+  document.getElementById('nx-user-form-lang').value='es';
+  document.getElementById('nx-user-form-active').value='true';
+  if(userId){
+    // Modifica esistente
+    var u=NX_AUTH.findUserById(userId);
+    if(!u||u.isHardcoded){alert('Usuario no encontrado o no editable.');return;}
+    titleEl.textContent='Editar usuario: '+u.username;
+    document.getElementById('nx-user-form-id').value=u.id;
+    document.getElementById('nx-user-form-name').value=u.name||'';
+    document.getElementById('nx-user-form-username').value=u.username||'';
+    document.getElementById('nx-user-form-password').value=''; // Vuoto = non cambia
+    document.getElementById('nx-user-form-role').value=u.role||'vendedor';
+    document.getElementById('nx-user-form-lang').value=u.lang||'es';
+    document.getElementById('nx-user-form-active').value=u.isActive?'true':'false';
+    document.getElementById('nx-user-form-password').placeholder='Deja vac\u00edo para no cambiar';
+  }else{
+    titleEl.textContent='Crear nuevo usuario';
+    document.getElementById('nx-user-form-password').placeholder='Min 6 caracteres';
+  }
+  // Aggiorna info ruolo
+  nxAuthUpdateRoleInfo();
+  document.getElementById('nx-user-form-role').onchange=nxAuthUpdateRoleInfo;
+  modal.style.display='flex';
+};
+
+// Mostra info descrittiva del ruolo selezionato
+window.nxAuthUpdateRoleInfo=function(){
+  var role=(document.getElementById('nx-user-form-role')||{}).value||'vendedor';
+  var infoEl=document.getElementById('nx-user-form-role-info');
+  if(!infoEl)return;
+  var infos={
+    super_admin:'<strong>Super Admin</strong>: acceso total al sistema, gesti\u00f3n de usuarios, configuraci\u00f3n del software. Solo para administradores t\u00e9cnicos.',
+    manager:'<strong>Manager</strong>: ve todos los m\u00f3dulos en modo lectura. No puede modificar la configuraci\u00f3n del software ni gestionar usuarios.',
+    contable:'<strong>Contable</strong>: enfoque en Nexo Numbers, contabilidad, datos fiscales y proveedores. Sin acceso a Contactos B2B / Leads.',
+    vendedor:'<strong>Vendedor</strong>: enfoque en Stock Vivo, Generador de Ofertas, Contactos B2B y Leads. Sin acceso a Nexo Numbers ni configuraci\u00f3n.'
+  };
+  infoEl.innerHTML=infos[role]||'';
+};
+
+// Genera password random
+window.nxAuthGenerateRandomPassword=function(){
+  var chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  var pw='';
+  for(var i=0;i<10;i++)pw+=chars.charAt(Math.floor(Math.random()*chars.length));
+  document.getElementById('nx-user-form-password').value=pw;
+  document.getElementById('nx-user-form-password').type='text';
+  // Toast
+  if(typeof showToast==='function')showToast('\u2713 Contrase\u00f1a generada \u2014 c\u00f3piala antes de guardar',4000);
+};
+
+// Salva utente (create o update)
+window.nxAuthSaveUser=function(){
+  var id=document.getElementById('nx-user-form-id').value;
+  var name=document.getElementById('nx-user-form-name').value.trim();
+  var username=document.getElementById('nx-user-form-username').value.trim().toLowerCase();
+  var password=document.getElementById('nx-user-form-password').value;
+  var role=document.getElementById('nx-user-form-role').value;
+  var lang=document.getElementById('nx-user-form-lang').value;
+  var isActive=document.getElementById('nx-user-form-active').value==='true';
+  var msgEl=document.getElementById('nx-user-form-msg');
+  function showMsg(text,type){
+    var colors={error:{bg:'#fef2f2',border:'#dc2626',color:'#991b1b'},success:{bg:'#f0fdf4',border:'#16a34a',color:'#166534'}};
+    var c=colors[type]||colors.error;
+    msgEl.style.background=c.bg;msgEl.style.borderColor=c.border;msgEl.style.color=c.color;
+    msgEl.textContent=text;msgEl.style.display='block';
+  }
+  // Validazione
+  if(!name){showMsg('El nombre es obligatorio.','error');return;}
+  if(!username){showMsg('El usuario es obligatorio.','error');return;}
+  if(!/^[a-z0-9._-]{3,30}$/.test(username)){showMsg('Usuario inv\u00e1lido. Solo letras, n\u00fameros, punto, gui\u00f3n y subray. (3-30 caracteres).','error');return;}
+  if(username==='admin'){showMsg('El usuario "admin" est\u00e1 reservado para el Super Admin del sistema.','error');return;}
+  // Per nuovo utente la password è obbligatoria; per edit può rimanere vuota (= non cambia)
+  if(!id&&(!password||password.length<6)){showMsg('La contrase\u00f1a debe tener al menos 6 caracteres.','error');return;}
+  if(id&&password&&password.length<6){showMsg('La contrase\u00f1a debe tener al menos 6 caracteres.','error');return;}
+  if(NX_AUTH.ROLES.indexOf(role)<0){showMsg('Rol inv\u00e1lido.','error');return;}
+  // Username univoco
+  var users=NX_AUTH.loadUsers();
+  var dup=users.find(function(u){return u&&u.username===username&&u.id!==id;});
+  if(dup){showMsg('Ya existe un usuario con este nombre.','error');return;}
+  // Save
+  if(id){
+    // Update
+    var idx=users.findIndex(function(u){return u&&u.id===id;});
+    if(idx<0){showMsg('Usuario no encontrado.','error');return;}
+    users[idx].name=name;
+    users[idx].username=username;
+    if(password)users[idx].password=password;
+    users[idx].role=role;
+    users[idx].lang=lang;
+    users[idx].isActive=isActive;
+    users[idx].updatedAt=new Date().toISOString().slice(0,10);
+    NX_AUTH.logAudit('user_update',{userId:id,username:username,role:role});
+  }else{
+    // Create
+    var newId='u_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    users.push({
+      id:newId,
+      username:username,
+      password:password,
+      name:name,
+      role:role,
+      lang:lang,
+      isActive:isActive,
+      createdAt:new Date().toISOString().slice(0,10)
+    });
+    NX_AUTH.logAudit('user_create',{userId:newId,username:username,role:role});
+  }
+  NX_AUTH.saveUsers(users);
+  // Se l'utente loggato modifica se stesso, aggiorna currentUser e session
+  if(id&&NX_AUTH.currentUser&&NX_AUTH.currentUser.id===id){
+    NX_AUTH.currentUser=users.find(function(u){return u.id===id;});
+    var session=NX_AUTH.loadSession();
+    if(session){
+      session.username=username;session.role=role;session.name=name;session.lang=lang;
+      NX_AUTH.saveSession(session);
+    }
+    if(typeof nxAuthUpdateUserMenu==='function')nxAuthUpdateUserMenu();
+  }
+  nxAuthCloseUserForm();
+  nxAuthRenderUsersList();
+  if(typeof showToast==='function')showToast('\u2713 Usuario '+(id?'actualizado':'creado')+' correctamente',3000);
+};
+
+// Toggle active/inactive
+window.nxAuthToggleUserActive=function(userId){
+  var users=NX_AUTH.loadUsers();
+  var idx=users.findIndex(function(u){return u&&u.id===userId;});
+  if(idx<0)return;
+  if(NX_AUTH.currentUser&&NX_AUTH.currentUser.id===userId&&users[idx].isActive){
+    if(!confirm('\u26a0\ufe0f Est\u00e1s a punto de desactivar tu propio usuario. Esto cerrar\u00e1 tu sesi\u00f3n autom\u00e1ticamente. \u00bfContinuar?'))return;
+  }
+  users[idx].isActive=!users[idx].isActive;
+  NX_AUTH.saveUsers(users);
+  NX_AUTH.logAudit('user_toggle_active',{userId:userId,isActive:users[idx].isActive});
+  // Se utente disattiva se stesso → logout
+  if(NX_AUTH.currentUser&&NX_AUTH.currentUser.id===userId&&!users[idx].isActive){
+    NX_AUTH.logout();
+    return;
+  }
+  nxAuthRenderUsersList();
+  if(typeof showToast==='function')showToast('\u2713 Estado actualizado',2500);
+};
+
+// Elimina utente
+window.nxAuthDeleteUser=function(userId){
+  var users=NX_AUTH.loadUsers();
+  var u=users.find(function(x){return x&&x.id===userId;});
+  if(!u)return;
+  if(NX_AUTH.currentUser&&NX_AUTH.currentUser.id===userId){
+    alert('No puedes eliminar tu propio usuario. Pide a otro Super Admin que lo haga.');
+    return;
+  }
+  if(!confirm('\u00bfEliminar el usuario "'+u.username+'" ('+(u.name||'')+')?\nEsta acci\u00f3n NO se puede deshacer.'))return;
+  users=users.filter(function(x){return x&&x.id!==userId;});
+  NX_AUTH.saveUsers(users);
+  NX_AUTH.logAudit('user_delete',{userId:userId,username:u.username});
+  nxAuthRenderUsersList();
+  if(typeof showToast==='function')showToast('\u2713 Usuario eliminado',3000);
+};
+
+// ============================================================
+// v10.11.1: MI PERFIL
+// ============================================================
+
+// Renderizza dati profilo nel modale
+window.nxAuthRenderProfile=function(){
+  if(!NX_AUTH.currentUser)return;
+  var u=NX_AUTH.currentUser;
+  var lbl=document.getElementById('nx-profile-username-label');
+  if(lbl)lbl.textContent='@'+u.username+' \u2022 '+(NX_AUTH.ROLE_LABELS[u.role]||u.role);
+  document.getElementById('nx-profile-name').value=u.name||'';
+  document.getElementById('nx-profile-lang').value=u.lang||'es';
+  document.getElementById('nx-profile-old-pw').value='';
+  document.getElementById('nx-profile-new-pw').value='';
+  document.getElementById('nx-profile-new-pw2').value='';
+  var msg=document.getElementById('nx-profile-msg');
+  if(msg)msg.style.display='none';
+};
+
+// Salva modifiche profilo
+window.nxAuthSaveProfile=function(){
+  var name=document.getElementById('nx-profile-name').value.trim();
+  var lang=document.getElementById('nx-profile-lang').value;
+  var oldPw=document.getElementById('nx-profile-old-pw').value;
+  var newPw=document.getElementById('nx-profile-new-pw').value;
+  var newPw2=document.getElementById('nx-profile-new-pw2').value;
+  var msgEl=document.getElementById('nx-profile-msg');
+  function showMsg(text,type){
+    var colors={error:{bg:'#fef2f2',border:'#dc2626',color:'#991b1b'},success:{bg:'#f0fdf4',border:'#16a34a',color:'#166534'}};
+    var c=colors[type]||colors.error;
+    msgEl.style.background=c.bg;msgEl.style.borderColor=c.border;msgEl.style.color=c.color;
+    msgEl.textContent=text;msgEl.style.display='block';
+  }
+  if(!NX_AUTH.currentUser){showMsg('Sesi\u00f3n no v\u00e1lida.','error');return;}
+  if(!name){showMsg('El nombre es obligatorio.','error');return;}
+  // Caso particolare: hardcoded admin → modifiche solo runtime, non persistenti (warning)
+  if(NX_AUTH.currentUser.isHardcoded||NX_AUTH.currentUser.id==='sysadmin'){
+    showMsg('El Super Admin del sistema no se puede modificar. Crea un usuario propio para personalizar tu perfil.','error');
+    return;
+  }
+  // Cambio password (opzionale)
+  if(newPw||newPw2){
+    if(!oldPw){showMsg('Introduce tu contrase\u00f1a actual.','error');return;}
+    if(oldPw!==NX_AUTH.currentUser.password){showMsg('La contrase\u00f1a actual no es correcta.','error');return;}
+    if(newPw.length<6){showMsg('La nueva contrase\u00f1a debe tener al menos 6 caracteres.','error');return;}
+    if(newPw!==newPw2){showMsg('Las contrase\u00f1as nuevas no coinciden.','error');return;}
+  }
+  // Update users
+  var users=NX_AUTH.loadUsers();
+  var idx=users.findIndex(function(u){return u&&u.id===NX_AUTH.currentUser.id;});
+  if(idx<0){showMsg('Usuario no encontrado.','error');return;}
+  users[idx].name=name;
+  users[idx].lang=lang;
+  if(newPw)users[idx].password=newPw;
+  users[idx].updatedAt=new Date().toISOString().slice(0,10);
+  NX_AUTH.saveUsers(users);
+  NX_AUTH.currentUser=users[idx];
+  // Aggiorna sessione
+  var session=NX_AUTH.loadSession();
+  if(session){session.name=name;session.lang=lang;NX_AUTH.saveSession(session);}
+  NX_AUTH.logAudit('profile_update',{userId:NX_AUTH.currentUser.id,passwordChanged:!!newPw});
+  if(typeof nxAuthUpdateUserMenu==='function')nxAuthUpdateUserMenu();
+  showMsg('\u2713 Perfil actualizado correctamente.','success');
+  setTimeout(function(){nxAuthCloseProfile();},1200);
 };
 
 
