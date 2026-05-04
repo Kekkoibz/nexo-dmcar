@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.29 — DMCAR GROUP CRM | 2026-05-03 | Vista Contable refactor (Fix 1-4 pre-Multiutente):
+1) Spec utente: prima del rilascio del modulo Multiutente, sistemare colonne NEXO Number per garantire una base dati stabile su cui costruire i ruoli/permessi.
+2) FIX 1+2 — Aggiunte 2 colonne separate in sezione VENTA:
+   • N. FT Venta (numFTVenta): N\u00famero de factura de venta — letto da r.invoices[0].number SENZA prefisso "Pro" (solo facturas reali)
+   • Fecha FT Emitida (fechaFTEmitida): data emissione factura — letta da r.invoices[0].issueDate || createdAt
+   La colonna esistente "N\u00ba PF Venta" (numPFVenta) ora mostra SOLO proformas (r.proformas[0].number senza prefisso, vuoto se no PF). Prima invece la stessa colonna miscolava factura+proforma con prefisso "Pro" creando confusione contabile.
+3) FIX 3 — Rimossa colonna "Comisi\u00f3n" (\u20ac) dal blocco Broker. Era ridondante con "Imp. Pagada" (importe effettivamente liquidato). Spec utente: "ridondante con la nuova logica di calcolo del risultato contabile".
+4) FIX 4 — Aggiornata descrizione di "Ganancia Final": il calcolo era già corretto (gananciaVeh + gananciaTrans - brokerAmount, dove brokerAmount = importe pagado). Documentato esplicitamente: "se calcula desde Imp. Pagada (importe efectivamente liquidado), no desde Comisi\u00f3n te\u00f3rica". Allineamento al dato reale di pagamento.
+5) Conteggi colonne aggiornati: VENTA da 7→9, BROKER da 5→4. Totale colonne: da 40→41 (+1 netto).
+6) Aggiornati anche entrambi gli export CSV (xlsx + csv text) per riflettere le nuove colonne. Headers + rows allineati.
+7) Smoke test: validation node syntax OK + conteggio TD calls in render TR perfettamente coerente con colDefs (Venta 9/9, Broker 4/4).
+8) PRESERVA: tutto v10.10.28 (regola Veh\u00edculo Nuevo), v10.10.27 (overwrite via dialog), v10.10.26 (re-import), v10.10.25 (VIN dialog). Il campo cliFt è preservato come backward compat (alcuni vecchi codici potrebbero ancora leggerlo).
+9) ROADMAP: con questa base stabile delle colonne contabili, ora si può procedere allo sviluppo del modulo Multiutente sapendo che le viste personalizzate per ciascun ruolo non subiranno rielaborazioni successive. -->
 <!-- NEXO v10.10.28 — DMCAR GROUP CRM | 2026-05-03 | Regola Vehículo Nuevo (ripristino business rule):
 1) Spec utente da REPORT TECNICO: regola business definita in fase iniziale del progetto, ma risultata regredita. Ripristino richiesto:
    SE [1ª Reg/Matr.] è VUOTO/NULL ALLORA il veicolo viene classificato come "NUEVO" e si applicano:
@@ -26918,10 +26931,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       {id:'impCompra',label:'Imp. Compra (\u20ac)',w:100,r:true,desc:'Importe total de compra del veh\u00edculo expresado en euros.',block:'compra'},
       {id:'fechaDep',label:'Fecha Dep\u00f3s.',w:85,desc:'Fecha de eventual dep\u00f3sito o pago a cuenta efectuado al proveedor, si procede.',block:'compra'},
       {id:'impDep',label:'Imp. Dep\u00f3s. (\u20ac)',w:100,r:true,br:true,desc:'Importe del dep\u00f3sito o pago a cuenta abonado al proveedor, si procede.',block:'compra'},
-      // VENTA (7)
+      // VENTA (9) — v10.10.29: aggiunte numFTVenta + fechaFTEmitida (Fix 1+2 spec utente)
       {id:'cliente',label:'Cliente',w:140,desc:'Nombre de la empresa cliente a la que se ha vendido el veh\u00edculo.',block:'venta'},
       {id:'vendedor',label:'Vendedor DMCAR',w:110,desc:'Nombre del vendedor de DMCAR que ha gestionado la venta al cliente.',block:'venta'},
       {id:'numPFVenta',label:'N\u00ba PF Venta',w:100,desc:'N\u00famero de proforma emitida por DMCAR al cliente.',block:'venta'},
+      {id:'numFTVenta',label:'N\u00ba FT Venta',w:100,desc:'N\u00famero de factura de venta emitida por DMCAR al cliente.',block:'venta'},
+      {id:'fechaFTEmitida',label:'Fecha FT Emitida',w:100,desc:'Fecha de emisi\u00f3n de la factura de venta al cliente.',block:'venta'},
       {id:'fechaSaldo',label:'Fecha Saldo',w:85,desc:'Fecha en la que se recibe el pago del cliente en la cuenta bancaria.',block:'venta'},
       {id:'impVenta',label:'Imp. Venta (\u20ac)',w:100,r:true,desc:'Importe total de venta del veh\u00edculo al cliente, expresado en euros.',block:'venta'},
       {id:'fechaDepCli',label:'Fecha Dep. Cli.',w:90,desc:'Fecha de eventual dep\u00f3sito o pago a cuenta recibido del cliente, si procede.',block:'venta'},
@@ -26944,14 +26959,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
       {id:'color',label:'Color',w:90,desc:'Color del veh\u00edculo.',block:'vehiculo'},
       {id:'danos',label:'Da\u00f1os (\u20ac)',w:80,r:true,desc:'Importe de los da\u00f1os registrados en el veh\u00edculo, si los hubiera. Indicar 0 en caso contrario.',block:'vehiculo'},
       {id:'gananciaVeh',label:'Ganancia V. (\u20ac)',w:105,r:true,br:true,editable:true,desc:'Margen de ganancia sobre el veh\u00edculo: diferencia entre el importe de venta y el de compra del veh\u00edculo. Auto-calculado, editable manualmente.',block:'vehiculo'},
-      // BROKER (5)
-      {id:'comBroker',label:'Comisi\u00f3n (\u20ac)',w:100,r:true,desc:'Importe de la comisi\u00f3n correspondiente al broker, en caso de que intervenga.',block:'broker'},
+      // BROKER (4) — v10.10.29: rimossa colonna Comisi\u00f3n (Fix 3 spec utente: ridondante con Imp. Pagada)
       {id:'nomBroker',label:'Broker',w:110,desc:'Nombre del broker que ha intermediado en la operaci\u00f3n.',block:'broker'},
       {id:'broFT',label:'N\u00ba FT Comisi\u00f3n',w:110,desc:'N\u00famero de factura emitida por el broker correspondiente a la comisi\u00f3n.',block:'broker'},
       {id:'broFechaPago',label:'Fecha Pago Com.',w:100,desc:'Fecha en la que se efect\u00faa el pago de la factura de comisi\u00f3n al broker.',block:'broker'},
-      {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker.',block:'broker'},
+      {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker. Es la base para el c\u00e1lculo del Resultado Contable (Ganancia Final).',block:'broker'},
       // RESULTADO (1)
-      {id:'gananciaFinal',label:'Ganancia Final (\u20ac)',w:120,r:true,editable:true,desc:'Resultado final de la operaci\u00f3n sobre el veh\u00edculo: importe de venta menos importe de compra menos comisiones del broker. Auto-calculado, editable manualmente.',block:'resultado'}
+      {id:'gananciaFinal',label:'Ganancia Final (\u20ac)',w:120,r:true,editable:true,desc:'Resultado contable final de la operaci\u00f3n: (Imp. Venta - Imp. Compra - Da\u00f1os) + Ganancia Transporte - Imp. Pagada al broker. v10.10.29: ahora se calcula desde Imp. Pagada (importe efectivamente liquidado), no desde Comisi\u00f3n te\u00f3rica. Auto-calculado, editable manualmente.',block:'resultado'}
     ];
     var savedWidths=LS('nxVistaColWidths',{})||{};
     colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
@@ -27083,10 +27097,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgCompra)
         +td(fmtDate(ext.fornAccDate),bgCompra)
         +tdR(ext.fornAccAmount?fmtMon(ext.fornAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgCompra,';border-right:2px solid var(--border)')
-        // VENTA (7): Cliente, Vendedor DMCAR, PF Venta, Saldo, Venta, Dep.Cli.Date, Dep.Cli.\u20ac
+        // VENTA (9): Cliente, Vendedor DMCAR, PF Venta, FT Venta, Fecha FT Emitida, Saldo, Venta, Dep.Cli.Date, Dep.Cli.\u20ac
+        // v10.10.29: aggiunte colonne numFTVenta + fechaFTEmitida (Fix 1+2)
         +td(fmtTxt(r.clientName),bgVenta)
         +td(fmtTxt(r.soldBy),bgVenta)
-        +td(fmtTxt(ext.cliFt),bgVenta)
+        +td(fmtTxt(ext.numPFVenta||''),bgVenta)
+        +td(fmtTxt(ext.numFTVenta||''),bgVenta)
+        +td(fmtDate(ext.fechaFTEmitida),bgVenta)
         +td(fmtDate(ext.cliDataSaldo),bgVenta)
         +tdR(r.salePrice?fmtMon(r.salePrice):'<span style="color:var(--t4)">\u2014</span>',bgVenta)
         +td(fmtDate(ext.cliAccDate),bgVenta)
@@ -27109,8 +27126,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(fmtTxt(r.color),bgVeh)
         +tdR(ext.damage?fmtMon(ext.damage):'0',bgVeh)
         +editable(gananciaVeh!==null?fmtMon(gananciaVeh,true):'<span style="color:var(--t4)">\u2014</span>',bgVeh,'gananciaVeh',gananciaVeh,';border-right:2px solid var(--border);font-weight:700')
-        // BROKER (5): Comisi\u00f3n, Nombre, FT Comisi\u00f3n, Fecha Pago, Imp Pagada
-        +tdR(ext.brokerComision?fmtMon(ext.brokerComision):(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>'),bgBro)
+        // BROKER (4): Nombre, FT Comisi\u00f3n, Fecha Pago, Imp Pagada
+        // v10.10.29: rimossa colonna Comisi\u00f3n (Fix 3 spec utente)
         +td(fmtTxt(ext.brokerName||ext.brokerSeller||''),bgBro)
         +td(fmtTxt(ext.brokerFt),bgBro)
         +td(fmtDate(ext.brokerDataInc),bgBro)
@@ -27253,6 +27270,17 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var cliFt='';var cliDataSaldo='';
     if(r.invoices&&r.invoices.length){cliFt=r.invoices[0].number||'';cliDataSaldo=r.invoices[0].issueDate||r.invoices[0].createdAt||'';}
     else if(r.proformas&&r.proformas.length){cliFt='Pro '+(r.proformas[0].number||'');cliDataSaldo=r.proformas[0].date||r.proformas[0].createdAt||'';}
+    // v10.10.29: split separato PF Venta (proforma cliente) + FT Venta (factura cliente) + Fecha FT Emitida
+    // PF Venta: prima proforma cliente
+    var numPFVenta='';
+    if(r.proformas&&r.proformas.length)numPFVenta=r.proformas[0].number||'';
+    // FT Venta: prima factura cliente (NO prefijo "Pro" — solo facturas reales)
+    var numFTVenta='';
+    var fechaFTEmitida='';
+    if(r.invoices&&r.invoices.length){
+      numFTVenta=r.invoices[0].number||'';
+      fechaFTEmitida=r.invoices[0].issueDate||r.invoices[0].createdAt||'';
+    }
     // v10.02: PF/FT separate da fornitore (per nuovo schema 5 blocchi)
     var fornPFDoc=accDocs.find(function(d){return d.type==='proforma_proveedor';});
     var fornFTDoc=accDocs.find(function(d){return d.type==='factura_proveedor';});
@@ -27274,6 +27302,10 @@ document.querySelectorAll('.ovl').forEach(function(el){
       cliDataSaldo:cliDataSaldo,
       cliAccDate:'',
       cliAccAmount:null,
+      // v10.10.29: nuovi campi separati per Fix 1+2 spec utente
+      numPFVenta:numPFVenta,
+      numFTVenta:numFTVenta,
+      fechaFTEmitida:fechaFTEmitida,
       // Trasporto
       traspFornitore:traspAcqDoc?traspAcqDoc.supplier:'',
       traspFtAcq:traspAcqDoc?traspAcqDoc.docNumber:'',
@@ -27323,14 +27355,14 @@ document.querySelectorAll('.ovl').forEach(function(el){
         'Fecha','N\u00ba Expediente','VIN',
         // COMPRA
         'Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra (\u20ac)','Fecha Dep\u00f3sito','Imp. Dep\u00f3sito (\u20ac)',
-        // VENTA
-        'Cliente','Vendedor DMCAR','N\u00ba PF Venta','Fecha Saldo','Imp. Venta (\u20ac)','Fecha Dep. Cliente','Imp. Dep. Cliente (\u20ac)',
+        // VENTA — v10.10.29: split PF Venta + FT Venta + Fecha FT Emitida
+        'Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta (\u20ac)','Fecha Dep. Cliente','Imp. Dep. Cliente (\u20ac)',
         // TRANSPORTE
         'Empresa Transp.','N\u00ba FT Compra T.','Imp. Compra T. (\u20ac)','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T. (\u20ac)','Ganancia T. (\u20ac)',
         // VEHICULO
         'Marca','Modelo','Versi\u00f3n','1\u00aa Matriculaci\u00f3n','Kms','Color','Da\u00f1os (\u20ac)','Ganancia V. (\u20ac)',
-        // BROKER
-        'Comisi\u00f3n (\u20ac)','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Comisi\u00f3n','Imp. Pagada (\u20ac)',
+        // BROKER — v10.10.29: rimossa Comisi\u00f3n (Fix 3)
+        'Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Comisi\u00f3n','Imp. Pagada (\u20ac)',
         // RESULTADO
         'Ganancia Final (\u20ac)'
       ];
@@ -27357,10 +27389,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
           r.buyPrice||0,
           ext.fornAccDate||'',
           ext.fornAccAmount||0,
-          // VENTA
+          // VENTA — v10.10.29: 9 colonne (PF + FT + Fecha FT + altre)
           r.clientName||'',
           r.soldBy||'',
-          ext.cliFt||'',
+          ext.numPFVenta||'',
+          ext.numFTVenta||'',
+          ext.fechaFTEmitida||'',
           ext.cliDataSaldo||'',
           r.salePrice||0,
           ext.cliAccDate||'',
@@ -27383,8 +27417,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
           r.color||'',
           ext.damage||0,
           gV||0,
-          // BROKER
-          ext.brokerComision||ext.brokerAmount||0,
+          // BROKER — v10.10.29: rimossa Comisi\u00f3n (Fix 3)
           ext.brokerName||ext.brokerSeller||'',
           ext.brokerFt||'',
           ext.brokerDataInc||'',
@@ -27422,7 +27455,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='anuladas')records=records.filter(function(r){return !!r.isAnulada;});
     else records=records.filter(function(r){return !r.isAnulada;});
     if(!records.length){alert('Sin datos para exportar');return;}
-    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Comisi\u00f3n','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia Final'];
+    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia Final'];
     var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
     var lines=[headers.join(';')];
     records.forEach(function(r){
@@ -27440,10 +27473,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
         r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
         expLabel,r.vin||'',
         r.supplier||'',ext.fornNumPF||'',ext.fornNumFT||'',ext.fornDataPag||'',r.buyPrice||0,ext.fornAccDate||'',ext.fornAccAmount||0,
-        r.clientName||'',r.soldBy||'',ext.cliFt||'',ext.cliDataSaldo||'',r.salePrice||0,ext.cliAccDate||'',ext.cliAccAmount||0,
+        // VENTA — v10.10.29: split PF + FT + Fecha FT
+        r.clientName||'',r.soldBy||'',ext.numPFVenta||'',ext.numFTVenta||'',ext.fechaFTEmitida||'',ext.cliDataSaldo||'',r.salePrice||0,ext.cliAccDate||'',ext.cliAccAmount||0,
         ext.traspFornitore||'',ext.traspFtAcq||'',ext.traspAcqAmount||0,ext.traspDataPag||'',ext.traspPFVenta||'',ext.traspFtVend||'',ext.traspVendAmount||0,gT||0,
         r.brand||'',r.model||'',ext.version||'',ext.firstReg||'',ext.km||0,r.color||'',ext.damage||0,gV||0,
-        ext.brokerComision||ext.brokerAmount||0,ext.brokerName||ext.brokerSeller||'',ext.brokerFt||'',ext.brokerDataInc||'',ext.brokerAmount||0,
+        // BROKER — v10.10.29: rimossa Comisi\u00f3n
+        ext.brokerName||ext.brokerSeller||'',ext.brokerFt||'',ext.brokerDataInc||'',ext.brokerAmount||0,
         gF||0
       ].map(esc).join(';'));
     });
