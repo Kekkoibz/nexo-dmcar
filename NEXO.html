@@ -1,4 +1,8 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1.3 — DM GROUP CRM | 2026-05-04 | Hotfix placeholder password unicode escape:
+1) BUG visivo: placeholder password mostrava letteralmente "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" invece dei pallini (\u2022 = bullet). Stesso problema della v10.11.1.2 (footer): caratteri Unicode escapati nel codice HTML statico non vengono interpretati dal browser perch\u00e9 il browser li tratta come testo letterale (a differenza degli stessi escape nelle stringhe JavaScript).
+2) FIX: sostituito con caratteri bullet UTF-8 diretti (\u2022 \u2022 \u2022 \u2022 \u2022 \u2022 \u2022 \u2022) nel placeholder dell'input password.
+3) PRESERVA: tutto v10.11.1.2 (auto-strip @, footer fix, hint placeholder username, errori informativi). Solo cosmetic fix su 1 placeholder. -->
 <!-- NEXO v10.11.1.2 — DM GROUP CRM | 2026-05-04 | Hotfix login UX (3 bug):
 1) BUG 1: utente inseriva "@massi" invece di "massi" perché vede @username nel user menu e pensa che @ sia parte del nome. Sistema rispondeva "Usuario no encontrado". FIX: auto-strip @ iniziale in attemptLogin() prima del lookup. Trim spazi prima e dopo lo strip per gestire anche "@ massi".
 2) BUG 2: footer login mostrava letteralmente "v10.11.0 \u2014 \u00bfOlvidaste contrase\u00f1a?" perché caratteri Unicode escapati non interpretati. FIX: sostituiti con HTML entities &mdash; e &iquest;. Aggiornato anche il version number a v10.11.1.2.
@@ -805,7 +809,7 @@ body.fb-banner-on #app{padding-top:30px}
       <div style="margin-bottom:18px">
         <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">CONTRASE&Ntilde;A</label>
         <div style="position:relative">
-          <input type="password" id="nx-login-password" autocomplete="current-password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" style="width:100%;padding:11px 38px 11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
+          <input type="password" id="nx-login-password" autocomplete="current-password" placeholder="••••••••" style="width:100%;padding:11px 38px 11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
           <span onclick="NX_AUTH.togglePasswordVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:#94a3b8;font-size:14px;user-select:none" title="Mostrar/Ocultar contrase&ntilde;a">&#128065;</span>
         </div>
       </div>
