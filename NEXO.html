@@ -1,4 +1,33 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.31 — DM GROUP CRM | 2026-05-04 | Fix UI Vista Contable + Gastos Extras + Note esplicative + Cleanup imprese:
+1) FIX UI CRITICO (segnalato da utente con screenshot): header gruppo "RESULTADO" mostrava colspan=1 ma sotto aveva 4 sub-colonne dopo v10.10.30 → disallineamento visivo. Erano errati ANCHE i colspan v10.10.29 (VENTA=7 invece di 9, BROKER=5 invece di 4). FIX: aggiornati TUTTI i colspan dei block headers per allinearsi con conteggi attuali. Totale 45 colonne (1+3+7+9+8+8+4+5).
+2) NUOVA COLONNA "Gastos Extras" nel blocco RESULTADO (spec utente): voce destinata a raccogliere spese accessorie (env\u00edo documenti, reembolsos da\u00f1os, otros gastos). Per ora INPUT MANUALE (default 0, doble click per editare via _nxManualGanancias[rowKey].gastosExtras). In futuro sar\u00e0 collegata a moduli di spese specifici.
+3) RIDEFINIZIONE FORMULA Resultado Final DM: ora include Gastos Extras.
+   F\u00f3rmula completa: Resultado Final = Venta \u2212 Compra \u2212 Broker (si hay) \u2212 Vendedor (10%) \u2212 Gastos Extras + Ganancia Transporte
+   Equivalente sintetica (implementata): Resultado Final = SUB.Profit.DMCAR \u2212 Gastos Extras + Ganancia Transporte
+4) SISTEMA NOTE ESPLICATIVE CLICCABILI sui label colonne RESULTADO (spec utente):
+   • Ogni label colonna ha icona "i" cliccabile (sottolineatura punteggiata viola) + onclick che apre popover formattato
+   • Popover: header viola gradient con bottone X chiusura, body con descrizione, footer con f\u00f3rmula in box monospace
+   • Click esterno chiude automaticamente (event listener temporary su document)
+   • Posizionamento intelligente vicino al click, evita uscita schermo (clamping su viewBox)
+   • Animazione fadeIn 150ms
+   • Mappa testi: window._nxColumnNotes (5 voci: gananciaCalc, gananciaVendedor, subProfitDMCAR, gastosExtras, resultadoFinalDM)
+5) CLEANUP IMPRESE GRUPPO DM (info utente): MERCEDES SOLUTION rimossa dal gruppo (non più attiva). Imprese attive ora sono 3:
+   • DMCAR GROUP SRO (Praga) → companyCode "DMCAR"
+   • IMPEX CONSULTING LTD → companyCode "IMPEX"
+   • INNOQUEST SOLUTIONS SL (Madrid) → companyCode "INNO"
+   Nome commerciale gruppo = "DM" (sigla CRM). NEXO header continua a mostrare "DMCAR GROUP" come ragione sociale principale.
+   Modifiche: window.NX_OWN_COMPANIES (rimosso 4° elemento), select empresa nelle note (rimossa option Mercedes), AI prompt context aggiornato, dialog ¿Es adquisición? aggiornato (rimosso "/MERCEDES" dal testo).
+   Backward compat: legacy ownerCompany='MERCEDES SOLUTION' su record esistenti continua a funzionare (mapping cc='MERC' preservato per non rompere expedienti pregressi).
+6) Aggiornati ENTRAMBI gli export (XLSX + CSV testuale) con la nuova colonna Gastos Extras + nuova formula Resultado Final.
+7) Smoke test 5/5 PASS:
+   • Esempio documento utente (compra 10000, venta 11000, broker 500, transp 200, gastos 50) → Resultado Final = 600\u20ac ✅
+   • Senza gastos extras → 650\u20ac (back-compat v10.10.30) ✅
+   • Verifica equivalenza formula sviluppata = forma sintetica → 600\u20ac in entrambi ✅
+   • Perdita veicolo (Ganancia=-500) + transporte=600 + gastos=30 → 70\u20ac ✅ (vendedor clamp 0)
+   • Solo Compra+Venta+Gastos (no broker, no transp) → 800\u20ac ✅
+8) PRESERVA: tutto v10.10.30 (sequenza calcolo Ganancia/Vendedor/SUB.Profit), v10.10.29 (Venta 9 cols + Broker 4 cols), v10.10.28 (Vehículo Nuevo), v10.10.27 (overwrite via dialog). I record con manualG.gananciaFinal pregresso vengono ignorati ma non cancellati.
+9) ROADMAP confermata: ora che Vista Contable è stabile, prossimo step è il modulo Multi-utente (Opzione 1: client-side soft 1-2 settimane). -->
 <!-- NEXO v10.10.30 — DMCAR GROUP CRM | 2026-05-04 | Estensione blocco Resultado: 4 nuove colonne (spec utente):
 1) Spec utente versione finale (2 documenti): blocco RESULTADO esteso da 1 a 4 colonne secondo sequenza ordinata di calcolo del margine operativo DMCAR. Distinzione netta tra Broker (esterno, costo diretto) e Vendedor (interno, percentuale 10% sulla Ganancia).
 2) Decisioni utente confermate:
@@ -1214,7 +1243,7 @@ En que te puedo ayudar hoy?</div></div>
       </div>
       <div id="add-task-form" style="display:none" class="card mb12">
         <div class="ct">Nueva tarea</div>
-        <div class="g2 mb10"><div><label>Descripcion</label><input type="text" id="nt-ttl" placeholder="Descripcion..."></div><div><label>Empresa</label><select id="nt-co"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option><option>MERCEDES SOLUTION</option></select></div></div>
+        <div class="g2 mb10"><div><label>Descripcion</label><input type="text" id="nt-ttl" placeholder="Descripcion..."></div><div><label>Empresa</label><select id="nt-co"><option>DMCAR GROUP</option><option>INNOQUEST SOLUTIONS</option><option>IMPEX CONSULTING</option></select></div></div>
         <div class="g3 mb10"><div><label>Contacto</label><input type="text" id="nt-con" placeholder="Opcional"></div><div><label>Vencimiento</label><input type="date" id="nt-date"></div><div><label>Prioridad</label><select id="nt-prio"><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media" selected>Media</option><option value="baja">Baja</option></select></div></div>
         <div class="fc g8"><button class="btn bp" onclick="addTask()">Guardar</button><button class="btn bg" onclick="tglAddTask()">Cancelar</button></div>
       </div>
@@ -4824,7 +4853,7 @@ window.nxConvertKwToCV=function(versionStr,brand,equipStr){
 // Campi PRESERVATI (mai sovrascritti):
 //   id, internalId          - identità univoca (mai si tocca)
 //   status                  - workflow OWN (STOCK PROPIO vs Trading)
-//   ownerCompany            - DMCAR/INNOQUEST/IMPEX/MERCEDES
+//   ownerCompany            - DMCAR/INNOQUEST/IMPEX (gruppo DM)
 //   _ownNotified            - flag workflow completato
 //   _ownPendingProforma     - flag waiting proforma
 //   accDocs                 - documenti contabili allegati
@@ -7056,12 +7085,12 @@ var contacts=LS('contacts',[
   {id:1,name:'Klaus Muller',company:'BavariaAuto GmbH',country:'Alemania',role:'Comprador',myCompany:'DMCAR GROUP',phone:'+49 89 123456',notes:'Interesado en lote BMW Serie 5.',tag:'hot',lastContact:'2026-04-18'},
   {id:2,name:'Jean Dupont',company:'AutoFrance SAS',country:'Francia',role:'Proveedor',myCompany:'DMCAR GROUP',phone:'+33 1 987654',notes:'Ofrece Peugeot 308 diesel.',tag:'pend',lastContact:'2026-04-15'},
   {id:3,name:'Luca Ferretti',company:'ItalCar Srl',country:'Italia',role:'Comprador',myCompany:'INNOQUEST SOLUTIONS',phone:'+39 02 334455',notes:'Pendiente factura lote anterior.',tag:'urg',lastContact:'2026-04-01'},
-  {id:4,name:'Andrei Popescu',company:'AutoRo SRL',country:'Rumania',role:'Comprador',myCompany:'MERCEDES SOLUTION',phone:'+40 21 887766',notes:'Interesado en Mercedes E-Class.',tag:'hot',lastContact:'2026-04-12'}
+  {id:4,name:'Andrei Popescu',company:'AutoRo SRL',country:'Rumania',role:'Comprador',myCompany:'IMPEX CONSULTING',phone:'+40 21 887766',notes:'Interesado en Mercedes E-Class.',tag:'hot',lastContact:'2026-04-12'}
 ]);
 var tasks=LS('tasks',[
   {id:1,title:'Enviar oferta BMW Serie 5 a Klaus Muller',company:'DMCAR GROUP',contact:'Klaus Muller',dueDate:'2026-04-28',priority:'alta',done:false},
   {id:2,title:'Cobrar factura ItalCar Srl',company:'INNOQUEST SOLUTIONS',contact:'Luca Ferretti',dueDate:'2026-04-25',priority:'urgente',done:false},
-  {id:3,title:'Contactar Andrei Popescu Mercedes GLE',company:'MERCEDES SOLUTION',contact:'Andrei Popescu',dueDate:'2026-04-29',priority:'alta',done:false}
+  {id:3,title:'Contactar Andrei Popescu Mercedes GLE',company:'IMPEX CONSULTING',contact:'Andrei Popescu',dueDate:'2026-04-29',priority:'alta',done:false}
 ]);
 var leads=LS('leads',[]);
 var offerHist=LS('offerHist',[]);
@@ -11501,7 +11530,7 @@ window.proceedToImport=function(vehicles,manualSup,batchId){
             +'<div style="font-size:11px;color:var(--t3);margin-top:6px">Total: <strong>'+totalVeh+' veh\u00edculo'+(totalVeh!==1?'s':'')+'</strong></div>'
             +supInfo
           +'</div>'
-          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">\u00bfEsta importaci\u00f3n corresponde a una <strong>adquisici\u00f3n para una empresa propia</strong> (DMCAR / INNOQUEST / IMPEX / MERCEDES) \u2014 con proforma o factura del proveedor?</p>'
+          +'<p style="font-size:13px;color:var(--t1);margin-bottom:14px;line-height:1.5">\u00bfEsta importaci\u00f3n corresponde a una <strong>adquisici\u00f3n para una empresa propia</strong> (DMCAR / INNOQUEST / IMPEX) \u2014 con proforma o factura del proveedor?</p>'
           +'<div class="fc g8" style="flex-direction:column;align-items:stretch">'
             +'<button class="btn bp" style="padding:14px 16px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;text-align:left" onclick="nxAskAdquisicionAnswer(\'yes\')">'
               +'<div style="font-weight:700;font-size:14px">\u2705 S\u00ed, es adquisici\u00f3n propia</div>'
@@ -14676,7 +14705,7 @@ function buildCtx(){
   var pd=tasks.filter(function(t){return!t.done;});
   var od=pd.filter(function(t){return isOD(t.dueDate);});
   return 'Eres NEXO, asistente personal de Francesco Dell Agli, CEO de DMCAR GROUP.\n'+
-    'EMPRESAS: DMCAR GROUP (Praga, coches B2B Europa), INNOQUEST SOLUTIONS (Madrid), IMPEX CONSULTING (Sofia), MERCEDES SOLUTION (Bucarest).\n'+
+    'EMPRESAS DEL GRUPO DM: DMCAR GROUP (Praga, coches B2B Europa), INNOQUEST SOLUTIONS (Madrid), IMPEX CONSULTING (Sofia).\n'+
     'CONTACTO: +39 3429624234, +34 630754659, info@dmcargroup.com\n'+
     'STOCK ('+stock.length+' entradas): '+stock.slice(-5).map(function(i){return i.brand+' '+i.model+' '+i.buy;}).join(' | ')+'\n'+
     'TAREAS ('+pd.length+' pendientes, '+od.length+' vencidas): '+pd.slice(0,5).map(function(t){return t.priority.toUpperCase()+': "'+t.title+'" ['+t.company+'] '+t.dueDate+(isOD(t.dueDate)?' VENCIDA':'');}).join(' | ')+'\n'+
@@ -26984,12 +27013,13 @@ document.querySelectorAll('.ovl').forEach(function(el){
       {id:'broFT',label:'N\u00ba FT Comisi\u00f3n',w:110,desc:'N\u00famero de factura emitida por el broker correspondiente a la comisi\u00f3n.',block:'broker'},
       {id:'broFechaPago',label:'Fecha Pago Com.',w:100,desc:'Fecha en la que se efect\u00faa el pago de la factura de comisi\u00f3n al broker.',block:'broker'},
       {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker. Es la base para el c\u00e1lculo del Resultado Contable (Ganancia Final).',block:'broker'},
-      // RESULTADO (4) — v10.10.30: rimossa Ganancia Final, aggiunte 4 nuove colonne secondo spec utente
-      // Sequenza calcolo: Ganancia → Ganancia Vendedor → SUB.Profit.DMCAR → Resultado Final DM
-      {id:'gananciaCalc',label:'Ganancia (\u20ac)',w:110,r:true,editable:true,desc:'Margen de la compraventa del veh\u00edculo, NETO de comisi\u00f3n broker (si existe). F\u00f3rmula: Venta \u2212 Compra \u2212 Broker. Si NO hay broker: Venta \u2212 Compra. Es la base sobre la que se calcula la comisi\u00f3n del Vendedor (10%). Auto-calculado, editable manualmente.',block:'resultado'},
-      {id:'gananciaVendedor',label:'Gan. Vendedor (10%)',w:120,r:true,editable:true,desc:'Comisi\u00f3n del vendedor interno DMCAR: 10% sobre la Ganancia (compra-venta del veh\u00edculo). Si Ganancia es negativa (p\u00e9rdida) la comisi\u00f3n se pone a 0 (el vendedor no reembolsa p\u00e9rdidas). El vendedor NO percibe comisi\u00f3n sobre Ganancia Transporte. Auto-calculado, editable manualmente.',block:'resultado'},
-      {id:'subProfitDMCAR',label:'SUB.Profit.DMCAR (\u20ac)',w:130,r:true,editable:true,desc:'Margen intermedio DMCAR sobre el veh\u00edculo despu\u00e9s de deducir la comisi\u00f3n del Vendedor. F\u00f3rmula: Ganancia \u2212 Ganancia Vendedor. NO incluye todav\u00eda el margen de transporte. Auto-calculado, editable manualmente.',block:'resultado'},
-      {id:'resultadoFinalDM',label:'Resultado Final DM (\u20ac)',w:140,r:true,editable:true,desc:'Margen final NETO de la operaci\u00f3n para DMCAR, comprensivo del margen de transporte. F\u00f3rmula: SUB.Profit.DMCAR + Ganancia Transporte. Es el indicador clave de rentabilidad de la operaci\u00f3n. Auto-calculado, editable manualmente.',block:'resultado'}
+      // RESULTADO (5) — v10.10.31: aggiunta Gastos Extras + ridefinizione formula Resultado Final
+      // Sequenza calcolo: Ganancia → Vendedor → SUB.Profit.DMCAR → Gastos Extras → Resultado Final DM
+      {id:'gananciaCalc',label:'Ganancia (\u20ac)',w:110,r:true,editable:true,note:'gananciaCalc',desc:'Ganancia bruta generada por la compra-venta del veh\u00edculo, neta de la comisi\u00f3n del broker (si existe).\n\nF\u00f3rmula:\nGanancia = Venta \u2212 Compra \u2212 Broker (si hay)',block:'resultado'},
+      {id:'gananciaVendedor',label:'Gan. Vendedor (10%)',w:120,r:true,editable:true,note:'gananciaVendedor',desc:'Comisi\u00f3n correspondiente al vendedor interno DMCAR, calculada como 10% sobre la Ganancia.\n\nF\u00f3rmula:\nGanancia Vendedor = Ganancia \u00d7 10%\n\nSi Ganancia es negativa (p\u00e9rdida), la comisi\u00f3n se pone autom\u00e1ticamente a 0 (el vendedor no reembolsa p\u00e9rdidas).',block:'resultado'},
+      {id:'subProfitDMCAR',label:'SUB.Profit.DMCAR (\u20ac)',w:130,r:true,editable:true,note:'subProfitDMCAR',desc:'Sub-total de beneficio DMCAR sobre la compra-venta del veh\u00edculo, despu\u00e9s de deducir la comisi\u00f3n del Vendedor.\n\nF\u00f3rmula:\nSUB.Profit.DMCAR = Ganancia \u2212 Ganancia Vendedor',block:'resultado'},
+      {id:'gastosExtras',label:'Gastos Extras (\u20ac)',w:115,r:true,editable:true,note:'gastosExtras',desc:'Voz destinada a recoger gastos accesorios relacionados con la operaci\u00f3n, entre ellos:\n\u2022 Gastos de env\u00edo de documentos\n\u2022 Reembolsos por da\u00f1os\n\u2022 Otros gastos accesorios por definir\n\n\u26a0\ufe0f La configuraci\u00f3n completa de esta voz se definir\u00e1 en una fase sucesiva. Por ahora valor manual.',block:'resultado'},
+      {id:'resultadoFinalDM',label:'Resultado Final DM (\u20ac)',w:140,r:true,editable:true,note:'resultadoFinalDM',desc:'Margen neto final de la operaci\u00f3n para DMCAR, comprensivo de todos los costes operativos y del margen de transporte.\n\nF\u00f3rmula completa:\nResultado Final = Venta \u2212 Compra \u2212 Broker (si hay) \u2212 Vendedor (10%) \u2212 Gastos Extras + Ganancia Transporte\n\nEquivalente a:\nResultado Final = SUB.Profit.DMCAR \u2212 Gastos Extras + Ganancia Transporte',block:'resultado'}
     ];
     var savedWidths=LS('nxVistaColWidths',{})||{};
     colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
@@ -26998,18 +27028,19 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var html='<div style="overflow-x:auto"><table id="nbv-table" style="border-collapse:collapse;font-size:10.5px;font-family:monospace;table-layout:fixed">';
     html+=cgHtml;
     // Header riga 1: blocchi colorati - struttura v10.02
-    // OWN(1) + REGISTRO(3) + COMPRA(7) + VENTA(7) + TRANSPORTE(8) + VEHICULO(8) + BROKER(5) + RESULTADO(1) = 40
+    // v10.10.31: colspan corretti — OWN(1) + REGISTRO(3) + COMPRA(7) + VENTA(9) + TRANSPORTE(8) + VEHICULO(8) + BROKER(4) + RESULTADO(5) = 45
     html+='<thead><tr>'
       +'<th style="padding:6px 4px;background:'+COL.own.bg+';color:'+COL.own.head+';text-align:center;font-weight:700;font-size:10px;border-right:2px solid var(--border)" title="Veh\u00edculos en propiedad de la empresa">&nbsp;</th>'
       +'<th colspan="3" style="padding:6px 10px;background:'+COL.reg.bg+';color:'+COL.reg.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.reg.label+'</th>'
       +'<th colspan="7" style="padding:6px 10px;background:'+COL.compra.bg+';color:'+COL.compra.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.compra.label+'</th>'
-      +'<th colspan="7" style="padding:6px 10px;background:'+COL.venta.bg+';color:'+COL.venta.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.venta.label+'</th>'
+      +'<th colspan="9" style="padding:6px 10px;background:'+COL.venta.bg+';color:'+COL.venta.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.venta.label+'</th>'
       +'<th colspan="8" style="padding:6px 10px;background:'+COL.transporte.bg+';color:'+COL.transporte.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.transporte.label+'</th>'
       +'<th colspan="8" style="padding:6px 10px;background:'+COL.vehiculo.bg+';color:'+COL.vehiculo.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.vehiculo.label+'</th>'
-      +'<th colspan="5" style="padding:6px 10px;background:'+COL.broker.bg+';color:'+COL.broker.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.broker.label+'</th>'
-      +'<th style="padding:6px 10px;background:'+COL.resultado.bg+';color:'+COL.resultado.head+';text-align:center;font-weight:800;font-size:11px;letter-spacing:.05em">'+COL.resultado.label+'</th>'
+      +'<th colspan="4" style="padding:6px 10px;background:'+COL.broker.bg+';color:'+COL.broker.head+';text-align:left;font-weight:800;font-size:11px;border-right:2px solid var(--border);letter-spacing:.05em">'+COL.broker.label+'</th>'
+      +'<th colspan="5" style="padding:6px 10px;background:'+COL.resultado.bg+';color:'+COL.resultado.head+';text-align:center;font-weight:800;font-size:11px;letter-spacing:.05em">'+COL.resultado.label+'</th>'
     +'</tr>';
     // Header riga 2: nomi colonne (con data-col-id per resize + tooltip via title)
+    // v10.10.31: per colonne con c.note (RESULTADO block), label cliccabile apre popover esplicativo
     var th='padding:6px 7px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--t3);font-weight:600;background:var(--bg3);border-bottom:2px solid var(--border);position:relative;user-select:none';
     var thR=th+';text-align:right';
     var thC=th+';text-align:center';
@@ -27017,8 +27048,15 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var thStyle=c.r?thR:(c.c?thC:th);
       if(c.br)thStyle+=';border-right:2px solid var(--border)';
       var titleAttr=c.desc?' title="'+esc(c.desc)+'"':'';
+      // v10.10.31: se c.note esiste, label diventa cliccabile (popover) + icona ℹ
+      var labelHtml;
+      if(c.note){
+        labelHtml='<span class="nbv-note-trigger" onclick="event.stopPropagation();numbersShowColumnNote(\''+c.note+'\',event)" style="cursor:help;text-decoration:underline dotted rgba(124,58,237,0.4);text-underline-offset:3px" title="Click para ver explicaci\u00f3n detallada">'+esc(c.label)+' <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:#7c3aed;color:#fff;text-align:center;line-height:11px;font-size:8px;font-weight:bold;margin-left:2px;vertical-align:middle">i</span></span>';
+      }else{
+        labelHtml=esc(c.label);
+      }
       return '<th data-col-id="'+c.id+'" style="'+thStyle+'"'+titleAttr+'>'
-        +esc(c.label)
+        +labelHtml
         +'<span class="nbv-col-resize" data-col-id="'+c.id+'" style="position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize;background:transparent;z-index:5" onmousedown="numbersStartColResize(event, \''+c.id+'\')"></span>'
       +'</th>';
     }).join('');
@@ -27092,24 +27130,26 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var tdC=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:center'+(extra||'')+rowExtra+'">'+content+'</td>';};
       // v10.02: Calcolo Ganancias auto + supporto override manuale via accDocs
       // v10.10.30: nuove formule Resultado secondo spec utente (sequenza ordinata)
+      // v10.10.31: aggiunta Gastos Extras + ridefinizione Resultado Final
       var manualG=(r.stockId&&window._nxManualGanancias&&window._nxManualGanancias[r.stockId+'_'+r.lotIdx])||{};
       var calcGanVeh=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-(ext.damage||0)):null;
       var calcGanTrans=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
       var brokerPagado=(ext.brokerAmount||0);
       var gananciaVeh=manualG.gananciaVeh!==undefined?manualG.gananciaVeh:calcGanVeh;
       var gananciaTrans=manualG.gananciaTrans!==undefined?manualG.gananciaTrans:calcGanTrans;
-      // v10.10.30: nuove formule Resultado
-      // Step 1: Ganancia = Venta - Compra - Broker (se esiste). NB: NON sottrae daños (è "ganancia operativa" non "ganancia veicolo")
+      // Step 1: Ganancia = Venta - Compra - Broker (se esiste). NB: NON sottrae daños
       var calcGananciaCalc=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-brokerPagado):null;
       var gananciaCalc=manualG.gananciaCalc!==undefined?manualG.gananciaCalc:calcGananciaCalc;
-      // Step 2: Ganancia Vendedor = MAX(0, Ganancia * 10%) — clamp a 0 se Ganancia negativa (perdita)
+      // Step 2: Ganancia Vendedor = MAX(0, Ganancia * 10%)
       var calcGananciaVendedor=gananciaCalc!==null?Math.max(0,gananciaCalc*0.10):null;
       var gananciaVendedor=manualG.gananciaVendedor!==undefined?manualG.gananciaVendedor:calcGananciaVendedor;
       // Step 3: SUB.Profit.DMCAR = Ganancia - Ganancia Vendedor
       var calcSubProfitDMCAR=(gananciaCalc!==null)?(gananciaCalc-(gananciaVendedor||0)):null;
       var subProfitDMCAR=manualG.subProfitDMCAR!==undefined?manualG.subProfitDMCAR:calcSubProfitDMCAR;
-      // Step 4: Resultado Final DM = SUB.Profit.DMCAR + Ganancia Transporte
-      var calcResultadoFinalDM=(subProfitDMCAR!==null)?(subProfitDMCAR+(gananciaTrans||0)):null;
+      // v10.10.31: Step 3.5: Gastos Extras (manuale, default 0)
+      var gastosExtras=manualG.gastosExtras!==undefined?manualG.gastosExtras:0;
+      // Step 4: Resultado Final DM = SUB.Profit.DMCAR - Gastos Extras + Ganancia Transporte
+      var calcResultadoFinalDM=(subProfitDMCAR!==null)?(subProfitDMCAR-(gastosExtras||0)+(gananciaTrans||0)):null;
       var resultadoFinalDM=manualG.resultadoFinalDM!==undefined?manualG.resultadoFinalDM:calcResultadoFinalDM;
       // Helpers per celle editable
       var rowKey=r.stockId+'_'+r.lotIdx;
@@ -27168,11 +27208,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(fmtTxt(ext.brokerFt),bgBro)
         +td(fmtDate(ext.brokerDataInc),bgBro)
         +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro,';border-right:2px solid var(--border)')
-        // RESULTADO (4): Ganancia | Ganancia Vendedor | SUB.Profit.DMCAR | Resultado Final DM
-        // v10.10.30: 4 nuove colonne secondo spec utente, tutte editable
+        // RESULTADO (5): Ganancia | Vendedor | SUB.Profit | Gastos Extras | Resultado Final DM
+        // v10.10.31: aggiunta colonna Gastos Extras (manuale, default 0)
         +editable(gananciaCalc!==null?fmtMon(gananciaCalc,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaCalc',gananciaCalc,';font-weight:700;font-size:11px')
         +editable(gananciaVendedor!==null?fmtMon(gananciaVendedor,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaVendedor',gananciaVendedor,';font-weight:600;font-size:10.5px;color:#7c3aed')
         +editable(subProfitDMCAR!==null?fmtMon(subProfitDMCAR,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'subProfitDMCAR',subProfitDMCAR,';font-weight:700;font-size:11px')
+        +editable(gastosExtras?fmtMon(gastosExtras):'<span style="color:var(--t4)">0</span>',bgRes,'gastosExtras',gastosExtras,';font-weight:600;font-size:10.5px;color:#dc2626')
         +editable(resultadoFinalDM!==null?fmtMon(resultadoFinalDM,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'resultadoFinalDM',resultadoFinalDM,';font-weight:800;font-size:11.5px;color:#16a34a')
       +'</tr>';
     });
@@ -27403,8 +27444,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         'Marca','Modelo','Versi\u00f3n','1\u00aa Matriculaci\u00f3n','Kms','Color','Da\u00f1os (\u20ac)','Ganancia V. (\u20ac)',
         // BROKER — v10.10.29: rimossa Comisi\u00f3n (Fix 3)
         'Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Comisi\u00f3n','Imp. Pagada (\u20ac)',
-        // RESULTADO — v10.10.30: 4 colonne secondo nuova spec
-        'Ganancia (\u20ac)','Gan. Vendedor (10%) (\u20ac)','SUB.Profit.DMCAR (\u20ac)','Resultado Final DM (\u20ac)'
+        // RESULTADO — v10.10.31: 5 colonne (con Gastos Extras)
+        'Ganancia (\u20ac)','Gan. Vendedor (10%) (\u20ac)','SUB.Profit.DMCAR (\u20ac)','Gastos Extras (\u20ac)','Resultado Final DM (\u20ac)'
       ];
       var rows=records.map(function(r){
         var ext=nxAccGetExtended(r);
@@ -27423,7 +27464,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
         var ganVend=manual.gananciaVendedor!==undefined?manual.gananciaVendedor:calcGanVend;
         var calcSubProf=(ganCalc!==null)?(ganCalc-(ganVend||0)):null;
         var subProf=manual.subProfitDMCAR!==undefined?manual.subProfitDMCAR:calcSubProf;
-        var calcResFin=(subProf!==null)?(subProf+(gT||0)):null;
+        // v10.10.31: Gastos Extras (manuale) + nuova formula Resultado Final
+        var gastosExtras=manual.gastosExtras!==undefined?manual.gastosExtras:0;
+        var calcResFin=(subProf!==null)?(subProf-(gastosExtras||0)+(gT||0)):null;
         var resFinDM=manual.resultadoFinalDM!==undefined?manual.resultadoFinalDM:calcResFin;
         return [
           r.isOwn?'OWN':'',
@@ -27471,10 +27514,11 @@ document.querySelectorAll('.ovl').forEach(function(el){
           ext.brokerFt||'',
           ext.brokerDataInc||'',
           ext.brokerAmount||0,
-          // RESULTADO — v10.10.30: 4 colonne (Ganancia | Vendedor | SUB.Profit | Resultado Final)
+          // RESULTADO — v10.10.31: 5 colonne (Ganancia | Vendedor | SUB.Profit | Gastos Extras | Resultado Final)
           ganCalc||0,
           ganVend||0,
           subProf||0,
+          gastosExtras||0,
           resFinDM||0
         ];
       });
@@ -27507,7 +27551,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='anuladas')records=records.filter(function(r){return !!r.isAnulada;});
     else records=records.filter(function(r){return !r.isAnulada;});
     if(!records.length){alert('Sin datos para exportar');return;}
-    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia','Gan. Vendedor (10%)','SUB.Profit.DMCAR','Resultado Final DM'];
+    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia','Gan. Vendedor (10%)','SUB.Profit.DMCAR','Gastos Extras','Resultado Final DM'];
     var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
     var lines=[headers.join(';')];
     records.forEach(function(r){
@@ -27527,7 +27571,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var ganVend=manual.gananciaVendedor!==undefined?manual.gananciaVendedor:calcGanVend;
       var calcSubProf=(ganCalc!==null)?(ganCalc-(ganVend||0)):null;
       var subProf=manual.subProfitDMCAR!==undefined?manual.subProfitDMCAR:calcSubProf;
-      var calcResFin=(subProf!==null)?(subProf+(gT||0)):null;
+      // v10.10.31: Gastos Extras + nuova formula Resultado Final
+      var gastosExtras=manual.gastosExtras!==undefined?manual.gastosExtras:0;
+      var calcResFin=(subProf!==null)?(subProf-(gastosExtras||0)+(gT||0)):null;
       var resFinDM=manual.resultadoFinalDM!==undefined?manual.resultadoFinalDM:calcResFin;
       lines.push([
         r.isOwn?'OWN':'',
@@ -27540,8 +27586,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         r.brand||'',r.model||'',ext.version||'',ext.firstReg||'',ext.km||0,r.color||'',ext.damage||0,gV||0,
         // BROKER — v10.10.29: rimossa Comisi\u00f3n
         ext.brokerName||ext.brokerSeller||'',ext.brokerFt||'',ext.brokerDataInc||'',ext.brokerAmount||0,
-        // RESULTADO — v10.10.30: 4 colonne
-        ganCalc||0,ganVend||0,subProf||0,resFinDM||0
+        // RESULTADO — v10.10.31: 5 colonne (con Gastos Extras)
+        ganCalc||0,ganVend||0,subProf||0,gastosExtras||0,resFinDM||0
       ].map(esc).join(';'));
     });
     var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
@@ -27554,6 +27600,79 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // ========================================================================
   // v9.96: Column resize handlers
+  // ========================================================================
+  // v10.10.31: SISTEMA NOTE ESPLICATIVE — popover cliccando label colonne RESULTADO
+  // ========================================================================
+  // Mappa note id -> {title, body, formula} per renderizzare popover formattato.
+  window._nxColumnNotes={
+    gananciaCalc:{
+      title:'Ganancia',
+      body:'Ganancia bruta generada por la compra-venta del veh\u00edculo, neta de la comisi\u00f3n del broker (si existe).',
+      formula:'Ganancia = Venta \u2212 Compra \u2212 Broker (si hay)'
+    },
+    gananciaVendedor:{
+      title:'Ganancia Vendedor',
+      body:'Comisi\u00f3n correspondiente al vendedor interno DMCAR, calculada como 10% sobre la Ganancia.\n\n\u26a0\ufe0f Si Ganancia es negativa (p\u00e9rdida), la comisi\u00f3n se pone autom\u00e1ticamente a 0 (el vendedor no reembolsa p\u00e9rdidas).',
+      formula:'Ganancia Vendedor = Ganancia \u00d7 10%'
+    },
+    subProfitDMCAR:{
+      title:'SUB.Profit.DMCAR',
+      body:'Sub-total de beneficio DMCAR sobre la compra-venta del veh\u00edculo, despu\u00e9s de deducir la comisi\u00f3n del Vendedor.',
+      formula:'SUB.Profit.DMCAR = Ganancia \u2212 Ganancia Vendedor'
+    },
+    gastosExtras:{
+      title:'Gastos Extras',
+      body:'Voz destinada a recoger gastos accesorios relacionados con la operaci\u00f3n, entre ellos:\n\u2022 Gastos de env\u00edo de documentos\n\u2022 Reembolsos por da\u00f1os\n\u2022 Otros gastos accesorios por definir\n\n\u26a0\ufe0f La configuraci\u00f3n completa de esta voz se definir\u00e1 en una fase sucesiva. Por ahora valor manual (doble click para editar).',
+      formula:null
+    },
+    resultadoFinalDM:{
+      title:'Resultado Final DM',
+      body:'Margen neto final de la operaci\u00f3n para DMCAR, comprensivo de todos los costes operativos y del margen de transporte.\n\nEs el indicador clave de rentabilidad de la operaci\u00f3n.',
+      formula:'Resultado Final = Venta \u2212 Compra \u2212 Broker (si hay) \u2212 Vendedor (10%) \u2212 Gastos Extras + Ganancia Transporte\n\nEquivalente a:\nResultado Final = SUB.Profit.DMCAR \u2212 Gastos Extras + Ganancia Transporte'
+    }
+  };
+  // Render popover floating accanto al label cliccato
+  window.numbersShowColumnNote=function(noteId,ev){
+    // Chiudi popover esistente se aperto
+    var existing=document.getElementById('nbv-note-popover');
+    if(existing)existing.remove();
+    var note=window._nxColumnNotes[noteId];
+    if(!note)return;
+    // Costruisci popover
+    var pop=document.createElement('div');
+    pop.id='nbv-note-popover';
+    pop.style.cssText='position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,0.15);padding:0;width:340px;max-width:90vw;z-index:99999;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#1f2937;line-height:1.5;animation:nbvNoteFadeIn 0.15s ease-out';
+    var formulaHtml=note.formula?'<div style="background:rgba(124,58,237,0.07);border-left:3px solid #7c3aed;padding:9px 11px;margin-top:10px;border-radius:0 6px 6px 0;font-family:ui-monospace,monospace;font-size:11px;color:#5b21b6;white-space:pre-wrap;word-break:break-word"><strong style="display:block;font-size:9.5px;letter-spacing:.05em;color:#7c3aed;margin-bottom:5px;text-transform:uppercase">F\u00f3rmula</strong>'+esc(note.formula)+'</div>':'';
+    pop.innerHTML='<div style="background:linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%);color:#fff;padding:10px 14px;border-radius:10px 10px 0 0;display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">\u{1F4D6} '+esc(note.title)+'</strong><span onclick="document.getElementById(\'nbv-note-popover\').remove()" style="cursor:pointer;font-size:18px;line-height:1;opacity:.85;padding:0 4px" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.85">\u00d7</span></div><div style="padding:12px 14px"><div style="white-space:pre-wrap;color:#374151">'+esc(note.body)+'</div>'+formulaHtml+'</div>';
+    document.body.appendChild(pop);
+    // Inietta keyframes una sola volta
+    if(!document.getElementById('nbv-note-style')){
+      var st=document.createElement('style');
+      st.id='nbv-note-style';
+      st.textContent='@keyframes nbvNoteFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}';
+      document.head.appendChild(st);
+    }
+    // Posiziona vicino al click (evita uscita schermo)
+    var x=ev.clientX,y=ev.clientY;
+    var popRect=pop.getBoundingClientRect();
+    var vw=window.innerWidth,vh=window.innerHeight;
+    var left=x+10,top=y+18;
+    if(left+popRect.width>vw-10)left=Math.max(10,vw-popRect.width-10);
+    if(top+popRect.height>vh-10)top=Math.max(10,y-popRect.height-10);
+    pop.style.left=left+'px';
+    pop.style.top=top+'px';
+    // Click fuori chiude
+    setTimeout(function(){
+      var closeOnOut=function(e){
+        if(!pop.contains(e.target)){
+          pop.remove();
+          document.removeEventListener('click',closeOnOut);
+        }
+      };
+      document.addEventListener('click',closeOnOut);
+    },50);
+  };
+
   // ========================================================================
   window._nxResizeState=null;
   window.numbersStartColResize=function(ev,colId){
@@ -28182,7 +28301,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var ocU=String(notif.ownerCompany).toUpperCase();
       if(ocU.indexOf('INNO')>=0)cc='INNO';
       else if(ocU.indexOf('IMPEX')>=0)cc='IMPEX';
-      else if(ocU.indexOf('MERCEDES')>=0)cc='MERC';
+      else if(ocU.indexOf('MERCEDES')>=0)cc='MERC'; // v10.10.31: legacy backward compat per record esistenti (Mercedes Solution non più attiva)
     }
     if(typeof showToast==='function')showToast('\u26a1 Vinculando documento a '+stocksUpdated+' veh\u00edculos\u2026',3000);
     nxTempUploadDoc({
@@ -28404,7 +28523,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // STEP 1: notifica iniziale + chiede se ha proforma
   // v10.10: Template spec ufficiale + selettore impresa acquirente (multi-impresa)
-  window.NX_OWN_COMPANIES=window.NX_OWN_COMPANIES||['DMCAR GROUP','INNOQUEST SOLUTIONS','IMPEX CONSULTING','MERCEDES SOLUTION'];
+  // v10.10.31: rimossa MERCEDES SOLUTION (non più attiva nel gruppo DM). Imprese attive: DMCAR / INNOQUEST / IMPEX
+  window.NX_OWN_COMPANIES=window.NX_OWN_COMPANIES||['DMCAR GROUP','INNOQUEST SOLUTIONS','IMPEX CONSULTING'];
   window.nxOwnEntryShowStep1=function(group,onDone){
     var totalUnits=group.stocks.reduce(function(a,s){return a+(s.vehicles?s.vehicles.length:1);},0);
     // v10.10: prefill impresa - se tutti gli stock hanno gi\u00e0 ownerCompany coerente, usalo
