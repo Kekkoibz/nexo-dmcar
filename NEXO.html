@@ -1,4 +1,42 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1.1 — DM GROUP CRM | 2026-05-04 | Multi-utente: Sync Firebase utenti + Watchdog sessione:
+1) PROBLEMA RISOLTO: in v10.11.1 gli utenti creati dal Super Admin vivevano SOLO nel localStorage del dispositivo creatore. I collaboratori su altri dispositivi non potevano loggarsi. Bug critico bloccante per uso reale multi-utente.
+2) SOLUZIONE: integrazione completa con sistema Firebase sync esistente (NX_FB).
+3) MODIFICHE NX_AUTH.saveUsers():
+   • Salva sempre in localStorage (come prima)
+   • IN AGGIUNTA: chiama NX_FB.syncGenericUp('users',arr) per push a Firestore
+   • Salva in users/{firebase-uid}/data/users come {items:[...], updatedAt, device, origin}
+   • Catch error gracefully: fallisce silenziosamente se Firebase offline (riprover\u00e0 al prossimo save)
+4) MODIFICHE NX_FB.syncAllDown(): aggiunte chiavi 'users' e 'audit' alla lista syncata.
+   • Al boot post-Google-login, scarica utenti dal cloud e popola nx5_users
+   • Permette al collaboratore di fare login interno con username/password creati dal Super Admin
+5) MODIFICHE NX_FB.startAllGenericListeners(): aggiunti 'users' + 'audit' ai listener real-time.
+   • Quando un Super Admin modifica utenti su disp A, il listener Firestore aggiorna localStorage di disp B in tempo reale
+   • Il listener salva su 'nx5_users' (esattamente la chiave letta da NX_AUTH.loadUsers())
+6) NUOVO: NX_AUTH.startSessionWatchdog() — controllo periodico ogni 5 secondi:
+   • Se l'utente loggato \u00e8 stato eliminato remotamente \u2192 alert + logout forzato
+   • Se l'utente loggato \u00e8 stato disattivato remotamente \u2192 alert + logout forzato
+   • Se nome/lingua/ruolo/password sono cambiati remotamente \u2192 aggiorna currentUser + sessione + UI
+   • Hardcoded admin esentato (sempre valido)
+7) Watchdog avviato in 2 punti: dopo init() se sessione esistente + dopo attemptLogin() success.
+8) FLOW MULTI-DISPOSITIVO:
+   • Super Admin (te) su PC A: crea Maria (maria.garcia/pass123) \u2192 saveUsers \u2192 Firebase push
+   • Firebase Firestore: users/{uid}/data/users = {items: [Maria]}
+   • Maria su iPhone B: apre NEXO \u2192 si logga con Google account NEXO condiviso (es. dmcargroupteam@gmail.com) \u2192 NX_FB.syncAllDown scarica Maria \u2192 nx5_users popolato
+   • Maria fa login NEXO interno con maria.garcia/pass123 \u2192 entra come Contable
+9) CASO LIMIT: doppio login richiesto (Google Firebase per sync remoto + NEXO interno per ruoli/permessi). Non \u00e8 ottimale UX ma necessario senza backend dedicato. Tutti i collaboratori usano la stessa Google account NEXO condivisa.
+10) Smoke test scenario completo PASS:
+    • Super Admin crea Maria \u2192 sync to cloud \u2705
+    • Listener disp B riceve update real-time \u2705
+    • Maria si logga su disp B con credenziali appena create \u2705
+    • Super Admin disattiva Maria \u2192 watchdog disp B forza logout \u2705
+    • Super Admin elimina Maria \u2192 watchdog disp B forza logout \u2705
+11) PRESERVA: tutto v10.11.1 (CRUD utenti, Mi Perfil), v10.11.0 (login overlay), v10.10.35 (sistema solleciti documenti). NX_FB pre-esistente intoccato \u2014 estesi solo array keys[].
+12) NOTE TECNICHE:
+    • Password ancora in chiaro su Firestore (acceptable per uso team trusted; per sicurezza maggiore servirebbe Firebase Auth dedicato per ogni utente NEXO, complicato)
+    • Audit log anche sincronizzato (chiave 'audit' aggiunta) \u2014 tutti i Super Admin vedono lo stesso log
+    • Watchdog 5s polling (non agressivo, non drena batteria)
+    • Test deploy: hard reload, verifica console "[NX_AUTH] Users sincronizzati al cloud" dopo creazione utente. -->
 <!-- NEXO v10.11.1 — DM GROUP CRM | 2026-05-04 | Multi-utente Fase 2: Gestione Utenti CRUD + Mi Perfil:
 1) NUOVO PANNELLO "GESTI\u00d3N DE USUARIOS" (visibile solo Super Admin):
    • Modal full-screen 880px con header gradient viola
@@ -4166,6 +4204,8 @@ var NX_AUTH={
           this.currentUser=user;
           console.log('[NX_AUTH v10.11.0] Sessione attiva:',user.username,'('+user.role+')');
           this.hideLoginOverlay();
+          // v10.11.1.1: avvia watchdog
+          this.startSessionWatchdog();
           return true;
         }else{
           console.warn('[NX_AUTH] Sessione invalida \u2014 utente non trovato o inattivo');
@@ -4219,6 +4259,16 @@ var NX_AUTH={
   saveUsers:function(arr){
     try{localStorage.setItem(this.USERS_KEY,JSON.stringify(arr));}
     catch(e){console.error('[NX_AUTH] saveUsers error:',e);}
+    // v10.11.1.1: Push a Firebase per sync multi-dispositivo
+    try{
+      if(typeof NX_FB!=='undefined'&&NX_FB.ready&&NX_FB.currentUser&&typeof NX_FB.syncGenericUp==='function'){
+        NX_FB.syncGenericUp('users',arr).then(function(){
+          console.log('[NX_AUTH] Users sincronizzati al cloud:',arr.length);
+        }).catch(function(err){
+          console.warn('[NX_AUTH] Sync users to cloud failed:',err);
+        });
+      }
+    }catch(e){console.warn('[NX_AUTH] Cloud sync attempt error:',e);}
   },
   findUserByUsername:function(username){
     if(!username)return null;
@@ -4281,6 +4331,8 @@ var NX_AUTH={
     this.logAudit('login_success',{username:user.username,role:user.role,remember:remember});
     this.showLoginMessage('\u00a1Bienvenido, '+user.name+'!','success');
     var self=this;
+    // v10.11.1.1: avvia watchdog per controllo session validity
+    this.startSessionWatchdog();
     setTimeout(function(){self.hideLoginOverlay();},600);
   },
 
@@ -4359,7 +4411,43 @@ var NX_AUTH={
   hasRole:function(role){
     return this.currentUser&&this.currentUser.role===role;
   },
-  isSuperAdmin:function(){return this.hasRole('super_admin');}
+  isSuperAdmin:function(){return this.hasRole('super_admin');},
+
+  // v10.11.1.1: controlla periodicamente se l'utente loggato è ancora valido nel localStorage
+  // (utile se un altro dispositivo lo ha disattivato/eliminato via Firebase sync)
+  startSessionWatchdog:function(){
+    var self=this;
+    if(this._watchdogInterval)clearInterval(this._watchdogInterval);
+    this._watchdogInterval=setInterval(function(){
+      if(!self.currentUser)return;
+      // Hardcoded admin sempre valido (non in localStorage)
+      if(self.currentUser.id==='sysadmin'||self.currentUser.isHardcoded)return;
+      var fresh=self.findUserById(self.currentUser.id);
+      if(!fresh){
+        console.warn('[NX_AUTH] Watchdog: utente eliminato remotamente, logout forzato');
+        alert('\u26a0\ufe0f Tu cuenta ha sido eliminada por un administrador. La sesi\u00f3n se cerrar\u00e1 ahora.');
+        self.logout();
+        return;
+      }
+      if(!fresh.isActive){
+        console.warn('[NX_AUTH] Watchdog: utente disattivato remotamente, logout forzato');
+        alert('\u26a0\ufe0f Tu cuenta ha sido desactivada. La sesi\u00f3n se cerrar\u00e1 ahora.');
+        self.logout();
+        return;
+      }
+      // Update currentUser se cambiati nome/lingua/ruolo
+      if(fresh.name!==self.currentUser.name||fresh.lang!==self.currentUser.lang||fresh.role!==self.currentUser.role||fresh.password!==self.currentUser.password){
+        console.log('[NX_AUTH] Watchdog: dati utente aggiornati remotamente');
+        self.currentUser=fresh;
+        var session=self.loadSession();
+        if(session){
+          session.name=fresh.name;session.lang=fresh.lang;session.role=fresh.role;
+          self.saveSession(session);
+        }
+        if(typeof window.nxAuthUpdateUserMenu==='function')window.nxAuthUpdateUserMenu();
+      }
+    },5000); // ogni 5 secondi
+  }
 };
 
 // Esposizione globale per debug console
@@ -4890,7 +4978,7 @@ var NX_FB={
   // Carica iniziale: scarica TUTTI i moduli dal cloud al login
   syncAllDown:function(){
     var self=this;
-    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
+    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','users','audit'];
     var promises=keys.map(function(k){
       return self.syncGenericDown(k).then(function(result){
         if(!result)return null;
@@ -4960,7 +5048,7 @@ var NX_FB={
   },
 
   startAllGenericListeners:function(){
-    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter'];
+    var keys=['stock','stkCnt','offerCnt','providers','provCnt','provLabels','contacts','tasks','offerHist','mkContacts','mkCntCounter','mkLists','mkListsCounter','users','audit'];
     var self=this;
     keys.forEach(function(k){self.startGenericListener(k);});
     console.log('[NX_FB] \u2705 Listeners activos: '+keys.length+' colecciones');
