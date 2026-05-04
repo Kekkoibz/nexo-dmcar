@@ -1,4 +1,26 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1.4 — DM GROUP CRM | 2026-05-04 | Hotfix CRITICO accesso utenti su nuovi dispositivi:
+1) PROBLEMA RISOLTO: chicken-and-egg problem. Quando Massi (nuovo utente) apriva NEXO sul SUO PC, vedeva sempre "Usuario massi no encontrado". ROOT CAUSE: il banner Firebase di stato (#fb-banner) aveva z-index 9999, MA l'overlay login (nx-login-overlay) aveva z-index 99999, quindi copriva il banner. Massi non poteva n\u00e9 vedere lo stato sync n\u00e9 cliccare per loggarsi a Firebase. Senza login Firebase, la lista utenti non veniva mai scaricata dal cloud.
+2) FIX 1: aumentato z-index #fb-banner da 9999 a 100000 (sopra il login overlay 99999). Ora il banner \u00e8 sempre visibile e cliccabile, anche durante il login.
+3) FIX 2: aggiunto warning ESPLICITO nel login overlay quando Firebase non \u00e8 connesso. Box giallo con messaggio "Sincronizaci\u00f3n no activa" + bottone diretto "\u26a1 Conectar al sistema" che chiama NX_FB.signIn() o bannerClick() come fallback.
+4) FIX 3: nuovo metodo NX_AUTH.checkFirebaseStatusForLogin() chiamato in showLoginOverlay(). Polling ogni 2s per max 10 tentativi (20s totali) per rilevare lo stato Firebase. Logica: se NON \u00e8 loggato Firebase + lista utenti vuota \u2192 mostra warning. Altrimenti nasconde.
+5) FIX 4: nuovo metodo NX_AUTH.connectFirebaseFromLogin() che gestisce 3 casi:
+   - Firebase non inizializzato \u2192 alert "espera"
+   - Gi\u00e0 loggato \u2192 alert "ya conectado, espera sync"
+   - Non loggato \u2192 chiama NX_FB.signIn() o NX_FB.bannerClick() come fallback
+6) Flow risolto per Massi:
+   a) Massi apre NEXO sul suo PC
+   b) Vede login overlay + warning giallo "Sincronizaci\u00f3n no activa"
+   c) Click "\u26a1 Conectar al sistema" \u2192 popup Google login
+   d) Sceglie account dmcargroupteam@gmail.com
+   e) Banner Firebase diventa verde, sync scarica users[]
+   f) Warning si nasconde automaticamente dopo polling
+   g) Massi inserisce massi/123456 \u2192 entra come Manager
+7) PRESERVA: tutto v10.11.1.3 (placeholder password fix), v10.11.1.2 (auto-strip @, footer), v10.11.1.1 (sync Firebase + watchdog), v10.11.1 (CRUD utenti + Mi Perfil), v10.11.0 (login base).
+8) NOTE TECNICHE:
+   - z-index ordine finale: app=auto, login overlay=99999, fb-banner=100000, modali users/profile=99000-99100
+   - Polling 20s totali \u00e8 sufficiente per inizializzazione Firebase tipica (3-5s) + caricamento dati (5-10s)
+   - Test deploy: nuovo dispositivo Chrome con dmcargroupteam@gmail.com \u2192 apri NEXO \u2192 vedi warning \u2192 click conectar \u2192 login Google \u2192 banner verde \u2192 login NEXO con utente custom funziona. -->
 <!-- NEXO v10.11.1.3 — DM GROUP CRM | 2026-05-04 | Hotfix placeholder password unicode escape:
 1) BUG visivo: placeholder password mostrava letteralmente "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" invece dei pallini (\u2022 = bullet). Stesso problema della v10.11.1.2 (footer): caratteri Unicode escapati nel codice HTML statico non vengono interpretati dal browser perch\u00e9 il browser li tratta come testo letterale (a differenza degli stessi escape nelle stringhe JavaScript).
 2) FIX: sostituito con caratteri bullet UTF-8 diretti (\u2022 \u2022 \u2022 \u2022 \u2022 \u2022 \u2022 \u2022) nel placeholder dell'input password.
@@ -736,7 +758,7 @@ input[type=radio]{width:auto;accent-color:var(--b2);cursor:pointer}
   #content{padding:12px}
 }
 /* Firebase Sync Banner */
-#fb-banner{position:fixed;top:0;left:0;right:0;z-index:9999;padding:6px 14px;font-size:12px;font-weight:500;display:none;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .2s}
+#fb-banner{position:fixed;top:0;left:0;right:0;z-index:100000;padding:6px 14px;font-size:12px;font-weight:500;display:none;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .2s}
 #fb-banner.on{display:flex}
 #fb-banner.offline{background:#fef3c7;color:#92400e;border-bottom:1px solid #fbbf24}
 #fb-banner.online{background:#d1fae5;color:#065f46;border-bottom:1px solid #10b981}
@@ -801,6 +823,12 @@ body.fb-banner-on #app{padding-top:30px}
     <!-- Form -->
     <form id="nx-login-form" onsubmit="event.preventDefault();NX_AUTH.attemptLogin();return false" style="padding:28px">
       <div id="nx-login-msg" style="display:none;font-size:12px;padding:10px 12px;border-radius:8px;margin-bottom:14px;border-left:3px solid"></div>
+      <!-- v10.11.1.4: warning Firebase se sync non attivo (cruciale per nuovi utenti su nuovi dispositivi) -->
+      <div id="nx-login-fb-warn" style="display:none;font-size:11.5px;padding:10px 12px;border-radius:8px;margin-bottom:14px;border-left:3px solid #f59e0b;background:#fef3c7;color:#92400e;line-height:1.5">
+        <strong>&#9888;&#65039; Sincronizaci&oacute;n no activa.</strong><br>
+        Si tu cuenta fue creada por el Super Admin en otro dispositivo, debes conectar primero al sistema cloud para descargar tus credenciales.<br>
+        <button type="button" onclick="NX_AUTH.connectFirebaseFromLogin()" style="margin-top:8px;padding:6px 12px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">&#9889; Conectar al sistema</button>
+      </div>
       <div style="margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">USUARIO</label>
         <input type="text" id="nx-login-username" autocomplete="username" autofocus placeholder="Ej: maria.garcia (sin @)" style="width:100%;padding:11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
@@ -4388,6 +4416,56 @@ var NX_AUTH={
     // Nasconde l'app sottostante
     var app=document.getElementById('app');
     if(app)app.style.visibility='hidden';
+    // v10.11.1.4: mostra warning Firebase se sync non attivo (utili nuovi dispositivi)
+    this.checkFirebaseStatusForLogin();
+  },
+
+  // v10.11.1.4: controlla stato Firebase e mostra warning nel login overlay se necessario
+  checkFirebaseStatusForLogin:function(){
+    var warn=document.getElementById('nx-login-fb-warn');
+    if(!warn)return;
+    // Polling iniziale: dai a Firebase qualche secondo per inizializzarsi
+    var attempts=0;
+    var self=this;
+    function check(){
+      attempts++;
+      var hasFB=(typeof NX_FB!=='undefined');
+      var fbReady=hasFB&&NX_FB.ready;
+      var fbLogged=hasFB&&NX_FB.currentUser;
+      var hasUsers=self.loadUsers().length>0;
+      // Se sono tutti loggati con Firebase + ci sono utenti = nascondi warning
+      if(fbReady&&fbLogged){warn.style.display='none';return;}
+      // Se c'\u00e8 almeno l'admin hardcoded e il dispositivo \u00e8 il primo (mai sincronizzato), no warning
+      // Mostra warning solo se l'utente potrebbe avere bisogno di sync (nessun utente custom + Firebase non loggato)
+      if(!fbLogged&&!hasUsers){
+        warn.style.display='block';
+      }else{
+        warn.style.display='none';
+      }
+      // Riprova ogni 2s per max 10 tentativi (20s totali)
+      if(attempts<10)setTimeout(check,2000);
+    }
+    setTimeout(check,500);
+  },
+
+  // v10.11.1.4: avvia il flow Firebase login direttamente dal pannello
+  connectFirebaseFromLogin:function(){
+    if(typeof NX_FB==='undefined'||!NX_FB.ready){
+      alert('Sistema cloud todav\u00eda inicializ\u00e1ndose. Espera unos segundos y vuelve a intentarlo.');
+      return;
+    }
+    if(NX_FB.currentUser){
+      alert('Ya est\u00e1s conectado al sistema cloud como '+NX_FB.currentUser.email+'.\nLa lista de usuarios se actualizar\u00e1 autom\u00e1ticamente. Espera 5-10 segundos y reintenta el login.');
+      return;
+    }
+    // Trigger Google sign-in
+    if(typeof NX_FB.signIn==='function'){
+      NX_FB.signIn();
+    }else if(typeof NX_FB.bannerClick==='function'){
+      NX_FB.bannerClick();
+    }else{
+      alert('No se ha podido conectar autom\u00e1ticamente. Cierra esta ventana y haz click en la barra de estado en la parte superior.');
+    }
   },
   hideLoginOverlay:function(){
     var ov=document.getElementById('nx-login-overlay');
