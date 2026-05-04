@@ -1,4 +1,19 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.1.2 — DM GROUP CRM | 2026-05-04 | Hotfix login UX (3 bug):
+1) BUG 1: utente inseriva "@massi" invece di "massi" perché vede @username nel user menu e pensa che @ sia parte del nome. Sistema rispondeva "Usuario no encontrado". FIX: auto-strip @ iniziale in attemptLogin() prima del lookup. Trim spazi prima e dopo lo strip per gestire anche "@ massi".
+2) BUG 2: footer login mostrava letteralmente "v10.11.0 \u2014 \u00bfOlvidaste contrase\u00f1a?" perché caratteri Unicode escapati non interpretati. FIX: sostituiti con HTML entities &mdash; e &iquest;. Aggiornato anche il version number a v10.11.1.2.
+3) UX MIGLIORATA: 
+   • Placeholder username: "Ej: maria.garcia (sin @)" invece di "admin" — pi\u00f9 esplicativo
+   • Hint sotto il campo: "Sin el s\u00edmbolo @ \u2014 introduce solo el nombre de usuario"
+   • Errore "no encontrado" pi\u00f9 informativo: include username digitato + hint contestuale (se DB utenti vuoto suggerisce di chiedere al Super Admin, altrimenti suggerisce verifica scrittura).
+4) Smoke test @-strip 6/6 PASS:
+   • @admin → admin
+   • admin → admin
+   • @@admin → @admin (solo primo @ stripped)
+   • massi → massi
+   • @massi → massi
+   • "  @ massi  " (con spazi) → massi
+5) PRESERVA: tutto v10.11.1.1 (sync Firebase utenti + watchdog), v10.11.1 (CRUD utenti, Mi Perfil), v10.11.0 (login overlay base). Solo bugfix UX. -->
 <!-- NEXO v10.11.1.1 — DM GROUP CRM | 2026-05-04 | Multi-utente: Sync Firebase utenti + Watchdog sessione:
 1) PROBLEMA RISOLTO: in v10.11.1 gli utenti creati dal Super Admin vivevano SOLO nel localStorage del dispositivo creatore. I collaboratori su altri dispositivi non potevano loggarsi. Bug critico bloccante per uso reale multi-utente.
 2) SOLUZIONE: integrazione completa con sistema Firebase sync esistente (NX_FB).
@@ -784,7 +799,8 @@ body.fb-banner-on #app{padding-top:30px}
       <div id="nx-login-msg" style="display:none;font-size:12px;padding:10px 12px;border-radius:8px;margin-bottom:14px;border-left:3px solid"></div>
       <div style="margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">USUARIO</label>
-        <input type="text" id="nx-login-username" autocomplete="username" autofocus placeholder="admin" style="width:100%;padding:11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
+        <input type="text" id="nx-login-username" autocomplete="username" autofocus placeholder="Ej: maria.garcia (sin @)" style="width:100%;padding:11px 13px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;transition:border-color .15s" onfocus="this.style.borderColor='#7c3aed'" onblur="this.style.borderColor='#e2e8f0'">
+        <div style="font-size:10px;color:#94a3b8;margin-top:4px">Sin el s&iacute;mbolo @ &mdash; introduce solo el nombre de usuario</div>
       </div>
       <div style="margin-bottom:18px">
         <label style="font-size:11px;font-weight:700;color:#475569;display:block;margin-bottom:5px;letter-spacing:.04em">CONTRASE&Ntilde;A</label>
@@ -802,7 +818,7 @@ body.fb-banner-on #app{padding-top:30px}
       </button>
       <div style="text-align:center;margin-top:16px;font-size:10.5px;color:#94a3b8">
         Acceso restringido al equipo DM Group<br>
-        <span style="opacity:.7">v10.11.0 \u2014 \u00bfOlvidaste contrase&ntilde;a? Contacta al Super Admin</span>
+        <span style="opacity:.7">v10.11.1.2 &mdash; &iquest;Olvidaste contrase&ntilde;a? Contacta al Super Admin</span>
       </div>
     </form>
   </div>
@@ -4295,13 +4311,23 @@ var NX_AUTH={
     var password=(document.getElementById('nx-login-password')||{}).value||'';
     var remember=(document.getElementById('nx-login-remember')||{}).checked||false;
     username=username.trim();
+    // v10.11.1.2: rimuove @ iniziale se l'utente lo digita per sbaglio (visto in user menu come @admin)
+    if(username.charAt(0)==='@')username=username.substring(1).trim();
     if(!username||!password){
       this.showLoginMessage('Por favor introduce usuario y contrase\u00f1a.','error');
       return;
     }
     var user=this.findUserByUsername(username);
     if(!user){
-      this.showLoginMessage('Usuario no encontrado.','error');
+      var hint='';
+      // v10.11.1.2: hint utili in base al contesto
+      var existing=this.loadUsers();
+      if(existing.length===0){
+        hint=' Solo el Super Admin "admin" est\u00e1 disponible. Pide al administrador que cree tu cuenta.';
+      }else{
+        hint=' Verifica que est\u00e9s escribiendo correctamente el nombre de usuario (sin @).';
+      }
+      this.showLoginMessage('Usuario "'+username+'" no encontrado.'+hint,'error');
       this.logAudit('login_fail',{username:username,reason:'user_not_found'});
       return;
     }
