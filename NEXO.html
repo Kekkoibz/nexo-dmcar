@@ -1,4 +1,23 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.34 — DM GROUP CRM | 2026-05-04 | Refactor dialog reclamación documentos (4 fix utente):
+1) Bug 1 (test utente): click triangolo PF mostrava entrambi i radio (Factura + Proforma). Era inutile perché il tipo doc è già implicito dalla colonna cliccata. FIX: rimosso completamente Step 1 "tipo documento" — la funzione riceve docType direttamente come parametro dalla badge cliccata. Header dialog ora dice "Reclamar Factura" o "Reclamar Proforma" già esplicito.
+2) Bug 2 (test utente): "Solo veh\u00edculos seleccionados" era disabilitato. FIX: implementata multi-selezione con checkbox per OGNI veicolo del lotto. Lista scrollabile con border-radius 8px, max-height 200px. Bottoni "Seleccionar todos" / "Deseleccionar todos" + contatore live "N / total seleccionados". Default tutti SELEZIONATI implicitamente (l'utente deve cliccare almeno una checkbox).
+3) Bug 3 (test utente): email non si apriva. ROOT CAUSE multipla: (a) provider senza email registrata → mailto: con email vuota fallisce silenzioso; (b) provider non in DB providers → impossibile risolvere destinatario. FIX completo:
+   • Modal preview EDITABILE: utente può modificare destinatario, asunto, corpo prima dell'invio.
+   • Box warning rosso se email vuota: "\u26a0\ufe0f Email no configurado" con CTA "Crear proveedor ahora" (link a #providers) o suggerimento "A\u00f1ade email en ficha".
+   • Strategia mailto: 3 livelli di fallback: (1) <a> tag click — più affidabile cross-browser; (2) window.open; (3) clipboard copy + alert con istruzioni manuali.
+   • Bottone "\ud83d\udccb Copiar" sempre disponibile per copy-paste manuale.
+4) Bug 4 (richiesta utente): "voglio vedere l'email e poi do l'invio finale". FIX: nuovo flow a DUE modal:
+   • Modal A (selettore): triangolo \u26a0\ufe0f → checkbox veicoli + info lingua → bottone "\ud83d\udce7 Previsualizar email"
+   • Modal B (preview): campi editabili (To, Subject, Body textarea 14 righe), info lingua + numero veicoli, bottone verde "\u2709 Abrir en cliente de correo" che fa il send finale via mailto:.
+   • L'utente fa il SEND finale dal client mail (Mac Mail, Outlook, Gmail web etc.) — controllo totale prima dell'invio.
+5) UX migliorata:
+   • Toast successo: "Email abierta en tu cliente de correo \u2014 revisa y env\u00eda manualmente"
+   • Bottone "Previsualizar" disabilitato se 0 veicoli selezionati (opacity 0.5 + cursor:not-allowed)
+   • Modal preview 640px (larga vs 520 selettore) per leggibilit\u00e0 testo
+6) Helper aggiunti: numbersToggleAllVehicles, numbersUpdateVehCounter, numbersOpenEmailPreview, numbersSendEmailFromPreview, numbersCopyEmailContent.
+7) PRESERVA: tutto v10.10.33 (template multilingua ES/IT/EN/FR/DE, campo Idioma in Provider+B2B, badge \u26a0\ufe0f), v10.10.32 (icone \u24d8 RESULTADO).
+8) ROADMAP: v10.10.35 audit log "Solleciti inviati N volte" + tracking timestamp ultimo sollecito (anti-flood). -->
 <!-- NEXO v10.10.33 — DM GROUP CRM | 2026-05-04 | Solleciti documenti multilingua + Idioma de Contacto:
 1) NUOVA FEATURE: gestione automatica documenti mancanti (Proforma/Factura) con generazione email solleciti pre-compilate nella lingua del provider.
 2) CAMPO "Idioma de Contacto" aggiunto in 2 moduli (spec utente):
@@ -27817,10 +27836,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
 
   // Render dialog 2-step on click triangolo
+  // v10.10.34: Step 1 (tipo doc) RIMOSSO — è implicito dalla colonna cliccata (PF=proforma, FT=factura)
+  // Step "scope" arricchito con multi-selezione veicoli
   window.numbersOpenMissingDocDialog=function(badgeEl){
     var stockId=badgeEl.getAttribute('data-stock-id');
     var lotIdx=parseInt(badgeEl.getAttribute('data-lot-idx'),10)||0;
-    var preselectDocType=badgeEl.getAttribute('data-doc-type'); // 'proforma' o 'factura'
+    var docType=badgeEl.getAttribute('data-doc-type'); // 'proforma' o 'factura' — DEFINITO DALLA COLONNA
     // Trova il record nel stock
     var stockArr=[];
     try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
@@ -27829,43 +27850,48 @@ document.querySelectorAll('.ovl').forEach(function(el){
     // Costruisci dialog
     var existingModal=document.getElementById('nbv-missing-doc-modal');
     if(existingModal)existingModal.remove();
+    var docLabel=docType==='factura'?'Factura':'Proforma';
+    var docIcon=docType==='factura'?'\ud83d\udcc4':'\ud83d\udccb';
+    // Costruisci lista checkbox veicoli (per multi-selezione)
+    var vehiclesArr=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles:[{vin:s.vin||'',_isLot:true}];
+    // Recupera selezione globale corrente (window._nxMissingDocSelection è map: stockId -> Set di vehIdx)
+    if(!window._nxMissingDocSelection)window._nxMissingDocSelection={};
+    var currentSel=window._nxMissingDocSelection[stockId]||new Set();
+    var vehiclesHtml=vehiclesArr.map(function(v,idx){
+      var vinShort=v.vin?String(v.vin).slice(-6):'(sin VIN)';
+      var checked=currentSel.has(idx)?'checked':'';
+      var label=(s.brand||'')+' '+(s.model||'')+(v.vin?(' \u2014 \u2026'+vinShort):'');
+      return '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:11.5px" onmouseover="this.style.background=\'rgba(245,158,11,0.05)\'" onmouseout="this.style.background=\'transparent\'">'
+        +'<input type="checkbox" class="nbv-veh-checkbox" data-veh-idx="'+idx+'" '+checked+' style="cursor:pointer;width:14px;height:14px;accent-color:#d97706">'
+        +'<span style="flex:1">'+esc(label)+'</span>'
+      +'</label>';
+    }).join('');
     var modal=document.createElement('div');
     modal.id='nbv-missing-doc-modal';
     modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.innerHTML=''
-      +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:480px;max-width:95vw;max-height:90vh;overflow-y:auto">'
+      +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:520px;max-width:95vw;max-height:90vh;overflow-y:auto">'
       +'  <div style="background:linear-gradient(135deg,#d97706 0%,#b45309 100%);color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center">'
-      +'    <strong style="font-size:14px">\u26a0\ufe0f Reclamar documento al proveedor</strong>'
+      +'    <strong style="font-size:14px">'+docIcon+' Reclamar '+docLabel+' al proveedor</strong>'
       +'    <span onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">\u00d7</span>'
       +'  </div>'
       +'  <div style="padding:18px">'
       +'    <div style="background:rgba(245,158,11,0.07);border-left:3px solid #d97706;padding:10px 12px;border-radius:0 6px 6px 0;font-size:11.5px;color:var(--t2);margin-bottom:14px;line-height:1.5">'
       +'      <strong>Proveedor:</strong> '+esc(s.supplier||'(no especificado)')+'<br>'
-      +'      <strong>Veh\u00edculos:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?(' \u2014 '+s.version):''))+'<br>'
-      +'      <strong>Unidades en lote:</strong> '+(Array.isArray(s.vehicles)?s.vehicles.length:1)+''
+      +'      <strong>Modelo:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?(' \u2014 '+s.version):''))+'<br>'
+      +'      <strong>Documento:</strong> '+docIcon+' '+docLabel+''
       +'    </div>'
-      +'    <!-- STEP 1: Tipo documento -->'
+      +'    <!-- Selettore scope con multi-selezione veicoli -->'
       +'    <div style="margin-bottom:14px">'
-      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">1. \u00bfQu\u00e9 desea reclamar?</div>'
-      +'      <div style="display:flex;gap:10px">'
-      +'        <label style="flex:1;padding:9px 12px;border:1.5px solid '+(preselectDocType==='factura'?'#d97706':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;background:'+(preselectDocType==='factura'?'rgba(245,158,11,0.07)':'transparent')+'">'
-      +'          <input type="radio" name="missing-doc-type" value="factura" '+(preselectDocType==='factura'?'checked':'')+'> <span>\ud83d\udcc4 Reclamar la <strong>Factura</strong></span>'
-      +'        </label>'
-      +'        <label style="flex:1;padding:9px 12px;border:1.5px solid '+(preselectDocType==='proforma'?'#d97706':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;background:'+(preselectDocType==='proforma'?'rgba(245,158,11,0.07)':'transparent')+'">'
-      +'          <input type="radio" name="missing-doc-type" value="proforma" '+(preselectDocType==='proforma'?'checked':'')+'> <span>\ud83d\udccb Reclamar la <strong>Proforma</strong></span>'
-      +'        </label>'
+      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">\u00bfReclamar para qu\u00e9 veh\u00edculos?</div>'
+      +'      <div style="display:flex;gap:6px;margin-bottom:10px">'
+      +'        <button class="btn bs" onclick="numbersToggleAllVehicles(true)" style="font-size:10.5px;padding:4px 10px">\u2611 Seleccionar todos</button>'
+      +'        <button class="btn bs" onclick="numbersToggleAllVehicles(false)" style="font-size:10.5px;padding:4px 10px">\u2610 Deseleccionar todos</button>'
+      +'        <span style="flex:1"></span>'
+      +'        <span id="nbv-veh-count" style="font-size:10.5px;color:var(--t3);align-self:center">0 / '+vehiclesArr.length+' seleccionados</span>'
       +'      </div>'
-      +'    </div>'
-      +'    <!-- STEP 2: Scope -->'
-      +'    <div style="margin-bottom:14px">'
-      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">2. \u00bfReclamar para?</div>'
-      +'      <div style="display:flex;gap:10px;flex-direction:column">'
-      +'        <label style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px">'
-      +'          <input type="radio" name="missing-doc-scope" value="all" checked> <span>Todo el expediente <span style="color:var(--t3);font-size:10px">('+(Array.isArray(s.vehicles)?s.vehicles.length:1)+' veh\u00edculo(s))</span></span>'
-      +'        </label>'
-      +'        <label style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;opacity:.5">'
-      +'          <input type="radio" name="missing-doc-scope" value="selected" disabled> <span>Solo veh\u00edculos seleccionados <span style="color:var(--t3);font-size:10px">(disponible pr\u00f3ximamente)</span></span>'
-      +'        </label>'
+      +'      <div id="nbv-veh-list" style="border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;background:var(--bg2)">'
+      +        vehiclesHtml
       +'      </div>'
       +'    </div>'
       +'    <!-- Lingua info -->'
@@ -27875,11 +27901,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'    <!-- Actions -->'
       +'    <div style="display:flex;gap:8px;justify-content:flex-end">'
       +'      <button class="btn bg" onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="font-size:12px">Cancelar</button>'
-      +'      <button class="btn bp" onclick="numbersGenerateMissingDocEmail(\''+esc(stockId)+'\','+lotIdx+')" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-size:13px;font-weight:700">\ud83d\udce7 Generar email</button>'
+      +'      <button class="btn bp" id="nbv-gen-email-btn" onclick="numbersGenerateMissingDocEmail(\''+esc(stockId)+'\','+lotIdx+',\''+docType+'\')" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-size:13px;font-weight:700">\ud83d\udce7 Previsualizar email</button>'
       +'    </div>'
       +'  </div>'
       +'</div>';
     document.body.appendChild(modal);
+    // Listener checkbox per aggiornare contatore
+    modal.querySelectorAll('.nbv-veh-checkbox').forEach(function(cb){
+      cb.addEventListener('change',numbersUpdateVehCounter);
+    });
+    numbersUpdateVehCounter();
     // Risolvi lingua del provider e mostra info
     setTimeout(function(){
       var lang=numbersResolveProviderLanguage(s);
@@ -27892,6 +27923,27 @@ document.querySelectorAll('.ovl').forEach(function(el){
         else info.innerHTML='\u26a0\ufe0f Idioma <strong>'+lang+'</strong> no tiene plantilla disponible \u2014 se usar\u00e1 <strong>\ud83c\uddea\ud83c\uddf8 Espa\u00f1ol</strong> como fallback.';
       }
     },50);
+  };
+
+  // Helper toggle seleziona/deseleziona tutti i veicoli
+  window.numbersToggleAllVehicles=function(state){
+    var cbs=document.querySelectorAll('.nbv-veh-checkbox');
+    cbs.forEach(function(cb){cb.checked=state;});
+    numbersUpdateVehCounter();
+  };
+
+  // Helper aggiorna contatore + abilita/disabilita bottone Previsualizar
+  window.numbersUpdateVehCounter=function(){
+    var cbs=document.querySelectorAll('.nbv-veh-checkbox');
+    var checked=Array.prototype.filter.call(cbs,function(cb){return cb.checked;}).length;
+    var total=cbs.length;
+    var counter=document.getElementById('nbv-veh-count');
+    if(counter)counter.textContent=checked+' / '+total+' seleccionados';
+    var btn=document.getElementById('nbv-gen-email-btn');
+    if(btn){
+      if(checked===0){btn.disabled=true;btn.style.opacity='0.5';btn.style.cursor='not-allowed';}
+      else{btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';}
+    }
   };
 
   // Risolve la lingua del provider (default ES)
@@ -27914,13 +27966,18 @@ document.querySelectorAll('.ovl').forEach(function(el){
     return 'ES'; // fallback
   };
 
-  // Genera email mailto: e apre client di posta
-  window.numbersGenerateMissingDocEmail=function(stockId,lotIdx){
+  // Genera anteprima email + apre modal di review prima dell'invio finale
+  // v10.10.34: signature cambiata — riceve docType direttamente (no più da modal radio)
+  // Mostra anteprima editable prima del send finale (utente conferma e apre client mailto)
+  window.numbersGenerateMissingDocEmail=function(stockId,lotIdx,docType){
     var modal=document.getElementById('nbv-missing-doc-modal');
     if(!modal)return;
-    var docTypeRadio=modal.querySelector('input[name="missing-doc-type"]:checked');
-    if(!docTypeRadio){alert('Por favor seleccione el tipo de documento.');return;}
-    var docType=docTypeRadio.value;
+    // Recupera veicoli selezionati
+    var selectedIdx=[];
+    modal.querySelectorAll('.nbv-veh-checkbox').forEach(function(cb){
+      if(cb.checked)selectedIdx.push(parseInt(cb.getAttribute('data-veh-idx'),10));
+    });
+    if(selectedIdx.length===0){alert('Seleccione al menos un veh\u00edculo.');return;}
     // Risolvi stock
     var stockArr=[];
     try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
@@ -27931,7 +27988,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var templateId=docType==='factura'?'REQ_FACTURA':'REQ_PROFORMA';
     var tplLang=window._nxDocReclamTemplates[templateId][lang]||window._nxDocReclamTemplates[templateId].ES;
     // Risolvi provider details (email, nome)
-    var provEmail='',provName=s.supplier||'';
+    var provEmail='',provName=s.supplier||'',provFound=false;
     try{
       var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
       var match=null;
@@ -27944,6 +28001,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
         });
       }
       if(match){
+        provFound=true;
         provEmail=match.email||'';
         provName=match.name||match.legalName||match.company||provName;
         // Cerca Contabilidad in staff (preferito)
@@ -27953,15 +28011,17 @@ document.querySelectorAll('.ovl').forEach(function(el){
           if(contab&&contab.name)provName=contab.name;
         }
       }
-    }catch(e){console.warn('[v10.10.33] Cannot resolve provider:',e);}
-    // Variabili template
-    var lista=Array.isArray(s.vehicles)&&s.vehicles.length
-      ? s.vehicles.map(function(v,i){return (i+1)+'. '+(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+(v.vin?(' \u2014 VIN: '+v.vin):'');}).join('\n')
-      : '1. '+(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+(s.vin?(' \u2014 VIN: '+s.vin):'');
+    }catch(e){console.warn('[v10.10.34] Cannot resolve provider:',e);}
+    // Costruisci lista veicoli SELEZIONATI
+    var vehiclesArr=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles:[{vin:s.vin||''}];
+    var lista=selectedIdx.map(function(idx,i){
+      var v=vehiclesArr[idx]||{};
+      return (i+1)+'. '+(s.brand||'')+' '+(s.model||'')+' '+(s.version||'')+(v.vin?(' \u2014 VIN: '+v.vin):'');
+    }).join('\n');
     var empresaDM=s.ownerCompany||'DMCAR GROUP';
     var numExp=s.internalId||s.id||'-';
     var fechaActual=new Date().toLocaleDateString(lang==='IT'?'it-IT':lang==='EN'?'en-GB':lang==='FR'?'fr-FR':lang==='DE'?'de-DE':'es-ES');
-    var usuario='DM Group'; // TODO v10.11: utente loggato
+    var usuario='DM Group';
     // Sostituisci variabili
     var subject=tplLang.subject
       .replace(/\{nombre_proveedor\}/g,provName)
@@ -27976,18 +28036,114 @@ document.querySelectorAll('.ovl').forEach(function(el){
       .replace(/\{lista_vehiculos\}/g,lista)
       .replace(/\{fecha_actual\}/g,fechaActual)
       .replace(/\{usuario_emisor\}/g,usuario);
-    // Log audit (per future tracciabilità)
-    console.log('[v10.10.33] Reclamación generada:',{stockId:stockId,docType:docType,lang:lang,to:provEmail,subject:subject});
-    // mailto: con fallback clipboard
-    var mailtoUrl='mailto:'+encodeURIComponent(provEmail)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
-    if(typeof nxOpenMailtoFallback==='function'){
-      nxOpenMailtoFallback(mailtoUrl,{subject:subject,body:body,to:provEmail});
-    }else{
-      try{window.open(mailtoUrl,'_blank');}catch(e){alert('No se ha podido abrir el cliente de correo.');}
-    }
-    // Chiudi dialog + toast
+    // Apri modal preview EDITABILE
     modal.remove();
-    if(typeof showToast==='function')showToast('\u2713 Email de reclamaci\u00f3n generada en '+lang,4000);
+    numbersOpenEmailPreview({
+      stockId:stockId,docType:docType,lang:lang,
+      to:provEmail,toName:provName,provFound:provFound,
+      subject:subject,body:body,
+      vehiclesCount:selectedIdx.length
+    });
+  };
+
+  // Modal anteprima email — utente conferma poi apre mailto:
+  window.numbersOpenEmailPreview=function(ctx){
+    var existing=document.getElementById('nbv-email-preview-modal');
+    if(existing)existing.remove();
+    var langNames={ES:'Espa\u00f1ol',IT:'Italiano',EN:'English',FR:'Fran\u00e7ais',DE:'Deutsch',PT:'Portugu\u00eas',RO:'Rom\u00e2n\u0103'};
+    var flag={ES:'\ud83c\uddea\ud83c\uddf8',IT:'\ud83c\uddee\ud83c\uddf9',EN:'\ud83c\uddec\ud83c\udde7',FR:'\ud83c\uddeb\ud83c\uddf7',DE:'\ud83c\udde9\ud83c\uddea',PT:'\ud83c\uddf5\ud83c\uddf9',RO:'\ud83c\uddf7\ud83c\uddf4'}[ctx.lang]||'';
+    var docLabel=ctx.docType==='factura'?'Factura':'Proforma';
+    var emailWarning='';
+    if(!ctx.to){
+      emailWarning='<div style="background:rgba(220,38,38,0.07);border-left:3px solid #dc2626;padding:8px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#991b1b;margin-bottom:10px">'
+        +'\u26a0\ufe0f <strong>Email del proveedor no configurado.</strong> '
+        +(ctx.provFound?'A\u00f1ade un email en la ficha del proveedor o en el rol Contabilidad de su staff.':'Este proveedor no est\u00e1 registrado en el m\u00f3dulo Providers. <a href="#providers" onclick="document.getElementById(\'nbv-email-preview-modal\').remove();go(\'providers\')" style="color:#dc2626;text-decoration:underline;font-weight:600">Crearlo ahora</a>.')
+        +' Puedes editar manualmente el destinatario abajo.</div>';
+    }
+    var modal=document.createElement('div');
+    modal.id='nbv-email-preview-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML=''
+      +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">'
+      +'  <div style="background:linear-gradient(135deg,#d97706 0%,#b45309 100%);color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
+      +'    <strong style="font-size:14px">\ud83d\udce7 Previsualizar email \u2014 '+docLabel+'</strong>'
+      +'    <span onclick="document.getElementById(\'nbv-email-preview-modal\').remove()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">\u00d7</span>'
+      +'  </div>'
+      +'  <div style="padding:18px;overflow-y:auto;flex:1">'
+      +     emailWarning
+      +'    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t3);margin-bottom:12px">'
+      +'      <span style="background:rgba(124,58,237,0.1);color:#7c3aed;padding:3px 8px;border-radius:12px;font-weight:600">'+flag+' '+(langNames[ctx.lang]||ctx.lang)+'</span>'
+      +'      <span>\u2022</span>'
+      +'      <span>'+ctx.vehiclesCount+' veh\u00edculo(s) incluidos</span>'
+      +'    </div>'
+      +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">PARA:</label><input type="email" id="nbv-email-to" value="'+esc(ctx.to||'')+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,monospace" placeholder="email@proveedor.com"></div>'
+      +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">ASUNTO:</label><input type="text" id="nbv-email-subject" value="'+esc(ctx.subject)+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>'
+      +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">MENSAJE:</label><textarea id="nbv-email-body" rows="14" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:system-ui,sans-serif;line-height:1.5;resize:vertical">'+esc(ctx.body)+'</textarea></div>'
+      +'    <div style="font-size:10.5px;color:var(--t3);background:rgba(59,130,246,.06);border-left:3px solid #3b82f6;padding:8px 10px;border-radius:0 6px 6px 0;line-height:1.4">'
+      +'      \u2139\ufe0f Puedes editar el destinatario, asunto o mensaje antes de abrir el cliente de correo. Al hacer click en <strong>Abrir en cliente</strong>, NEXO abrir\u00e1 tu app de email predeterminada con el mensaje precompilado \u2014 desde ah\u00ed podr\u00e1s revisar y enviar manualmente.'
+      +'    </div>'
+      +'  </div>'
+      +'  <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--bg2);border-radius:0 0 12px 12px">'
+      +'    <button class="btn bg" onclick="document.getElementById(\'nbv-email-preview-modal\').remove()" style="font-size:12px">Cancelar</button>'
+      +'    <button class="btn bs" onclick="numbersCopyEmailContent()" style="font-size:12px" title="Copiar al portapapeles">\ud83d\udccb Copiar</button>'
+      +'    <button class="btn bp" onclick="numbersSendEmailFromPreview()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;font-size:13px;font-weight:700">\u2709 Abrir en cliente de correo</button>'
+      +'  </div>'
+      +'</div>';
+    document.body.appendChild(modal);
+  };
+
+  // Apertura mailto: dal modal di preview (utente fa il send finale)
+  window.numbersSendEmailFromPreview=function(){
+    var to=(document.getElementById('nbv-email-to')||{}).value||'';
+    var subject=(document.getElementById('nbv-email-subject')||{}).value||'';
+    var body=(document.getElementById('nbv-email-body')||{}).value||'';
+    if(!subject.trim()){alert('El asunto no puede estar vac\u00edo.');return;}
+    if(!body.trim()){alert('El mensaje no puede estar vac\u00edo.');return;}
+    // mailto: anche con email vuota (l'utente potrà aggiungerla nel client)
+    var mailtoUrl='mailto:'+encodeURIComponent(to.trim())+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    console.log('[v10.10.34] Opening mailto:',{to:to,subject:subject,bodyLen:body.length,urlLen:mailtoUrl.length});
+    // Strategia: usa <a> click + fallback window.open + clipboard
+    try{
+      var a=document.createElement('a');
+      a.href=mailtoUrl;
+      a.style.display='none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){a.remove();},100);
+    }catch(e){
+      console.warn('[v10.10.34] mailto: link click failed, trying window.open',e);
+      try{window.open(mailtoUrl,'_blank');}catch(e2){
+        // Fallback finale: copia negli appunti + alert
+        try{
+          navigator.clipboard.writeText('To: '+to+'\nSubject: '+subject+'\n\n'+body);
+          alert('No se ha podido abrir el cliente de correo autom\u00e1ticamente.\nEl contenido ha sido copiado al portapapeles \u2014 p\u00e9galo manualmente en tu cliente de email.');
+        }catch(e3){
+          alert('No se ha podido abrir el cliente de correo. Copia manualmente:\n\nTo: '+to+'\nSubject: '+subject+'\n\n'+body);
+        }
+        return;
+      }
+    }
+    // Chiudi modal + toast success
+    var modal=document.getElementById('nbv-email-preview-modal');
+    if(modal)modal.remove();
+    if(typeof showToast==='function')showToast('\u2713 Email abierta en tu cliente de correo \u2014 revisa y env\u00eda manualmente',5000);
+  };
+
+  // Copia contenuto email negli appunti
+  window.numbersCopyEmailContent=function(){
+    var to=(document.getElementById('nbv-email-to')||{}).value||'';
+    var subject=(document.getElementById('nbv-email-subject')||{}).value||'';
+    var body=(document.getElementById('nbv-email-body')||{}).value||'';
+    var text='To: '+to+'\nSubject: '+subject+'\n\n'+body;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        if(typeof showToast==='function')showToast('\u2713 Email copiada al portapapeles',3000);
+      },function(){
+        alert('No se ha podido copiar autom\u00e1ticamente. Selecciona el texto manualmente.');
+      });
+    }else{
+      alert('Tu navegador no soporta clipboard API. Selecciona el texto manualmente.');
+    }
   };
 
   // ========================================================================
