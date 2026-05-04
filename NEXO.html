@@ -1,4 +1,24 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.30 — DMCAR GROUP CRM | 2026-05-04 | Estensione blocco Resultado: 4 nuove colonne (spec utente):
+1) Spec utente versione finale (2 documenti): blocco RESULTADO esteso da 1 a 4 colonne secondo sequenza ordinata di calcolo del margine operativo DMCAR. Distinzione netta tra Broker (esterno, costo diretto) e Vendedor (interno, percentuale 10% sulla Ganancia).
+2) Decisioni utente confermate:
+   • Q1 (logica): sequenza ordinata 1→2→3→4 (NON l'errata "Ganancia − Broker − Vendedor + Transporte" del primo documento)
+   • Q2 (caso limite): se Ganancia<0 (perdita), Ganancia Vendedor=0 (clamp via Math.max). Il venditore non rimborsa perdite.
+   • Q3 (Ganancia Final): RIMOSSA, sostituita da 4 nuove colonne. "Resultado Final DM" diventa il riferimento principale.
+   • Q4 (Ganancia V.): MANTENUTA nel blocco VEHICULO (margine veicolo lordo, formula esistente Venta-Compra-Daños). Le 4 nuove sono nel blocco RESULTADO con formule diverse (es. Ganancia non sottrae daños, sottrae broker).
+3) Formule implementate (campi colDefs + render TR + 2 export CSV/XLSX):
+   • Step 1: gananciaCalc = (Venta − Compra − Broker se esiste). NB: NON sottrae daños come gananciaVeh.
+   • Step 2: gananciaVendedor = Math.max(0, gananciaCalc * 0.10). Clamp a 0 se Ganancia negativa.
+   • Step 3: subProfitDMCAR = gananciaCalc − gananciaVendedor.
+   • Step 4: resultadoFinalDM = subProfitDMCAR + gananciaTrans.
+   Tutte e 4 sono editable manualmente (override via window._nxManualGanancias[rowKey]).
+4) UX: stili visivi differenziati per gerarchia visuale: Ganancia (peso 700), Vendedor (viola #7c3aed), SUB.Profit (peso 700), Resultado Final DM (peso 800, verde #16a34a, font 11.5px).
+5) Tooltip descrizioni dettagliate per ogni colonna (visibili hover header in dialog colonne) per evitare ambiguità contabili future.
+6) Smoke test 6/6 PASS coprendo: esempio del documento utente (650€ con broker+transporte), senza broker (1100€), senza transporte (450€), perdita veicolo con vendedor=0, perdita compensata da transporte (+100€), margine grande.
+7) Aggiornati ENTRAMBI gli export (XLSX 'Vista Contable' + CSV testuale) per riflettere le 4 nuove colonne. Calcoli replicati identicamente nei due export per coerenza.
+8) Conteggi colonne aggiornati: TOTALE 44 (da 41). RESULTADO da 1→4. Render TR: 4/4 editable() calls coerenti con colDefs.
+9) PRESERVA: tutto v10.10.29 (Venta 9 cols, Broker 4 cols), v10.10.28 (Vehículo Nuevo), v10.10.27 (overwrite). Backward compat: il vecchio campo manualG.gananciaFinal (se esiste in localStorage) viene IGNORATO ma NON cancellato (sicurezza dati).
+10) ROADMAP: con questa base contabile completa e validata, si può finalmente procedere allo sviluppo del modulo Multiutente sapendo che tutti i calcoli del margine sono finalizzati. -->
 <!-- NEXO v10.10.29 — DMCAR GROUP CRM | 2026-05-03 | Vista Contable refactor (Fix 1-4 pre-Multiutente):
 1) Spec utente: prima del rilascio del modulo Multiutente, sistemare colonne NEXO Number per garantire una base dati stabile su cui costruire i ruoli/permessi.
 2) FIX 1+2 — Aggiunte 2 colonne separate in sezione VENTA:
@@ -26964,8 +26984,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       {id:'broFT',label:'N\u00ba FT Comisi\u00f3n',w:110,desc:'N\u00famero de factura emitida por el broker correspondiente a la comisi\u00f3n.',block:'broker'},
       {id:'broFechaPago',label:'Fecha Pago Com.',w:100,desc:'Fecha en la que se efect\u00faa el pago de la factura de comisi\u00f3n al broker.',block:'broker'},
       {id:'broImpPagada',label:'Imp. Pagada (\u20ac)',w:105,r:true,br:true,desc:'Importe de las comisiones efectivamente pagadas al broker. Es la base para el c\u00e1lculo del Resultado Contable (Ganancia Final).',block:'broker'},
-      // RESULTADO (1)
-      {id:'gananciaFinal',label:'Ganancia Final (\u20ac)',w:120,r:true,editable:true,desc:'Resultado contable final de la operaci\u00f3n: (Imp. Venta - Imp. Compra - Da\u00f1os) + Ganancia Transporte - Imp. Pagada al broker. v10.10.29: ahora se calcula desde Imp. Pagada (importe efectivamente liquidado), no desde Comisi\u00f3n te\u00f3rica. Auto-calculado, editable manualmente.',block:'resultado'}
+      // RESULTADO (4) — v10.10.30: rimossa Ganancia Final, aggiunte 4 nuove colonne secondo spec utente
+      // Sequenza calcolo: Ganancia → Ganancia Vendedor → SUB.Profit.DMCAR → Resultado Final DM
+      {id:'gananciaCalc',label:'Ganancia (\u20ac)',w:110,r:true,editable:true,desc:'Margen de la compraventa del veh\u00edculo, NETO de comisi\u00f3n broker (si existe). F\u00f3rmula: Venta \u2212 Compra \u2212 Broker. Si NO hay broker: Venta \u2212 Compra. Es la base sobre la que se calcula la comisi\u00f3n del Vendedor (10%). Auto-calculado, editable manualmente.',block:'resultado'},
+      {id:'gananciaVendedor',label:'Gan. Vendedor (10%)',w:120,r:true,editable:true,desc:'Comisi\u00f3n del vendedor interno DMCAR: 10% sobre la Ganancia (compra-venta del veh\u00edculo). Si Ganancia es negativa (p\u00e9rdida) la comisi\u00f3n se pone a 0 (el vendedor no reembolsa p\u00e9rdidas). El vendedor NO percibe comisi\u00f3n sobre Ganancia Transporte. Auto-calculado, editable manualmente.',block:'resultado'},
+      {id:'subProfitDMCAR',label:'SUB.Profit.DMCAR (\u20ac)',w:130,r:true,editable:true,desc:'Margen intermedio DMCAR sobre el veh\u00edculo despu\u00e9s de deducir la comisi\u00f3n del Vendedor. F\u00f3rmula: Ganancia \u2212 Ganancia Vendedor. NO incluye todav\u00eda el margen de transporte. Auto-calculado, editable manualmente.',block:'resultado'},
+      {id:'resultadoFinalDM',label:'Resultado Final DM (\u20ac)',w:140,r:true,editable:true,desc:'Margen final NETO de la operaci\u00f3n para DMCAR, comprensivo del margen de transporte. F\u00f3rmula: SUB.Profit.DMCAR + Ganancia Transporte. Es el indicador clave de rentabilidad de la operaci\u00f3n. Auto-calculado, editable manualmente.',block:'resultado'}
     ];
     var savedWidths=LS('nxVistaColWidths',{})||{};
     colDefs.forEach(function(c){if(savedWidths[c.id])c.w=savedWidths[c.id];});
@@ -27067,14 +27091,26 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var tdR=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:right'+(extra||'')+rowExtra+'">'+content+'</td>';};
       var tdC=function(content,bg,extra){return '<td style="padding:6px 7px;background:'+bg+';font-size:10px;text-align:center'+(extra||'')+rowExtra+'">'+content+'</td>';};
       // v10.02: Calcolo Ganancias auto + supporto override manuale via accDocs
+      // v10.10.30: nuove formule Resultado secondo spec utente (sequenza ordinata)
       var manualG=(r.stockId&&window._nxManualGanancias&&window._nxManualGanancias[r.stockId+'_'+r.lotIdx])||{};
       var calcGanVeh=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-(ext.damage||0)):null;
       var calcGanTrans=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
       var brokerPagado=(ext.brokerAmount||0);
       var gananciaVeh=manualG.gananciaVeh!==undefined?manualG.gananciaVeh:calcGanVeh;
       var gananciaTrans=manualG.gananciaTrans!==undefined?manualG.gananciaTrans:calcGanTrans;
-      var gananciaFinalCalc=((gananciaVeh||0)+(gananciaTrans||0)-brokerPagado);
-      var gananciaFinal=manualG.gananciaFinal!==undefined?manualG.gananciaFinal:(gananciaVeh!==null?gananciaFinalCalc:null);
+      // v10.10.30: nuove formule Resultado
+      // Step 1: Ganancia = Venta - Compra - Broker (se esiste). NB: NON sottrae daños (è "ganancia operativa" non "ganancia veicolo")
+      var calcGananciaCalc=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-brokerPagado):null;
+      var gananciaCalc=manualG.gananciaCalc!==undefined?manualG.gananciaCalc:calcGananciaCalc;
+      // Step 2: Ganancia Vendedor = MAX(0, Ganancia * 10%) — clamp a 0 se Ganancia negativa (perdita)
+      var calcGananciaVendedor=gananciaCalc!==null?Math.max(0,gananciaCalc*0.10):null;
+      var gananciaVendedor=manualG.gananciaVendedor!==undefined?manualG.gananciaVendedor:calcGananciaVendedor;
+      // Step 3: SUB.Profit.DMCAR = Ganancia - Ganancia Vendedor
+      var calcSubProfitDMCAR=(gananciaCalc!==null)?(gananciaCalc-(gananciaVendedor||0)):null;
+      var subProfitDMCAR=manualG.subProfitDMCAR!==undefined?manualG.subProfitDMCAR:calcSubProfitDMCAR;
+      // Step 4: Resultado Final DM = SUB.Profit.DMCAR + Ganancia Transporte
+      var calcResultadoFinalDM=(subProfitDMCAR!==null)?(subProfitDMCAR+(gananciaTrans||0)):null;
+      var resultadoFinalDM=manualG.resultadoFinalDM!==undefined?manualG.resultadoFinalDM:calcResultadoFinalDM;
       // Helpers per celle editable
       var rowKey=r.stockId+'_'+r.lotIdx;
       var editable=function(content,bg,fieldId,value,extra){
@@ -27132,8 +27168,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(fmtTxt(ext.brokerFt),bgBro)
         +td(fmtDate(ext.brokerDataInc),bgBro)
         +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro,';border-right:2px solid var(--border)')
-        // RESULTADO (1): Ganancia Final (editable)
-        +editable(gananciaFinal!==null?fmtMon(gananciaFinal,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaFinal',gananciaFinal,';font-weight:800;font-size:11px')
+        // RESULTADO (4): Ganancia | Ganancia Vendedor | SUB.Profit.DMCAR | Resultado Final DM
+        // v10.10.30: 4 nuove colonne secondo spec utente, tutte editable
+        +editable(gananciaCalc!==null?fmtMon(gananciaCalc,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaCalc',gananciaCalc,';font-weight:700;font-size:11px')
+        +editable(gananciaVendedor!==null?fmtMon(gananciaVendedor,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'gananciaVendedor',gananciaVendedor,';font-weight:600;font-size:10.5px;color:#7c3aed')
+        +editable(subProfitDMCAR!==null?fmtMon(subProfitDMCAR,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'subProfitDMCAR',subProfitDMCAR,';font-weight:700;font-size:11px')
+        +editable(resultadoFinalDM!==null?fmtMon(resultadoFinalDM,true):'<span style="color:var(--t4)">\u2014</span>',bgRes,'resultadoFinalDM',resultadoFinalDM,';font-weight:800;font-size:11.5px;color:#16a34a')
       +'</tr>';
     });
     html+='</tbody></table></div>';
@@ -27363,8 +27403,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         'Marca','Modelo','Versi\u00f3n','1\u00aa Matriculaci\u00f3n','Kms','Color','Da\u00f1os (\u20ac)','Ganancia V. (\u20ac)',
         // BROKER — v10.10.29: rimossa Comisi\u00f3n (Fix 3)
         'Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Comisi\u00f3n','Imp. Pagada (\u20ac)',
-        // RESULTADO
-        'Ganancia Final (\u20ac)'
+        // RESULTADO — v10.10.30: 4 colonne secondo nuova spec
+        'Ganancia (\u20ac)','Gan. Vendedor (10%) (\u20ac)','SUB.Profit.DMCAR (\u20ac)','Resultado Final DM (\u20ac)'
       ];
       var rows=records.map(function(r){
         var ext=nxAccGetExtended(r);
@@ -27375,7 +27415,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
         var calcGT=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
         var gV=manual.gananciaVeh!==undefined?manual.gananciaVeh:calcGV;
         var gT=manual.gananciaTrans!==undefined?manual.gananciaTrans:calcGT;
-        var gF=manual.gananciaFinal!==undefined?manual.gananciaFinal:((gV||0)+(gT||0)-(ext.brokerAmount||0));
+        // v10.10.30: nuove formule Resultado
+        var brokerExp=(ext.brokerAmount||0);
+        var calcGanCalc=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-brokerExp):null;
+        var ganCalc=manual.gananciaCalc!==undefined?manual.gananciaCalc:calcGanCalc;
+        var calcGanVend=ganCalc!==null?Math.max(0,ganCalc*0.10):null;
+        var ganVend=manual.gananciaVendedor!==undefined?manual.gananciaVendedor:calcGanVend;
+        var calcSubProf=(ganCalc!==null)?(ganCalc-(ganVend||0)):null;
+        var subProf=manual.subProfitDMCAR!==undefined?manual.subProfitDMCAR:calcSubProf;
+        var calcResFin=(subProf!==null)?(subProf+(gT||0)):null;
+        var resFinDM=manual.resultadoFinalDM!==undefined?manual.resultadoFinalDM:calcResFin;
         return [
           r.isOwn?'OWN':'',
           r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
@@ -27422,8 +27471,11 @@ document.querySelectorAll('.ovl').forEach(function(el){
           ext.brokerFt||'',
           ext.brokerDataInc||'',
           ext.brokerAmount||0,
-          // RESULTADO
-          gF||0
+          // RESULTADO — v10.10.30: 4 colonne (Ganancia | Vendedor | SUB.Profit | Resultado Final)
+          ganCalc||0,
+          ganVend||0,
+          subProf||0,
+          resFinDM||0
         ];
       });
       var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
@@ -27455,7 +27507,7 @@ document.querySelectorAll('.ovl').forEach(function(el){
     else if(subTab==='anuladas')records=records.filter(function(r){return !!r.isAnulada;});
     else records=records.filter(function(r){return !r.isAnulada;});
     if(!records.length){alert('Sin datos para exportar');return;}
-    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia Final'];
+    var headers=['OWN','Fecha','N\u00ba Expediente','VIN','Proveedor','N\u00ba PF','N\u00ba FT','Fecha Pago','Imp. Compra','Fecha Dep\u00f3s.','Imp. Dep\u00f3s.','Cliente','Vendedor DMCAR','N\u00ba PF Venta','N\u00ba FT Venta','Fecha FT Emitida','Fecha Saldo','Imp. Venta','Fecha Dep. Cli.','Imp. Dep. Cli.','Empresa Trans.','N\u00ba FT Compra T.','Imp. Compra T.','Fecha Pago T.','N\u00ba PF Venta T.','N\u00ba FT Venta T.','Imp. Venta T.','Ganancia T.','Marca','Modelo','Versi\u00f3n','1\u00aa Matr.','Kms','Color','Da\u00f1os','Ganancia V.','Broker','N\u00ba FT Comisi\u00f3n','Fecha Pago Com.','Imp. Pagada','Ganancia','Gan. Vendedor (10%)','SUB.Profit.DMCAR','Resultado Final DM'];
     var esc=function(v){if(v===null||v===undefined)return '';var s=String(v);if(/[",\n;]/.test(s))s='"'+s.replace(/"/g,'""')+'"';return s;};
     var lines=[headers.join(';')];
     records.forEach(function(r){
@@ -27467,7 +27519,16 @@ document.querySelectorAll('.ovl').forEach(function(el){
       var calcGT=(ext.traspAcqAmount!==null||ext.traspVendAmount!==null)?((ext.traspVendAmount||0)-(ext.traspAcqAmount||0)):null;
       var gV=manual.gananciaVeh!==undefined?manual.gananciaVeh:calcGV;
       var gT=manual.gananciaTrans!==undefined?manual.gananciaTrans:calcGT;
-      var gF=manual.gananciaFinal!==undefined?manual.gananciaFinal:((gV||0)+(gT||0)-(ext.brokerAmount||0));
+      // v10.10.30: 4 nuove colonne Resultado
+      var brokerExp=(ext.brokerAmount||0);
+      var calcGanCalc=(r.salePrice!==null&&r.buyPrice!==null)?(r.salePrice-r.buyPrice-brokerExp):null;
+      var ganCalc=manual.gananciaCalc!==undefined?manual.gananciaCalc:calcGanCalc;
+      var calcGanVend=ganCalc!==null?Math.max(0,ganCalc*0.10):null;
+      var ganVend=manual.gananciaVendedor!==undefined?manual.gananciaVendedor:calcGanVend;
+      var calcSubProf=(ganCalc!==null)?(ganCalc-(ganVend||0)):null;
+      var subProf=manual.subProfitDMCAR!==undefined?manual.subProfitDMCAR:calcSubProf;
+      var calcResFin=(subProf!==null)?(subProf+(gT||0)):null;
+      var resFinDM=manual.resultadoFinalDM!==undefined?manual.resultadoFinalDM:calcResFin;
       lines.push([
         r.isOwn?'OWN':'',
         r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
@@ -27479,7 +27540,8 @@ document.querySelectorAll('.ovl').forEach(function(el){
         r.brand||'',r.model||'',ext.version||'',ext.firstReg||'',ext.km||0,r.color||'',ext.damage||0,gV||0,
         // BROKER — v10.10.29: rimossa Comisi\u00f3n
         ext.brokerName||ext.brokerSeller||'',ext.brokerFt||'',ext.brokerDataInc||'',ext.brokerAmount||0,
-        gF||0
+        // RESULTADO — v10.10.30: 4 colonne
+        ganCalc||0,ganVend||0,subProf||0,resFinDM||0
       ].map(esc).join(';'));
     });
     var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
