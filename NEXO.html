@@ -1,4 +1,33 @@
 <!DOCTYPE html>
+<!-- NEXO v10.10.35 — DM GROUP CRM | 2026-05-04 | Estensione triangolo ⚠️ a tutte le zone (Compra/Venta/Transporte/Broker):
+1) NUOVA FEATURE: estensione completa del sistema "Documenti Mancanti" v10.10.33-34 a TUTTE le zone della Vista Contable. Oggi 8 celle hanno il triangolo ⚠️ cliccabile (era 2 in v10.10.33-34):
+   • COMPRA: PF Compra (provider/req/proforma) + FT Compra (provider/req/factura) → email Provider
+   • VENTA: PF Venta (client/send/proforma) + FT Venta (client/send/factura) → email Cliente B2B
+   • TRANSPORTE: FT Compra T. (transportist/req/factura) + PF Venta T. (client/send/proforma/transporte) + FT Venta T. (client/send/factura/transporte) → email differenziata
+   • BROKER: FT Comisi\u00f3n (broker/req/factura) → email Broker. Triangolo SOLO se broker registrato (no senso reclamar a chi non c'\u00e8).
+2) ARCHITETTURA MULTI-ZONA: introdotti 3 parametri nel sistema (zone/direction/pos):
+   • zone: 'provider'|'client'|'transportist'|'broker' (chi \u00e8 il destinatario)
+   • direction: 'req' (sollecito IN) | 'send' (invio nostro OUT)
+   • pos: 'vehicle' (default) | 'transporte' (per disambiguare PF/FT cliente: vendita veicolo vs vendita servizio trasporto)
+3) NUOVA FUNZIONE window._nxResolveTemplate(zone,direction,doc,pos) → risolve l'ID template in base ai 3+1 parametri. 9 routing finali (validati con smoke test 9/9 PASS).
+4) NUOVA FUNZIONE window.numbersResolveDestinationLanguage(stock,zone,direction): rileva la lingua del destinatario.
+   • CLIENT (Venta): cerca in B2B contacts per stock.clientName matching name o company
+   • PROVIDER/TRANSPORTIST/BROKER: priorit\u00e0 Registro Provider, fallback B2B contacts
+   • Default ES se nessun match
+   Backward compat: numbersResolveProviderLanguage() preservata come alias.
+5) TEMPLATE LIBRARY estesa da 2 a 9 ID, ogni ID \u00d7 5 lingue (ES/IT/EN/FR/DE) = 45 stringhe totali.
+   • REQ_PROFORMA + REQ_FACTURA (Compra dal Provider) — esistenti
+   • REQ_PROFORMA_TRANSPORTE + REQ_FACTURA_TRANSPORTE — NUOVI
+   • REQ_FACTURA_BROKER — NUOVO
+   • SEND_PROFORMA_VENTA + SEND_FACTURA_VENTA — NUOVI
+   • SEND_PROFORMA_VENTA_TRANSPORTE + SEND_FACTURA_VENTA_TRANSPORTE — NUOVI
+   I template SEND* includono \u26a0\ufe0f promemoria "Adjuntar el documento PDF antes de enviar".
+6) NUOVI ROLE in Contactos B2B: aggiunti "Broker" e "Transportista" al dropdown cn-role.
+7) DIALOG arricchito: header dinamico in base a zone+direction. Box info adatta etichetta "Proveedor/Broker/Transportista/Cliente". PREVIEW MODAL: titolo dinamico, warning specifico per zona, promemoria PDF allegare per direction='send'.
+8) DECISIONE TECNICA SPIEGATA: utente ha richiesto sia "PDF generato + Drive link" sia "v10.10.35 senza PDF" (contraddittorio). Implementato path "senza PDF" più realistico. Modulo PDF generation deferred a v10.11+.
+9) NON IMPLEMENTATO (deferred): generazione PDF interna, stato intermedio "richiesto", anti-flood, aggregato "documenti pendenti".
+10) Smoke test 9/9 PASS sul routing template (provider/client/transportist/broker x req/send x proforma/factura x vehicle/transporte).
+11) PRESERVA: tutto v10.10.34 (preview editabile + multi-selezione + 4-fix), v10.10.33 (Idioma Provider+B2B). -->
 <!-- NEXO v10.10.34 — DM GROUP CRM | 2026-05-04 | Refactor dialog reclamación documentos (4 fix utente):
 1) Bug 1 (test utente): click triangolo PF mostrava entrambi i radio (Factura + Proforma). Era inutile perché il tipo doc è già implicito dalla colonna cliccata. FIX: rimosso completamente Step 1 "tipo documento" — la funzione riceve docType direttamente come parametro dalla badge cliccata. Header dialog ora dice "Reclamar Factura" o "Reclamar Proforma" già esplicito.
 2) Bug 2 (test utente): "Solo veh\u00edculos seleccionados" era disabilitato. FIX: implementata multi-selezione con checkbox per OGNI veicolo del lotto. Lista scrollabile con border-radius 8px, max-height 200px. Bottoni "Seleccionar todos" / "Deseleccionar todos" + contatore live "N / total seleccionados". Default tutti SELEZIONATI implicitamente (l'utente deve cliccare almeno una checkbox).
@@ -2746,7 +2775,7 @@ En que te puedo ayudar hoy?</div></div>
   <div class="modal">
     <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
-    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Socio</option></select></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Broker</option><option>Transportista</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este número" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <!-- v10.10.33: Idioma de Contacto B2B -->
@@ -27257,32 +27286,34 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +td(vinHtml,bgReg,';border-right:2px solid var(--border)')
         // COMPRA (7): Proveedor, PF, FT, Pago, Compra, Dep.Date, Dep.\u20ac
         // v10.10.13: tooltip su Proveedor con nome completo
-        // v10.10.33: triangolo \u26a0\ufe0f cliccabile su PF/FT mancanti per richiedere documento al provider
+        // v10.10.35: triangolo \u26a0\ufe0f cliccabile su PF/FT mancanti per richiedere documento al provider
         +'<td style="padding:6px 7px;background:'+bgCompra+';font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'+rowExtra+'" title="'+esc(r.supplier||'')+'">'+fmtTxt(r.supplier)+'</td>'
-        +td(ext.fornNumPF?fmtTxt(ext.fornNumPF):numbersMissingDocBadge('proforma',r.stockId,r.lotIdx),bgCompra)
-        +td(ext.fornNumFT?fmtTxt(ext.fornNumFT):numbersMissingDocBadge('factura',r.stockId,r.lotIdx),bgCompra)
+        +td(ext.fornNumPF?fmtTxt(ext.fornNumPF):numbersMissingDocBadge('provider','req','proforma',r.stockId,r.lotIdx,'vehicle'),bgCompra)
+        +td(ext.fornNumFT?fmtTxt(ext.fornNumFT):numbersMissingDocBadge('provider','req','factura',r.stockId,r.lotIdx,'vehicle'),bgCompra)
         +td(fmtDate(ext.fornDataPag),bgCompra)
         +tdR(r.buyPrice?fmtMon(r.buyPrice):'<span style="color:var(--t4)">\u2014</span>',bgCompra)
         +td(fmtDate(ext.fornAccDate),bgCompra)
         +tdR(ext.fornAccAmount?fmtMon(ext.fornAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgCompra,';border-right:2px solid var(--border)')
         // VENTA (9): Cliente, Vendedor DMCAR, PF Venta, FT Venta, Fecha FT Emitida, Saldo, Venta, Dep.Cli.Date, Dep.Cli.\u20ac
         // v10.10.29: aggiunte colonne numFTVenta + fechaFTEmitida (Fix 1+2)
+        // v10.10.35: triangolo \u26a0\ufe0f su PF/FT Venta cliente mancanti (direzione SEND, lingua cliente B2B)
         +td(fmtTxt(r.clientName),bgVenta)
         +td(fmtTxt(r.soldBy),bgVenta)
-        +td(fmtTxt(ext.numPFVenta||''),bgVenta)
-        +td(fmtTxt(ext.numFTVenta||''),bgVenta)
+        +td(ext.numPFVenta?fmtTxt(ext.numPFVenta):numbersMissingDocBadge('client','send','proforma',r.stockId,r.lotIdx,'vehicle'),bgVenta)
+        +td(ext.numFTVenta?fmtTxt(ext.numFTVenta):numbersMissingDocBadge('client','send','factura',r.stockId,r.lotIdx,'vehicle'),bgVenta)
         +td(fmtDate(ext.fechaFTEmitida),bgVenta)
         +td(fmtDate(ext.cliDataSaldo),bgVenta)
         +tdR(r.salePrice?fmtMon(r.salePrice):'<span style="color:var(--t4)">\u2014</span>',bgVenta)
         +td(fmtDate(ext.cliAccDate),bgVenta)
         +tdR(ext.cliAccAmount?fmtMon(ext.cliAccAmount):'<span style="color:var(--t4)">\u2014</span>',bgVenta,';border-right:2px solid var(--border)')
         // TRANSPORTE (8): Empresa, FT Compra, Imp Compra, Pago, PF Venta, FT Venta, Imp Venta, Ganancia T (editable)
+        // v10.10.35: triangoli su FT Compra (transportist), PF Venta T (client), FT Venta T (client)
         +td(fmtTxt(ext.traspFornitore),bgTrans)
-        +td(fmtTxt(ext.traspFtAcq),bgTrans)
+        +td(ext.traspFtAcq?fmtTxt(ext.traspFtAcq):numbersMissingDocBadge('transportist','req','factura',r.stockId,r.lotIdx,'transporte'),bgTrans)
         +tdR(ext.traspAcqAmount?fmtMon(ext.traspAcqAmount):'<span style="color:var(--t4)">\u2014</span>',bgTrans)
         +td(fmtDate(ext.traspDataPag),bgTrans)
-        +td(fmtTxt(ext.traspPFVenta||''),bgTrans)
-        +td(fmtTxt(ext.traspFtVend),bgTrans)
+        +td(ext.traspPFVenta?fmtTxt(ext.traspPFVenta):numbersMissingDocBadge('client','send','proforma',r.stockId,r.lotIdx,'transporte'),bgTrans)
+        +td(ext.traspFtVend?fmtTxt(ext.traspFtVend):numbersMissingDocBadge('client','send','factura',r.stockId,r.lotIdx,'transporte'),bgTrans)
         +tdR(ext.traspVendAmount?fmtMon(ext.traspVendAmount):'<span style="color:var(--t4)">\u2014</span>',bgTrans)
         +editable(gananciaTrans!==null?fmtMon(gananciaTrans,true):'<span style="color:var(--t4)">\u2014</span>',bgTrans,'gananciaTrans',gananciaTrans,';border-right:2px solid var(--border);font-weight:700')
         // VEHICULO (8): Marca, Modelo, Versi\u00f3n, 1\u00aa Matr., Kms, Color, Da\u00f1os, Ganancia V (editable)
@@ -27296,8 +27327,9 @@ document.querySelectorAll('.ovl').forEach(function(el){
         +editable(gananciaVeh!==null?fmtMon(gananciaVeh,true):'<span style="color:var(--t4)">\u2014</span>',bgVeh,'gananciaVeh',gananciaVeh,';border-right:2px solid var(--border);font-weight:700')
         // BROKER (4): Nombre, FT Comisi\u00f3n, Fecha Pago, Imp Pagada
         // v10.10.29: rimossa colonna Comisi\u00f3n (Fix 3 spec utente)
+        // v10.10.35: triangolo \u26a0\ufe0f su FT Comisi\u00f3n SOLO se c'\u00e8 broker registrato (no senso reclamar a chi non c'\u00e8)
         +td(fmtTxt(ext.brokerName||ext.brokerSeller||''),bgBro)
-        +td(fmtTxt(ext.brokerFt),bgBro)
+        +td(ext.brokerFt?fmtTxt(ext.brokerFt):((ext.brokerName||ext.brokerSeller||ext.brokerAmount)?numbersMissingDocBadge('broker','req','factura',r.stockId,r.lotIdx,'vehicle'):'<span style="color:var(--t4)">\u2014</span>'),bgBro)
         +td(fmtDate(ext.brokerDataInc),bgBro)
         +tdR(ext.brokerAmount?fmtMon(ext.brokerAmount):'<span style="color:var(--t4)">\u2014</span>',bgBro,';border-right:2px solid var(--border)')
         // RESULTADO (5): Ganancia | Vendedor | SUB.Profit | Gastos Extras | Resultado Final DM
@@ -27767,17 +27799,42 @@ document.querySelectorAll('.ovl').forEach(function(el){
 
   // ========================================================================
   // v10.10.33: SISTEMA "DOCUMENTI MANCANTI" — Triangolo \u26a0\ufe0f + Dialog 2-step + Email mailto multilingua
+  // v10.10.34: Refactor (4 fix utente): tipo doc da colonna, multi-selezione, preview editabile
+  // v10.10.35: ESTESO a tutte le zone (Venta, Transporte Compra/Venta, Broker)
   // ========================================================================
-  // Quando una cella PF/FT del provider è vuota, mostra triangolo \u26a0\ufe0f cliccabile.
-  // Click apre dialog 2-step: (1) tipo documento — (2) scope — (3) genera email pre-compilata mailto:
-  // nella lingua del provider (provider.language fallback ES).
+  // ZONE: provider | client | transportist | broker
+  // direction: req (sollecito ricevere) | send (invio nostro documento)
+  // doc: proforma | factura
 
-  // Renderizza badge \u26a0\ufe0f cliccabile per cella PF/FT mancante
-  window.numbersMissingDocBadge=function(docType,stockId,lotIdx){
-    // docType: 'proforma' | 'factura'
-    var label=docType==='factura'?'Factura':'Proforma';
-    var dataAttr=' data-stock-id="'+esc(stockId||'')+'" data-lot-idx="'+(lotIdx!=null?lotIdx:0)+'" data-doc-type="'+docType+'"';
-    return '<span class="nbv-missing-doc" onclick="event.stopPropagation();numbersOpenMissingDocDialog(this)" title="'+label+' faltante \u2014 click para reclamar"'+dataAttr
+  // Mappatura zona+direzione+doc → templateId
+  window._nxResolveTemplate=function(zone,direction,doc){
+    if(zone==='provider')return doc==='factura'?'REQ_FACTURA':'REQ_PROFORMA';
+    if(zone==='transportist')return doc==='factura'?'REQ_FACTURA_TRANSPORTE':'REQ_PROFORMA_TRANSPORTE';
+    if(zone==='broker')return 'REQ_FACTURA_BROKER';
+    if(zone==='client'&&direction==='send'){
+      // SEND solo Venta (Cliente)
+      var pos=arguments[3]; // 'vehicle' o 'transporte'
+      if(pos==='transporte')return doc==='factura'?'SEND_FACTURA_VENTA_TRANSPORTE':'SEND_PROFORMA_VENTA_TRANSPORTE';
+      return doc==='factura'?'SEND_FACTURA_VENTA':'SEND_PROFORMA_VENTA';
+    }
+    return 'REQ_FACTURA'; // fallback
+  };
+
+  // Quando una cella PF/FT è vuota, mostra triangolo \u26a0\ufe0f cliccabile.
+  // Click apre dialog: (1) tipo documento — (2) scope — (3) genera email pre-compilata mailto:
+  // nella lingua del destinatario (provider.language o client.language fallback ES).
+
+  // Renderizza badge \u26a0\ufe0f cliccabile per cella documento mancante (multi-zona)
+  // zone: 'provider' | 'client' | 'transportist' | 'broker'
+  // direction: 'req' (sollecito IN) | 'send' (invio nostro OUT)
+  // doc: 'proforma' | 'factura'
+  // pos: 'vehicle' | 'transporte' (per disambiguare nei template Cliente)
+  window.numbersMissingDocBadge=function(zone,direction,doc,stockId,lotIdx,pos){
+    var label=doc==='factura'?'Factura':'Proforma';
+    var dataAttr=' data-stock-id="'+esc(stockId||'')+'" data-lot-idx="'+(lotIdx!=null?lotIdx:0)+'"'
+      +' data-doc-type="'+doc+'" data-zone="'+zone+'" data-direction="'+(direction||'req')+'" data-pos="'+(pos||'vehicle')+'"';
+    var tooltip=direction==='send'?(label+' por enviar al cliente \u2014 click para generar email'):(label+' faltante \u2014 click para reclamar');
+    return '<span class="nbv-missing-doc" onclick="event.stopPropagation();numbersOpenMissingDocDialog(this)" title="'+tooltip+'"'+dataAttr
       +' style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:#d97706;font-weight:600;font-size:11px;padding:1px 4px;border-radius:4px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);transition:all .15s" '
       +'onmouseover="this.style.background=\'rgba(245,158,11,0.25)\'" onmouseout="this.style.background=\'rgba(245,158,11,0.12)\'">'
       +'<span style="font-size:10px">\u26a0\ufe0f</span>'
@@ -27786,62 +27843,89 @@ document.querySelectorAll('.ovl').forEach(function(el){
   };
 
   // Templates email solleciti documenti — multilingua
-  // ID: REQ_PROFORMA / REQ_FACTURA
-  // Variabili supportate: {nombre_proveedor} {empresa_dmcar} {numero_expediente} {lista_vehiculos} {fecha_actual} {usuario_emisor}
+  // ID: REQ_PROFORMA / REQ_FACTURA (Compra dal Provider)
+  //     REQ_PROFORMA_TRANSPORTE / REQ_FACTURA_TRANSPORTE (Compra dal Trasportatore)
+  //     REQ_FACTURA_BROKER (Factura comisiones dal Broker)
+  //     SEND_PROFORMA_VENTA / SEND_FACTURA_VENTA (verso Cliente B2B)
+  //     SEND_PROFORMA_VENTA_TRANSPORTE / SEND_FACTURA_VENTA_TRANSPORTE (verso Cliente B2B)
+  //     RESEND_DOCUMENT (reinvio documento generico verso Cliente)
+  // Variabili supportate: {nombre_proveedor} {empresa_dmcar} {numero_expediente} {lista_vehiculos} {fecha_actual} {usuario_emisor} {tipo_documento}
   window._nxDocReclamTemplates={
     REQ_PROFORMA:{
-      ES:{
-        subject:'Solicitud de proforma \u2014 Expediente {numero_expediente}',
-        body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la proforma correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      IT:{
-        subject:'Richiesta proforma \u2014 Pratica {numero_expediente}',
-        body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della proforma relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      EN:{
-        subject:'Proforma invoice request \u2014 File {numero_expediente}',
-        body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the proforma invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      FR:{
-        subject:'Demande de proforma \u2014 Dossier {numero_expediente}',
-        body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture proforma correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      DE:{
-        subject:'Proforma-Anfrage \u2014 Vorgang {numero_expediente}',
-        body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Proforma-Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'
-      }
+      ES:{subject:'Solicitud de proforma \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la proforma correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Richiesta proforma \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della proforma relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Proforma invoice request \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the proforma invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Demande de proforma \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture proforma correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Proforma-Anfrage \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Proforma-Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
     },
     REQ_FACTURA:{
-      ES:{
-        subject:'Solicitud de factura \u2014 Expediente {numero_expediente}',
-        body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la factura correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      IT:{
-        subject:'Richiesta fattura \u2014 Pratica {numero_expediente}',
-        body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della fattura relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      EN:{
-        subject:'Invoice request \u2014 File {numero_expediente}',
-        body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      FR:{
-        subject:'Demande de facture \u2014 Dossier {numero_expediente}',
-        body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'
-      },
-      DE:{
-        subject:'Rechnungsanfrage \u2014 Vorgang {numero_expediente}',
-        body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'
-      }
+      ES:{subject:'Solicitud de factura \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la factura correspondiente al expediente {numero_expediente}, en relaci\u00f3n con los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Richiesta fattura \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della fattura relativa alla pratica {numero_expediente}, in riferimento ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Invoice request \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nWe remain at your disposal for any clarification.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Demande de facture \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nNous vous prions de bien vouloir nous faire parvenir la documentation dans les plus brefs d\u00e9lais.\n\nNous restons \u00e0 votre disposition pour tout \u00e9claircissement.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Rechnungsanfrage \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nWir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nWir bitten Sie, uns die Dokumentation so bald wie m\u00f6glich zukommen zu lassen.\n\nWir stehen f\u00fcr R\u00fcckfragen gerne zur Verf\u00fcgung.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    REQ_PROFORMA_TRANSPORTE:{
+      ES:{subject:'Solicitud de proforma de transporte \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la proforma del servicio de transporte correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Richiesta proforma trasporto \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere la proforma del servizio di trasporto relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Transport proforma request \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the proforma invoice for the transport service related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Demande de proforma de transport \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander la facture proforma du service de transport correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Transport-Proforma-Anfrage \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nwir schreiben Ihnen von {empresa_dmcar}, um die Proforma-Rechnung f\u00fcr den Transportdienst zum Vorgang {numero_expediente} anzufordern, betreffend die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    REQ_FACTURA_TRANSPORTE:{
+      ES:{subject:'Solicitud de factura de transporte \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la factura del servicio de transporte correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad posible.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Richiesta fattura trasporto \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere la fattura del servizio di trasporto relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Transport invoice request \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the invoice for the transport service related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Demande de facture de transport \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander la facture du service de transport correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Transport-Rechnungsanfrage \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nwir schreiben Ihnen von {empresa_dmcar}, um die Rechnung f\u00fcr den Transportdienst zum Vorgang {numero_expediente} anzufordern, betreffend die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    REQ_FACTURA_BROKER:{
+      ES:{subject:'Solicitud de factura de comisiones \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nLe escribimos desde {empresa_dmcar} para solicitar la emisi\u00f3n de la factura de comisiones relacionada con el expediente {numero_expediente}, por la intermediaci\u00f3n de los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\nLe rogamos nos haga llegar la documentaci\u00f3n a la mayor brevedad para proceder al pago.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Richiesta fattura provvigioni \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nLe scriviamo da {empresa_dmcar} per richiedere l\'emissione della fattura provvigioni relativa alla pratica {numero_expediente}, per l\'intermediazione dei seguenti veicoli:\n\n{lista_vehiculos}\n\nLa preghiamo di farci pervenire la documentazione al pi\u00f9 presto per procedere al pagamento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Commission invoice request \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nWe are writing from {empresa_dmcar} to request the issuance of the commission invoice related to file {numero_expediente}, for the brokerage of the following vehicles:\n\n{lista_vehiculos}\n\nPlease send us the documentation as soon as possible to proceed with payment.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Demande de facture de commissions \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nNous vous \u00e9crivons de la part de {empresa_dmcar} pour demander l\'\u00e9mission de la facture de commissions concernant le dossier {numero_expediente}, pour l\'interm\u00e9diation des v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Provisionsrechnungsanfrage \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nwir schreiben Ihnen von {empresa_dmcar}, um die Ausstellung der Provisionsrechnung zum Vorgang {numero_expediente} f\u00fcr die Vermittlung der folgenden Fahrzeuge anzufordern:\n\n{lista_vehiculos}\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    SEND_PROFORMA_VENTA:{
+      ES:{subject:'Proforma de venta \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nAdjuntamos a este mensaje la proforma de venta correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Adjuntar el documento PDF antes de enviar.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Proforma di vendita \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nAlleghiamo al presente messaggio la proforma di vendita relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Allegare il documento PDF prima dell\'invio.\n\nRestiamo a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Sales proforma \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nPlease find attached the sales proforma related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Attach the PDF document before sending.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Proforma de vente \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nVeuillez trouver ci-joint la facture proforma de vente correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Joindre le document PDF avant l\'envoi.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Verkaufs-Proforma \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nim Anhang finden Sie die Verkaufs-Proforma-Rechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f PDF-Dokument vor dem Versand anh\u00e4ngen.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    SEND_FACTURA_VENTA:{
+      ES:{subject:'Factura de venta \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nAdjuntamos a este mensaje la factura de venta correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Adjuntar el documento PDF antes de enviar.\n\nQuedamos a su disposici\u00f3n para cualquier aclaraci\u00f3n.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Fattura di vendita \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nAlleghiamo al presente messaggio la fattura di vendita relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Allegare il documento PDF prima dell\'invio.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Sales invoice \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nPlease find attached the sales invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Attach the PDF document before sending.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Facture de vente \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nVeuillez trouver ci-joint la facture de vente correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Joindre le document PDF avant l\'envoi.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Verkaufsrechnung \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nim Anhang finden Sie die Verkaufsrechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f PDF-Dokument vor dem Versand anh\u00e4ngen.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    SEND_PROFORMA_VENTA_TRANSPORTE:{
+      ES:{subject:'Proforma de transporte \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nAdjuntamos la proforma del servicio de transporte correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Adjuntar el documento PDF antes de enviar.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Proforma trasporto \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nAlleghiamo la proforma del servizio di trasporto relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Allegare il documento PDF prima dell\'invio.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Transport proforma \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nPlease find attached the transport service proforma related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Attach the PDF document before sending.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Proforma de transport \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nVeuillez trouver ci-joint la proforma du service de transport correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Joindre le document PDF avant l\'envoi.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Transport-Proforma \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nim Anhang finden Sie die Proforma des Transportdienstes zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f PDF-Dokument vor dem Versand anh\u00e4ngen.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
+    },
+    SEND_FACTURA_VENTA_TRANSPORTE:{
+      ES:{subject:'Factura de transporte \u2014 Expediente {numero_expediente}',body:'Estimado/a {nombre_proveedor},\n\nAdjuntamos la factura del servicio de transporte correspondiente al expediente {numero_expediente}, relativa a los siguientes veh\u00edculos:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Adjuntar el documento PDF antes de enviar.\n\nAtentamente,\n{usuario_emisor}\n{empresa_dmcar}'},
+      IT:{subject:'Fattura trasporto \u2014 Pratica {numero_expediente}',body:'Gentile {nombre_proveedor},\n\nAlleghiamo la fattura del servizio di trasporto relativa alla pratica {numero_expediente}, riferita ai seguenti veicoli:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Allegare il documento PDF prima dell\'invio.\n\nCordiali saluti,\n{usuario_emisor}\n{empresa_dmcar}'},
+      EN:{subject:'Transport invoice \u2014 File {numero_expediente}',body:'Dear {nombre_proveedor},\n\nPlease find attached the transport service invoice related to file {numero_expediente}, regarding the following vehicles:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Attach the PDF document before sending.\n\nBest regards,\n{usuario_emisor}\n{empresa_dmcar}'},
+      FR:{subject:'Facture de transport \u2014 Dossier {numero_expediente}',body:'Cher/Ch\u00e8re {nombre_proveedor},\n\nVeuillez trouver ci-joint la facture du service de transport correspondant au dossier {numero_expediente}, concernant les v\u00e9hicules suivants:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f Joindre le document PDF avant l\'envoi.\n\nCordialement,\n{usuario_emisor}\n{empresa_dmcar}'},
+      DE:{subject:'Transportrechnung \u2014 Vorgang {numero_expediente}',body:'Sehr geehrte/r {nombre_proveedor},\n\nim Anhang finden Sie die Transportrechnung zum Vorgang {numero_expediente} f\u00fcr die folgenden Fahrzeuge:\n\n{lista_vehiculos}\n\n\u26a0\ufe0f PDF-Dokument vor dem Versand anh\u00e4ngen.\n\nMit freundlichen Gr\u00fc\u00dfen,\n{usuario_emisor}\n{empresa_dmcar}'}
     }
   };
 
   // Render dialog 2-step on click triangolo
   // v10.10.34: Step 1 (tipo doc) RIMOSSO — è implicito dalla colonna cliccata (PF=proforma, FT=factura)
-  // Step "scope" arricchito con multi-selezione veicoli
+  // v10.10.35: ESTESO multi-zona (provider, client, transportist, broker) con direction (req|send) e pos (vehicle|transporte)
   window.numbersOpenMissingDocDialog=function(badgeEl){
     var stockId=badgeEl.getAttribute('data-stock-id');
     var lotIdx=parseInt(badgeEl.getAttribute('data-lot-idx'),10)||0;
-    var docType=badgeEl.getAttribute('data-doc-type'); // 'proforma' o 'factura' — DEFINITO DALLA COLONNA
+    var docType=badgeEl.getAttribute('data-doc-type'); // 'proforma' o 'factura' — dalla colonna
+    var zone=badgeEl.getAttribute('data-zone')||'provider';
+    var direction=badgeEl.getAttribute('data-direction')||'req';
+    var pos=badgeEl.getAttribute('data-pos')||'vehicle';
     // Trova il record nel stock
     var stockArr=[];
     try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
@@ -27852,9 +27936,20 @@ document.querySelectorAll('.ovl').forEach(function(el){
     if(existingModal)existingModal.remove();
     var docLabel=docType==='factura'?'Factura':'Proforma';
     var docIcon=docType==='factura'?'\ud83d\udcc4':'\ud83d\udccb';
+    // Header dinamico in base a zona+direzione
+    var actionLabel,destLabel,destValue;
+    if(direction==='send'){
+      actionLabel='Generar email para enviar';
+      destLabel='Cliente';
+      destValue=s.clientName||'(no especificado)';
+    }else{ // req
+      if(zone==='broker'){actionLabel='Reclamar al broker';destLabel='Broker';destValue=s.brokerName||s.brokerSeller||'(no especificado)';}
+      else if(zone==='transportist'){actionLabel='Reclamar al transportista';destLabel='Transportista';destValue=numbersExtractTransportist(s)||'(no especificado)';}
+      else{actionLabel='Reclamar al proveedor';destLabel='Proveedor';destValue=s.supplier||'(no especificado)';}
+    }
+    var posLabel=pos==='transporte'?' (Servicio de transporte)':'';
     // Costruisci lista checkbox veicoli (per multi-selezione)
     var vehiclesArr=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles:[{vin:s.vin||'',_isLot:true}];
-    // Recupera selezione globale corrente (window._nxMissingDocSelection è map: stockId -> Set di vehIdx)
     if(!window._nxMissingDocSelection)window._nxMissingDocSelection={};
     var currentSel=window._nxMissingDocSelection[stockId]||new Set();
     var vehiclesHtml=vehiclesArr.map(function(v,idx){
@@ -27872,18 +27967,18 @@ document.querySelectorAll('.ovl').forEach(function(el){
     modal.innerHTML=''
       +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:520px;max-width:95vw;max-height:90vh;overflow-y:auto">'
       +'  <div style="background:linear-gradient(135deg,#d97706 0%,#b45309 100%);color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center">'
-      +'    <strong style="font-size:14px">'+docIcon+' Reclamar '+docLabel+' al proveedor</strong>'
+      +'    <strong style="font-size:14px">'+docIcon+' '+esc(actionLabel)+' \u2014 '+esc(docLabel)+esc(posLabel)+'</strong>'
       +'    <span onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">\u00d7</span>'
       +'  </div>'
       +'  <div style="padding:18px">'
       +'    <div style="background:rgba(245,158,11,0.07);border-left:3px solid #d97706;padding:10px 12px;border-radius:0 6px 6px 0;font-size:11.5px;color:var(--t2);margin-bottom:14px;line-height:1.5">'
-      +'      <strong>Proveedor:</strong> '+esc(s.supplier||'(no especificado)')+'<br>'
+      +'      <strong>'+esc(destLabel)+':</strong> '+esc(destValue)+'<br>'
       +'      <strong>Modelo:</strong> '+esc((s.brand||'')+' '+(s.model||'')+(s.version?(' \u2014 '+s.version):''))+'<br>'
-      +'      <strong>Documento:</strong> '+docIcon+' '+docLabel+''
+      +'      <strong>Documento:</strong> '+docIcon+' '+esc(docLabel)+esc(posLabel)+''
       +'    </div>'
       +'    <!-- Selettore scope con multi-selezione veicoli -->'
       +'    <div style="margin-bottom:14px">'
-      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">\u00bfReclamar para qu\u00e9 veh\u00edculos?</div>'
+      +'      <div style="font-size:12px;font-weight:700;color:var(--t1);margin-bottom:8px">\u00bf'+(direction==='send'?'Generar para':'Reclamar para')+' qu\u00e9 veh\u00edculos?</div>'
       +'      <div style="display:flex;gap:6px;margin-bottom:10px">'
       +'        <button class="btn bs" onclick="numbersToggleAllVehicles(true)" style="font-size:10.5px;padding:4px 10px">\u2611 Seleccionar todos</button>'
       +'        <button class="btn bs" onclick="numbersToggleAllVehicles(false)" style="font-size:10.5px;padding:4px 10px">\u2610 Deseleccionar todos</button>'
@@ -27896,12 +27991,12 @@ document.querySelectorAll('.ovl').forEach(function(el){
       +'    </div>'
       +'    <!-- Lingua info -->'
       +'    <div id="nbv-missing-doc-lang-info" style="font-size:11px;color:var(--t3);background:rgba(124,58,237,0.06);border-left:3px solid #7c3aed;padding:8px 10px;border-radius:0 6px 6px 0;margin-bottom:14px">'
-      +'      <span id="nbv-missing-doc-lang-text">Cargando idioma del proveedor\u2026</span>'
+      +'      <span id="nbv-missing-doc-lang-text">Cargando idioma del destinatario\u2026</span>'
       +'    </div>'
       +'    <!-- Actions -->'
       +'    <div style="display:flex;gap:8px;justify-content:flex-end">'
       +'      <button class="btn bg" onclick="document.getElementById(\'nbv-missing-doc-modal\').remove()" style="font-size:12px">Cancelar</button>'
-      +'      <button class="btn bp" id="nbv-gen-email-btn" onclick="numbersGenerateMissingDocEmail(\''+esc(stockId)+'\','+lotIdx+',\''+docType+'\')" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-size:13px;font-weight:700">\ud83d\udce7 Previsualizar email</button>'
+      +'      <button class="btn bp" id="nbv-gen-email-btn" onclick="numbersGenerateMissingDocEmail(\''+esc(stockId)+'\','+lotIdx+',\''+docType+'\',\''+zone+'\',\''+direction+'\',\''+pos+'\')" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;font-size:13px;font-weight:700">\ud83d\udce7 Previsualizar email</button>'
       +'    </div>'
       +'  </div>'
       +'</div>';
@@ -27911,18 +28006,79 @@ document.querySelectorAll('.ovl').forEach(function(el){
       cb.addEventListener('change',numbersUpdateVehCounter);
     });
     numbersUpdateVehCounter();
-    // Risolvi lingua del provider e mostra info
+    // Risolvi lingua del destinatario e mostra info
     setTimeout(function(){
-      var lang=numbersResolveProviderLanguage(s);
+      var lang=numbersResolveDestinationLanguage(s,zone,direction);
       var langNames={ES:'Espa\u00f1ol',IT:'Italiano',EN:'English',FR:'Fran\u00e7ais',DE:'Deutsch',PT:'Portugu\u00eas',RO:'Rom\u00e2n\u0103'};
       var flag={ES:'\ud83c\uddea\ud83c\uddf8',IT:'\ud83c\uddee\ud83c\uddf9',EN:'\ud83c\uddec\ud83c\udde7',FR:'\ud83c\uddeb\ud83c\uddf7',DE:'\ud83c\udde9\ud83c\uddea',PT:'\ud83c\uddf5\ud83c\uddf9',RO:'\ud83c\uddf7\ud83c\uddf4'}[lang]||'';
-      var supported=window._nxDocReclamTemplates&&window._nxDocReclamTemplates.REQ_FACTURA&&window._nxDocReclamTemplates.REQ_FACTURA[lang];
+      var templateId=window._nxResolveTemplate(zone,direction,docType,pos);
+      var supported=window._nxDocReclamTemplates&&window._nxDocReclamTemplates[templateId]&&window._nxDocReclamTemplates[templateId][lang];
       var info=document.getElementById('nbv-missing-doc-lang-text');
       if(info){
-        if(supported)info.innerHTML='El email se generar\u00e1 en idioma <strong>'+flag+' '+(langNames[lang]||lang)+'</strong> (configurado en la ficha del proveedor).';
-        else info.innerHTML='\u26a0\ufe0f Idioma <strong>'+lang+'</strong> no tiene plantilla disponible \u2014 se usar\u00e1 <strong>\ud83c\uddea\ud83c\uddf8 Espa\u00f1ol</strong> como fallback.';
+        if(supported)info.innerHTML='El email se generar\u00e1 en idioma <strong>'+flag+' '+(langNames[lang]||lang)+'</strong> (configurado en la ficha del '+esc(destLabel.toLowerCase())+').';
+        else info.innerHTML='\u26a0\ufe0f Idioma <strong>'+lang+'</strong> no tiene plantilla disponible para este caso \u2014 se usar\u00e1 <strong>\ud83c\uddea\ud83c\uddf8 Espa\u00f1ol</strong> como fallback.';
       }
     },50);
+  };
+
+  // Estrai nome trasportatore da stock (helper)
+  window.numbersExtractTransportist=function(stock){
+    if(!stock)return '';
+    // Trova accDoc transport_acquisto se esiste
+    if(Array.isArray(stock.accDocs)){
+      var trasp=stock.accDocs.find(function(d){return d&&d.type==='factura_transporte_acq';});
+      if(trasp&&trasp.supplier)return trasp.supplier;
+    }
+    return '';
+  };
+
+  // Risolve lingua DESTINATARIO (multi-zona): provider | client | transportist | broker
+  window.numbersResolveDestinationLanguage=function(stock,zone,direction){
+    if(!stock)return 'ES';
+    try{
+      // CLIENT (Venta verso B2B): cerca in B2B contacts per nome o impresa
+      if(zone==='client'||direction==='send'){
+        var contacts=JSON.parse(localStorage.getItem('nx5_contacts')||'[]');
+        var clientName=String(stock.clientName||'').toLowerCase().trim();
+        if(clientName){
+          var match=contacts.find(function(c){
+            if(!c)return false;
+            return (c.name&&c.name.toLowerCase()===clientName)||(c.company&&c.company.toLowerCase()===clientName);
+          });
+          if(match&&match.language)return match.language;
+        }
+      }
+      // PROVIDER / TRANSPORTIST / BROKER: priorit\u00e0 Registro Provider, fallback B2B
+      var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
+      var searchName='';
+      if(zone==='broker')searchName=String(stock.brokerName||stock.brokerSeller||'').toLowerCase().trim();
+      else if(zone==='transportist')searchName=String(numbersExtractTransportist(stock)||'').toLowerCase().trim();
+      else searchName=String(stock.supplier||'').toLowerCase().trim();
+      if(searchName){
+        var pmatch=null;
+        if(stock.providerId&&zone==='provider')pmatch=providers.find(function(p){return p.id===stock.providerId;});
+        if(!pmatch){
+          pmatch=providers.find(function(p){
+            if(!p)return false;
+            return (p.name&&p.name.toLowerCase()===searchName)||(p.legalName&&p.legalName.toLowerCase()===searchName)||(p.company&&p.company.toLowerCase()===searchName);
+          });
+        }
+        if(pmatch&&pmatch.language)return pmatch.language;
+        // Fallback B2B contacts
+        var contacts2=JSON.parse(localStorage.getItem('nx5_contacts')||'[]');
+        var b2bmatch=contacts2.find(function(c){
+          if(!c)return false;
+          return (c.name&&c.name.toLowerCase()===searchName)||(c.company&&c.company.toLowerCase()===searchName);
+        });
+        if(b2bmatch&&b2bmatch.language)return b2bmatch.language;
+      }
+    }catch(e){console.warn('[v10.10.35] numbersResolveDestinationLanguage error:',e);}
+    return 'ES';
+  };
+
+  // Backward compat: vecchio nome (Provider only)
+  window.numbersResolveProviderLanguage=function(stock){
+    return window.numbersResolveDestinationLanguage(stock,'provider','req');
   };
 
   // Helper toggle seleziona/deseleziona tutti i veicoli
@@ -27946,32 +28102,14 @@ document.querySelectorAll('.ovl').forEach(function(el){
     }
   };
 
-  // Risolve la lingua del provider (default ES)
-  window.numbersResolveProviderLanguage=function(stock){
-    if(!stock)return 'ES';
-    // 1. Se il provider ha la lingua configurata (DB providers), usala
-    try{
-      var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
-      var match=null;
-      if(stock.providerId)match=providers.find(function(p){return p.id===stock.providerId;});
-      if(!match&&stock.supplier){
-        var supLow=String(stock.supplier).toLowerCase().trim();
-        match=providers.find(function(p){
-          if(!p)return false;
-          return (p.name&&p.name.toLowerCase()===supLow)||(p.legalName&&p.legalName.toLowerCase()===supLow)||(p.company&&p.company.toLowerCase()===supLow);
-        });
-      }
-      if(match&&match.language)return match.language;
-    }catch(e){}
-    return 'ES'; // fallback
-  };
-
   // Genera anteprima email + apre modal di review prima dell'invio finale
   // v10.10.34: signature cambiata — riceve docType direttamente (no più da modal radio)
+  // v10.10.35: estesa con zone+direction+pos per multi-zona
   // Mostra anteprima editable prima del send finale (utente conferma e apre client mailto)
-  window.numbersGenerateMissingDocEmail=function(stockId,lotIdx,docType){
+  window.numbersGenerateMissingDocEmail=function(stockId,lotIdx,docType,zone,direction,pos){
     var modal=document.getElementById('nbv-missing-doc-modal');
     if(!modal)return;
+    zone=zone||'provider';direction=direction||'req';pos=pos||'vehicle';
     // Recupera veicoli selezionati
     var selectedIdx=[];
     modal.querySelectorAll('.nbv-veh-checkbox').forEach(function(cb){
@@ -27983,35 +28121,66 @@ document.querySelectorAll('.ovl').forEach(function(el){
     try{var raw=localStorage.getItem('nx5_stock');stockArr=raw?JSON.parse(raw):[];}catch(e){}
     var s=stockArr.find(function(x){return x.id===stockId;});
     if(!s){alert('No se ha encontrado el lote.');return;}
-    // Risolvi lingua + provider data
-    var lang=numbersResolveProviderLanguage(s);
-    var templateId=docType==='factura'?'REQ_FACTURA':'REQ_PROFORMA';
-    var tplLang=window._nxDocReclamTemplates[templateId][lang]||window._nxDocReclamTemplates[templateId].ES;
-    // Risolvi provider details (email, nome)
-    var provEmail='',provName=s.supplier||'',provFound=false;
+    // Risolvi lingua + template
+    var lang=numbersResolveDestinationLanguage(s,zone,direction);
+    var templateId=window._nxResolveTemplate(zone,direction,docType,pos);
+    var tplLang=(window._nxDocReclamTemplates[templateId]&&window._nxDocReclamTemplates[templateId][lang])||(window._nxDocReclamTemplates[templateId]&&window._nxDocReclamTemplates[templateId].ES);
+    if(!tplLang){alert('Template no disponible para esta combinaci\u00f3n.');return;}
+    // Risolvi destinatario in base alla zona
+    var destEmail='',destName='',destFound=false;
     try{
-      var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
-      var match=null;
-      if(s.providerId)match=providers.find(function(p){return p.id===s.providerId;});
-      if(!match&&s.supplier){
-        var supLow=String(s.supplier).toLowerCase().trim();
-        match=providers.find(function(p){
-          if(!p)return false;
-          return (p.name&&p.name.toLowerCase()===supLow)||(p.legalName&&p.legalName.toLowerCase()===supLow)||(p.company&&p.company.toLowerCase()===supLow);
-        });
-      }
-      if(match){
-        provFound=true;
-        provEmail=match.email||'';
-        provName=match.name||match.legalName||match.company||provName;
-        // Cerca Contabilidad in staff (preferito)
-        if(Array.isArray(match.staff)){
-          var contab=match.staff.find(function(st){return st&&st.role&&String(st.role).toLowerCase().indexOf('contab')>=0;});
-          if(contab&&contab.email)provEmail=contab.email;
-          if(contab&&contab.name)provName=contab.name;
+      if(zone==='client'||direction==='send'){
+        // Cerca in B2B contacts per nome cliente
+        var contacts=JSON.parse(localStorage.getItem('nx5_contacts')||'[]');
+        var clientName=String(s.clientName||'').toLowerCase().trim();
+        if(clientName){
+          var cmatch=contacts.find(function(c){
+            if(!c)return false;
+            return (c.name&&c.name.toLowerCase()===clientName)||(c.company&&c.company.toLowerCase()===clientName);
+          });
+          if(cmatch){
+            destFound=true;
+            destEmail=cmatch.email||'';
+            destName=cmatch.name||cmatch.company||s.clientName||'';
+          }else{destName=s.clientName||'';}
+        }
+      }else{
+        // PROVIDER / TRANSPORTIST / BROKER
+        var providers=JSON.parse(localStorage.getItem('nx5_providers')||'[]');
+        var searchName='';
+        if(zone==='broker')searchName=String(s.brokerName||s.brokerSeller||'').toLowerCase().trim();
+        else if(zone==='transportist')searchName=String(numbersExtractTransportist(s)||'').toLowerCase().trim();
+        else searchName=String(s.supplier||'').toLowerCase().trim();
+        var pmatch=null;
+        if(s.providerId&&zone==='provider')pmatch=providers.find(function(p){return p.id===s.providerId;});
+        if(!pmatch&&searchName){
+          pmatch=providers.find(function(p){
+            if(!p)return false;
+            return (p.name&&p.name.toLowerCase()===searchName)||(p.legalName&&p.legalName.toLowerCase()===searchName)||(p.company&&p.company.toLowerCase()===searchName);
+          });
+        }
+        if(pmatch){
+          destFound=true;
+          destEmail=pmatch.email||'';
+          destName=pmatch.name||pmatch.legalName||pmatch.company||searchName;
+          // Cerca Contabilidad in staff
+          if(Array.isArray(pmatch.staff)){
+            var contab=pmatch.staff.find(function(st){return st&&st.role&&String(st.role).toLowerCase().indexOf('contab')>=0;});
+            if(contab&&contab.email)destEmail=contab.email;
+            if(contab&&contab.name)destName=contab.name;
+          }
+        }else if(searchName){
+          // Fallback B2B
+          var contacts2=JSON.parse(localStorage.getItem('nx5_contacts')||'[]');
+          var b2b=contacts2.find(function(c){
+            if(!c)return false;
+            return (c.name&&c.name.toLowerCase()===searchName)||(c.company&&c.company.toLowerCase()===searchName);
+          });
+          if(b2b){destFound=true;destEmail=b2b.email||'';destName=b2b.name||b2b.company||'';}
+          else{destName=searchName;}
         }
       }
-    }catch(e){console.warn('[v10.10.34] Cannot resolve provider:',e);}
+    }catch(e){console.warn('[v10.10.35] Cannot resolve destination:',e);}
     // Costruisci lista veicoli SELEZIONATI
     var vehiclesArr=Array.isArray(s.vehicles)&&s.vehicles.length?s.vehicles:[{vin:s.vin||''}];
     var lista=selectedIdx.map(function(idx,i){
@@ -28024,23 +28193,24 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var usuario='DM Group';
     // Sostituisci variabili
     var subject=tplLang.subject
-      .replace(/\{nombre_proveedor\}/g,provName)
+      .replace(/\{nombre_proveedor\}/g,destName)
       .replace(/\{empresa_dmcar\}/g,empresaDM)
       .replace(/\{numero_expediente\}/g,numExp)
       .replace(/\{fecha_actual\}/g,fechaActual)
       .replace(/\{usuario_emisor\}/g,usuario);
     var body=tplLang.body
-      .replace(/\{nombre_proveedor\}/g,provName)
+      .replace(/\{nombre_proveedor\}/g,destName)
       .replace(/\{empresa_dmcar\}/g,empresaDM)
       .replace(/\{numero_expediente\}/g,numExp)
       .replace(/\{lista_vehiculos\}/g,lista)
       .replace(/\{fecha_actual\}/g,fechaActual)
       .replace(/\{usuario_emisor\}/g,usuario);
+    console.log('[v10.10.35] Email generata:',{zone:zone,direction:direction,docType:docType,pos:pos,lang:lang,template:templateId,to:destEmail});
     // Apri modal preview EDITABILE
     modal.remove();
     numbersOpenEmailPreview({
-      stockId:stockId,docType:docType,lang:lang,
-      to:provEmail,toName:provName,provFound:provFound,
+      stockId:stockId,docType:docType,zone:zone,direction:direction,lang:lang,
+      to:destEmail,toName:destName,destFound:destFound,
       subject:subject,body:body,
       vehiclesCount:selectedIdx.length
     });
@@ -28053,12 +28223,32 @@ document.querySelectorAll('.ovl').forEach(function(el){
     var langNames={ES:'Espa\u00f1ol',IT:'Italiano',EN:'English',FR:'Fran\u00e7ais',DE:'Deutsch',PT:'Portugu\u00eas',RO:'Rom\u00e2n\u0103'};
     var flag={ES:'\ud83c\uddea\ud83c\uddf8',IT:'\ud83c\uddee\ud83c\uddf9',EN:'\ud83c\uddec\ud83c\udde7',FR:'\ud83c\uddeb\ud83c\uddf7',DE:'\ud83c\udde9\ud83c\uddea',PT:'\ud83c\uddf5\ud83c\uddf9',RO:'\ud83c\uddf7\ud83c\uddf4'}[ctx.lang]||'';
     var docLabel=ctx.docType==='factura'?'Factura':'Proforma';
+    // v10.10.35: header dinamico in base a direction
+    var headerTitle=ctx.direction==='send'?('Enviar '+docLabel+' al cliente'):('Reclamar '+docLabel);
+    // v10.10.35: warning specifico per zone
     var emailWarning='';
+    var fixSuggestion='';
+    if(ctx.zone==='client'||ctx.direction==='send'){
+      fixSuggestion='A\u00f1ade un email en la ficha de Contactos B2B del cliente.';
+    }else if(ctx.zone==='broker'){
+      fixSuggestion='A\u00f1ade un email en la ficha del broker (Providers o Contactos B2B).';
+    }else if(ctx.zone==='transportist'){
+      fixSuggestion='A\u00f1ade un email en la ficha del transportista (Providers o Contactos B2B).';
+    }else{
+      fixSuggestion='A\u00f1ade un email en la ficha del proveedor o en el rol Contabilidad de su staff.';
+    }
     if(!ctx.to){
       emailWarning='<div style="background:rgba(220,38,38,0.07);border-left:3px solid #dc2626;padding:8px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#991b1b;margin-bottom:10px">'
-        +'\u26a0\ufe0f <strong>Email del proveedor no configurado.</strong> '
-        +(ctx.provFound?'A\u00f1ade un email en la ficha del proveedor o en el rol Contabilidad de su staff.':'Este proveedor no est\u00e1 registrado en el m\u00f3dulo Providers. <a href="#providers" onclick="document.getElementById(\'nbv-email-preview-modal\').remove();go(\'providers\')" style="color:#dc2626;text-decoration:underline;font-weight:600">Crearlo ahora</a>.')
+        +'\u26a0\ufe0f <strong>Email del destinatario no configurado.</strong> '
+        +(ctx.destFound?fixSuggestion:'Este destinatario no est\u00e1 registrado en el sistema. '+fixSuggestion)
         +' Puedes editar manualmente el destinatario abajo.</div>';
+    }
+    // Promemoria allegato per direction='send' (l'utente deve allegare il PDF manualmente)
+    var attachReminder='';
+    if(ctx.direction==='send'){
+      attachReminder='<div style="background:rgba(245,158,11,0.10);border-left:3px solid #d97706;padding:8px 10px;border-radius:0 6px 6px 0;font-size:11px;color:#92400e;margin-bottom:10px">'
+        +'\ud83d\udccc <strong>Recuerda adjuntar el PDF</strong> de la '+docLabel.toLowerCase()+' antes de enviar el email desde tu cliente de correo. NEXO no puede adjuntar archivos autom\u00e1ticamente v\u00eda mailto:'
+        +'</div>';
     }
     var modal=document.createElement('div');
     modal.id='nbv-email-preview-modal';
@@ -28066,21 +28256,22 @@ document.querySelectorAll('.ovl').forEach(function(el){
     modal.innerHTML=''
       +'<div style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">'
       +'  <div style="background:linear-gradient(135deg,#d97706 0%,#b45309 100%);color:#fff;padding:14px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'
-      +'    <strong style="font-size:14px">\ud83d\udce7 Previsualizar email \u2014 '+docLabel+'</strong>'
+      +'    <strong style="font-size:14px">\ud83d\udce7 Previsualizar email \u2014 '+esc(headerTitle)+'</strong>'
       +'    <span onclick="document.getElementById(\'nbv-email-preview-modal\').remove()" style="cursor:pointer;font-size:20px;line-height:1;opacity:.85;padding:0 4px">\u00d7</span>'
       +'  </div>'
       +'  <div style="padding:18px;overflow-y:auto;flex:1">'
       +     emailWarning
+      +     attachReminder
       +'    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t3);margin-bottom:12px">'
       +'      <span style="background:rgba(124,58,237,0.1);color:#7c3aed;padding:3px 8px;border-radius:12px;font-weight:600">'+flag+' '+(langNames[ctx.lang]||ctx.lang)+'</span>'
       +'      <span>\u2022</span>'
       +'      <span>'+ctx.vehiclesCount+' veh\u00edculo(s) incluidos</span>'
       +'    </div>'
-      +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">PARA:</label><input type="email" id="nbv-email-to" value="'+esc(ctx.to||'')+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,monospace" placeholder="email@proveedor.com"></div>'
+      +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">PARA:</label><input type="email" id="nbv-email-to" value="'+esc(ctx.to||'')+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:ui-monospace,monospace" placeholder="email@destinatario.com"></div>'
       +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">ASUNTO:</label><input type="text" id="nbv-email-subject" value="'+esc(ctx.subject)+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px"></div>'
       +'    <div style="margin-bottom:10px"><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:4px">MENSAJE:</label><textarea id="nbv-email-body" rows="14" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:system-ui,sans-serif;line-height:1.5;resize:vertical">'+esc(ctx.body)+'</textarea></div>'
       +'    <div style="font-size:10.5px;color:var(--t3);background:rgba(59,130,246,.06);border-left:3px solid #3b82f6;padding:8px 10px;border-radius:0 6px 6px 0;line-height:1.4">'
-      +'      \u2139\ufe0f Puedes editar el destinatario, asunto o mensaje antes de abrir el cliente de correo. Al hacer click en <strong>Abrir en cliente</strong>, NEXO abrir\u00e1 tu app de email predeterminada con el mensaje precompilado \u2014 desde ah\u00ed podr\u00e1s revisar y enviar manualmente.'
+      +'      \u2139\ufe0f Puedes editar el destinatario, asunto o mensaje antes de abrir el cliente de correo. Al hacer click en <strong>Abrir en cliente</strong>, NEXO abrir\u00e1 tu app de email predeterminada con el mensaje precompilado \u2014 desde ah\u00ed podr\u00e1s revisar'+(ctx.direction==='send'?', adjuntar el PDF':'')+' y enviar manualmente.'
       +'    </div>'
       +'  </div>'
       +'  <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--bg2);border-radius:0 0 12px 12px">'
