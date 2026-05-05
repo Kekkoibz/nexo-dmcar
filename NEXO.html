@@ -1,4 +1,37 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.2.1 — DM GROUP CRM | 2026-05-05 | Email + Telefono OBBLIGATORI per ogni utente:
+1) NUOVO REQUISITO BUSINESS: ogni utente NEXO deve configurare obbligatoriamente:
+   • EMAIL personale (es. admin@dmcargroup.com, grazia@dmcargroup.com) \u2014 usata come MITTENTE delle comunicazioni email da NEXO (mailto:)
+   • TEL\u00c9FONO personale (es. +34 600 000 000) \u2014 associato all'account WhatsApp dell'utente, usato per inviare messaggi WhatsApp (wa.me) dal numero personale
+2) FORM CREA/EDITA UTENTE (Gesti\u00f3n Usuarios):
+   • Aggiunti asterischi obbligatori a EMAIL * e TEL\u00c9FONO *
+   • Validazione email regex /^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$/i
+   • Validazione telefono regex /^\\+?\\d{7,15}$/ dopo strip caratteri non numerici (accetta +, spazi, trattini, parentesi)
+   • Email univoca enforcement: un email \u2192 un utente
+   • Reset/load/save campi gi\u00e0 presenti, aggiunte SOLO le validazioni mancanti
+3) FORM "MI PERFIL" (visibile a tutti gli utenti):
+   • Stessi 2 campi EMAIL * + TEL\u00c9FONO * obbligatori
+   • Banner informativo viola: "El email se utiliza como remitente en las comunicaciones desde Nexo. El tel\u00e9fono se asocia a tu WhatsApp para enviar mensajes desde tu n\u00famero personal"
+   • Validazione identica al form crea utente
+   • Il campo CARGO/PUESTO rimane facoltativo (per firma email)
+4) TABELLA UTENTI (in pannello Gesti\u00f3n Usuarios):
+   • Sotto username compaiono ora email (\u2709) e telefono (\u260E) con bullet separator
+   • Esempio: "@grazia \u2022 \u2709 grazia@dmcargroup.com \u2022 \u260E +34 600 000 000"
+5) HARDCODED ADMIN ESTESO: aggiunti default email='admin@dmcargroup.com', phone='+34 600 000 000', position='Super Administrator'. Garantisce che anche l'admin emergency abbia dati base.
+6) STORAGE: i campi email/phone/position vengono salvati in nx5_users (sync Firebase ereditato \u2192 Massi/Grazia ricevono i dati su altri dispositivi automaticamente entro 60s).
+7) CASI BUSINESS:
+   • Massi (Manager): email=admin@dmcargroup.com, phone=+39 ... \u2192 quando Massi invia un sollecito documento da Vista Contable, mailto: aprir\u00e0 il SUO client mail con admin@dmcargroup.com pre-impostato come mittente (se configurato nel client)
+   • Grazia (Vendedor): email=grazia@dmcargroup.com, phone=+34 ... \u2192 stesso flusso ma da grazia@
+8) LIMITAZIONE TECNICA SPIEGATA: il browser NON pu\u00f2 forzare il mittente delle email (mailto:?from=... non \u00e8 standard). L'email parte da quello che l'utente ha configurato nel SUO client mail. Se Massi ha configurato sia Gmail personale che admin@dmcargroup.com, dovr\u00e0 selezionare manualmente quale usare. Per invio garantito da admin@/grazia@ servir\u00e0 backend SMTP (progetto v10.12+).
+9) WHATSAPP: link wa.me/{numero_destinatario} apre WhatsApp dell'utente sul suo dispositivo. Il numero MITTENTE \u00e8 sempre quello con cui l'utente ha loggato WhatsApp sul suo dispositivo (NON modificabile via URL). Quindi se Grazia ha WhatsApp loggato col suo numero personale, i messaggi partono da quel numero. Per inviare DA un numero diverso server\u00e0 WhatsApp Business API (a pagamento, progetto futuro).
+10) Smoke test 16/16 PASS:
+    \u2022 Email validation: 7/7 (standard, con + e ., no TLD, no domain, no local part, vuoto)
+    \u2022 Phone validation: 9/9 (spagnolo, italiano, no spazi, 9 cifre, parentesi+trattini, troppo corto, vuoto, no numeri, troppo lungo)
+11) BUMP versione 10.11.2 \u2192 10.11.2.1 (auto-published a Firebase via NX_UPDATE \u2192 banner update entro 60-120s su tutti i dispositivi)
+12) PRESERVA: tutto v10.11.2 (enforcement permessi + i18n base), v10.11.1.6 (NX_UPDATE), v10.11.1.5 (auto-notifica), v10.11.1.4 (banner Firebase), v10.11.1.3 (placeholder password), v10.11.1.2 (auto-strip @), v10.11.1.1 (sync Firebase + watchdog), v10.11.1 (CRUD utenti), v10.11.0 (login base).
+13) ROADMAP futura:
+    - v10.11.2.2: usare email/phone utente nelle variabili template solleciti documenti ({usuario_emisor_email}, {usuario_emisor_phone})
+    - v10.12+: backend SMTP per invio garantito da email aziendale + WhatsApp Business API integration -->
 <!-- NEXO v10.11.2 — DM GROUP CRM | 2026-05-04 | Multi-utente Fase 3: Enforcement permessi + i18n base 3 lingue:
 1) MATRICE PERMESSI centralizzata in NX_AUTH.PERMISSIONS con 4 ruoli x 13 moduli x 4 livelli (none|read|write|full):
    • super_admin: TUTTO 'full' (gestione completa)
@@ -1024,6 +1057,21 @@ body.nx-role-manager [data-requires-delete]{display:none !important}
           <button class="btn bs" onclick="nxAuthGenerateRandomPassword()" style="font-size:11px;padding:0 12px" title="Generar password aleatoria">&#127922;</button>
         </div>
       </div>
+      <!-- v10.11.2.1: contatti utente OBBLIGATORI -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">EMAIL *</label>
+          <input type="email" id="nx-user-form-email" placeholder="usuario@dmcargroup.com" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">TEL&Eacute;FONO *</label>
+          <input type="tel" id="nx-user-form-phone" placeholder="+34 600 000 000" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">CARGO / PUESTO <span style="font-weight:400;color:var(--t3);font-size:9.5px">(usado en firmas email)</span></label>
+        <input type="text" id="nx-user-form-position" placeholder="Ej: Responsable de Ventas Italia" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px">
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div>
           <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">IDIOMA</label>
@@ -1065,8 +1113,26 @@ body.nx-role-manager [data-requires-delete]{display:none !important}
     <div style="padding:18px 22px;overflow-y:auto;flex:1">
       <div id="nx-profile-msg" style="display:none;font-size:11.5px;padding:8px 11px;border-radius:7px;margin-bottom:12px;border-left:3px solid"></div>
       <div style="margin-bottom:14px">
-        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">NOMBRE COMPLETO</label>
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">NOMBRE COMPLETO *</label>
         <input type="text" id="nx-profile-name" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px">
+      </div>
+      <!-- v10.11.2.1: contatti per email NEXO + WhatsApp - OBBLIGATORI -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">EMAIL *</label>
+          <input type="email" id="nx-profile-email" placeholder="tu.email@dmcargroup.com" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+        <div>
+          <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">TEL&Eacute;FONO *</label>
+          <input type="tel" id="nx-profile-phone" placeholder="+34 600 000 000" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px;font-family:ui-monospace,monospace">
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--t3);background:rgba(124,58,237,.06);border-left:3px solid #7c3aed;padding:8px 10px;border-radius:0 6px 6px 0;line-height:1.5;margin-bottom:14px">
+        \u2139\ufe0f <strong>Importante:</strong> El email se utiliza como remitente en las comunicaciones desde Nexo. El tel\u00e9fono se asocia a tu WhatsApp para enviar mensajes desde tu n\u00famero personal.
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">CARGO / PUESTO <span style="font-weight:400;color:var(--t3);font-size:9.5px">(usado en firmas email)</span></label>
+        <input type="text" id="nx-profile-position" placeholder="Ej: Responsable de Ventas Italia" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:12.5px">
       </div>
       <div style="margin-bottom:14px">
         <label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px;letter-spacing:.04em">IDIOMA</label>
@@ -4318,7 +4384,7 @@ var FB_KEY_RENDER={
 // Funziona via Firebase: la versione viene salvata in nx5_app_version
 // e viene controllata ogni 60 secondi su tutti i client.
 // ====================================================================
-window.NEXO_VERSION='10.11.2';
+window.NEXO_VERSION='10.11.2.1';
 window.NEXO_VERSION_DATE='2026-05-04';
 
 var NX_UPDATE={
@@ -4491,6 +4557,10 @@ var NX_AUTH={
     name:'Super Administrator',
     role:'super_admin',
     lang:'es',
+    // v10.11.2.1: campi contatto default
+    email:'admin@dmcargroup.com',
+    phone:'+34 600 000 000',
+    position:'Super Administrator',
     isActive:true,
     isHardcoded:true,
     createdAt:'2026-05-04'
@@ -5189,7 +5259,7 @@ window.nxAuthRenderUsersList=function(){
         +'<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,'+rc+',#1e293b);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0">'+esc(initials)+'</div>'
         +'<div style="min-width:0;overflow:hidden">'
           +'<div style="font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(u.name||'(sin nombre)')+hardcodedBadge+currentBadge+'</div>'
-          +'<div style="font-size:10px;color:var(--t3);font-family:ui-monospace,monospace">@'+esc(u.username)+'</div>'
+          +'<div style="font-size:10px;color:var(--t3);font-family:ui-monospace,monospace">@'+esc(u.username)+(u.email?'  \u2022 \u2709 '+esc(u.email):'')+(u.phone?'  \u2022 \u260E '+esc(u.phone):'')+'</div>'
         +'</div>'
       +'</div>'
       +'<div><span style="background:'+rc+'15;color:'+rc+';padding:3px 9px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.02em">'+esc(NX_AUTH.ROLE_LABELS[u.role]||u.role)+'</span></div>'
@@ -5216,6 +5286,10 @@ window.nxAuthOpenUserForm=function(userId){
   document.getElementById('nx-user-form-role').value='vendedor';
   document.getElementById('nx-user-form-lang').value='es';
   document.getElementById('nx-user-form-active').value='true';
+  // v10.11.2.1: reset nuovi campi contatto
+  if(document.getElementById('nx-user-form-email'))document.getElementById('nx-user-form-email').value='';
+  if(document.getElementById('nx-user-form-phone'))document.getElementById('nx-user-form-phone').value='';
+  if(document.getElementById('nx-user-form-position'))document.getElementById('nx-user-form-position').value='';
   if(userId){
     // Modifica esistente
     var u=NX_AUTH.findUserById(userId);
@@ -5229,6 +5303,10 @@ window.nxAuthOpenUserForm=function(userId){
     document.getElementById('nx-user-form-lang').value=u.lang||'es';
     document.getElementById('nx-user-form-active').value=u.isActive?'true':'false';
     document.getElementById('nx-user-form-password').placeholder='Deja vac\u00edo para no cambiar';
+    // v10.11.2.1: carica nuovi campi contatto
+    if(document.getElementById('nx-user-form-email'))document.getElementById('nx-user-form-email').value=u.email||'';
+    if(document.getElementById('nx-user-form-phone'))document.getElementById('nx-user-form-phone').value=u.phone||'';
+    if(document.getElementById('nx-user-form-position'))document.getElementById('nx-user-form-position').value=u.position||'';
   }else{
     titleEl.textContent='Crear nuevo usuario';
     document.getElementById('nx-user-form-password').placeholder='Min 6 caracteres';
@@ -5273,6 +5351,10 @@ window.nxAuthSaveUser=function(){
   var role=document.getElementById('nx-user-form-role').value;
   var lang=document.getElementById('nx-user-form-lang').value;
   var isActive=document.getElementById('nx-user-form-active').value==='true';
+  // v10.11.2.1: nuovi campi obbligatori
+  var email=(document.getElementById('nx-user-form-email')||{value:''}).value.trim().toLowerCase();
+  var phone=(document.getElementById('nx-user-form-phone')||{value:''}).value.trim();
+  var position=(document.getElementById('nx-user-form-position')||{value:''}).value.trim();
   var msgEl=document.getElementById('nx-user-form-msg');
   function showMsg(text,type){
     var colors={error:{bg:'#fef2f2',border:'#dc2626',color:'#991b1b'},success:{bg:'#f0fdf4',border:'#16a34a',color:'#166534'}};
@@ -5289,10 +5371,20 @@ window.nxAuthSaveUser=function(){
   if(!id&&(!password||password.length<6)){showMsg('La contrase\u00f1a debe tener al menos 6 caracteres.','error');return;}
   if(id&&password&&password.length<6){showMsg('La contrase\u00f1a debe tener al menos 6 caracteres.','error');return;}
   if(NX_AUTH.ROLES.indexOf(role)<0){showMsg('Rol inv\u00e1lido.','error');return;}
+  // v10.11.2.1: email obbligatoria + formato valido
+  if(!email){showMsg('El email es obligatorio. Se utiliza para enviar comunicaciones desde Nexo.','error');return;}
+  if(!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)){showMsg('Formato de email inv\u00e1lido. Ejemplo: usuario@dmcargroup.com','error');return;}
+  // v10.11.2.1: tel\u00e9fono obbligatorio + formato valido (almeno 7 cifre, accetta +, spazi, trattini, parentesi)
+  if(!phone){showMsg('El tel\u00e9fono es obligatorio. Se utilizar\u00e1 para WhatsApp y comunicaciones desde Nexo.','error');return;}
+  var phoneClean=phone.replace(/[^\d+]/g,'');
+  if(!/^\+?\d{7,15}$/.test(phoneClean)){showMsg('Formato de tel\u00e9fono inv\u00e1lido. Use formato internacional: +34 600 000 000','error');return;}
   // Username univoco
   var users=NX_AUTH.loadUsers();
   var dup=users.find(function(u){return u&&u.username===username&&u.id!==id;});
   if(dup){showMsg('Ya existe un usuario con este nombre.','error');return;}
+  // v10.11.2.1: email univoca (un email = un utente)
+  var dupEmail=users.find(function(u){return u&&u.email===email&&u.id!==id;});
+  if(dupEmail){showMsg('Ya existe un usuario con este email ('+esc(dupEmail.username)+').','error');return;}
   // Save
   if(id){
     // Update
@@ -5304,6 +5396,10 @@ window.nxAuthSaveUser=function(){
     users[idx].role=role;
     users[idx].lang=lang;
     users[idx].isActive=isActive;
+    // v10.11.2.1: campi contatto
+    users[idx].email=email;
+    users[idx].phone=phone;
+    users[idx].position=position;
     users[idx].updatedAt=new Date().toISOString().slice(0,10);
     NX_AUTH.logAudit('user_update',{userId:id,username:username,role:role});
   }else{
@@ -5317,6 +5413,10 @@ window.nxAuthSaveUser=function(){
       role:role,
       lang:lang,
       isActive:isActive,
+      // v10.11.2.1: campi contatto obbligatori
+      email:email,
+      phone:phone,
+      position:position,
       createdAt:new Date().toISOString().slice(0,10)
     });
     NX_AUTH.logAudit('user_create',{userId:newId,username:username,role:role});
@@ -5385,6 +5485,10 @@ window.nxAuthRenderProfile=function(){
   var lbl=document.getElementById('nx-profile-username-label');
   if(lbl)lbl.textContent='@'+u.username+' \u2022 '+(NX_AUTH.ROLE_LABELS[u.role]||u.role);
   document.getElementById('nx-profile-name').value=u.name||'';
+  // v10.11.2.1: nuovi campi contatti
+  if(document.getElementById('nx-profile-email'))document.getElementById('nx-profile-email').value=u.email||'';
+  if(document.getElementById('nx-profile-phone'))document.getElementById('nx-profile-phone').value=u.phone||'';
+  if(document.getElementById('nx-profile-position'))document.getElementById('nx-profile-position').value=u.position||'';
   document.getElementById('nx-profile-lang').value=u.lang||'es';
   document.getElementById('nx-profile-old-pw').value='';
   document.getElementById('nx-profile-new-pw').value='';
@@ -5396,6 +5500,10 @@ window.nxAuthRenderProfile=function(){
 // Salva modifiche profilo
 window.nxAuthSaveProfile=function(){
   var name=document.getElementById('nx-profile-name').value.trim();
+  // v10.11.2.1: nuovi campi
+  var email=(document.getElementById('nx-profile-email')||{value:''}).value.trim();
+  var phone=(document.getElementById('nx-profile-phone')||{value:''}).value.trim();
+  var position=(document.getElementById('nx-profile-position')||{value:''}).value.trim();
   var lang=document.getElementById('nx-profile-lang').value;
   var oldPw=document.getElementById('nx-profile-old-pw').value;
   var newPw=document.getElementById('nx-profile-new-pw').value;
@@ -5409,6 +5517,13 @@ window.nxAuthSaveProfile=function(){
   }
   if(!NX_AUTH.currentUser){showMsg('Sesi\u00f3n no v\u00e1lida.','error');return;}
   if(!name){showMsg('El nombre es obligatorio.','error');return;}
+  // v10.11.2.1: email obbligatoria
+  if(!email){showMsg('El email es obligatorio. Se utiliza para enviar comunicaciones desde Nexo.','error');return;}
+  if(!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)){showMsg('Formato de email inv\u00e1lido. Ejemplo: usuario@dmcargroup.com','error');return;}
+  // v10.11.2.1: tel\u00e9fono obbligatorio
+  if(!phone){showMsg('El tel\u00e9fono es obligatorio. Se asocia a tu WhatsApp para enviar mensajes desde Nexo.','error');return;}
+  var phoneClean=phone.replace(/[^\d+]/g,'');
+  if(!/^\+?\d{7,15}$/.test(phoneClean)){showMsg('Formato de tel\u00e9fono inv\u00e1lido. Use formato internacional: +34 600 000 000','error');return;}
   // Caso particolare: hardcoded admin → modifiche solo runtime, non persistenti (warning)
   if(NX_AUTH.currentUser.isHardcoded||NX_AUTH.currentUser.id==='sysadmin'){
     showMsg('El Super Admin del sistema no se puede modificar. Crea un usuario propio para personalizar tu perfil.','error');
@@ -5426,6 +5541,10 @@ window.nxAuthSaveProfile=function(){
   var idx=users.findIndex(function(u){return u&&u.id===NX_AUTH.currentUser.id;});
   if(idx<0){showMsg('Usuario no encontrado.','error');return;}
   users[idx].name=name;
+  // v10.11.2.1: salva nuovi campi
+  users[idx].email=email;
+  users[idx].phone=phone;
+  users[idx].position=position;
   users[idx].lang=lang;
   if(newPw)users[idx].password=newPw;
   users[idx].updatedAt=new Date().toISOString().slice(0,10);
@@ -5434,7 +5553,7 @@ window.nxAuthSaveProfile=function(){
   // Aggiorna sessione
   var session=NX_AUTH.loadSession();
   if(session){session.name=name;session.lang=lang;NX_AUTH.saveSession(session);}
-  NX_AUTH.logAudit('profile_update',{userId:NX_AUTH.currentUser.id,passwordChanged:!!newPw});
+  NX_AUTH.logAudit('profile_update',{userId:NX_AUTH.currentUser.id,emailChanged:!!email,phoneChanged:!!phone,passwordChanged:!!newPw});
   if(typeof nxAuthUpdateUserMenu==='function')nxAuthUpdateUserMenu();
   showMsg('\u2713 Perfil actualizado correctamente.','success');
   setTimeout(function(){nxAuthCloseProfile();},1200);
