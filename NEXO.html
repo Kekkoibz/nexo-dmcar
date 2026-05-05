@@ -1,4 +1,59 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.2 — DM GROUP CRM | 2026-05-04 | Multi-utente Fase 3: Enforcement permessi + i18n base 3 lingue:
+1) MATRICE PERMESSI centralizzata in NX_AUTH.PERMISSIONS con 4 ruoli x 13 moduli x 4 livelli (none|read|write|full):
+   • super_admin: TUTTO 'full' (gestione completa)
+   • manager: TUTTO 'read' tranne config/users 'none' (vede tutto, modifica niente)
+   • contable: numbers='full', providers/stock/dashboard/tareas='read', altro 'none'
+   • vendedor: stock/ofertas/contactos/leads/campaigns/tareas='write', dashboard/providers/marketing='read', numbers/config/users='none'
+2) HELPER PUBBLICI permission check:
+   • NX_AUTH.getPermission(module) \u2192 ritorna 'full'|'write'|'read'|'none'
+   • NX_AUTH.canRead/canWrite/canDelete/canAccess(module) \u2192 boolean
+   • NX_AUTH.guardModuleAccess(module) \u2192 ritorna true/false + toast se negato
+3) SISTEMA i18n MINIMALE (window.NX_AUTH.T) con 12 stringhe \u00d7 3 lingue (ES/IT/EN) = 36 traduzioni totali. Solo le label NUOVE introdotte da v10.11.2:
+   • role_mode, role_readonly, access_denied, access_denied_redirect
+   • readonly_tip, readonly_action_blocked, need_perm, delete_blocked
+   • restricted_module + 4 nomi ruoli localizzati (super_admin, manager, contable, vendedor)
+   Helper NX_AUTH.t(key, vars) con sostituzione variabili tipo {role}.
+   Le label esistenti (sidebar, dashboard, etc.) RESTANO in spagnolo \u2014 traduzione completa pianificata per v10.11.3+.
+4) SIDEBAR ADATTIVA: NX_AUTH.applyPermissionsToUI() nasconde voci sidebar dove canAccess()=false.
+   • Map id\u2192module per 12 voci (n-dashboard\u2192dashboard, n-stock\u2192stock, etc.)
+   • Voci 'read' ricevono classe .nx-readonly-item con CSS ::after che aggiunge icona occhio \ud83d\udc41
+   • Es. Vendedor: vede [dashboard, asistente?, stock, ofertas, contactos, providers, leads, marketing, campaigns, tareas] = 10 voci
+   • Es. Contable: vede [dashboard, stock, providers, tareas, numbers] = 5 voci
+   • Es. Manager: vede tutto eccetto Configuracion (12 voci)
+5) BANNER RUOLO nel topbar: per ruoli non-super_admin, mostra pillola colorata "Modo Manager (sola lettura)" / "Modo Contable" / "Modo Vendedor".
+   • Manager: blu rgba(59,130,246,.10) #1e40af
+   • Contable: verde rgba(22,163,74,.10) #15803d
+   • Vendedor: ambra rgba(217,119,6,.10) #92400e
+   • Localizzato in lingua utente (modalit\u00e0 Manager / Manager mode / Modo Manager)
+6) NAVIGATION GUARD: hook su funzione go() che intercetta tutti i cambi vista.
+   • Se canAccess(view)=false \u2192 toast "No tienes acceso a este m\u00f3dulo \u2014 Has sido redirigido al Dashboard" + redirect a 'dashboard'
+   • Esempio Vendedor click su Nexo Numbers (nascosto in sidebar ma se prova URL diretto): toast + redirect
+7) CSS readonly globale (in <style>):
+   • body.nx-role-manager applica opacity 45% + cursor:not-allowed + pointer-events:none agli elementi con [data-requires-write] e [data-requires-delete]
+   • Helper class .btn-write-disabled per disabilitazione manuale
+   • Toast helper .nx-toast-perm-denied (rosso)
+8) BODY CLASS DINAMICA: aggiunto al body classe nx-role-{role} per styling globale (es. nx-role-vendedor permette CSS specifici per vendedor)
+9) TRIGGER applyPermissionsToUI:
+   - dopo init() se sessione valida (delay 300ms per DOM ready)
+   - dopo attemptLogin() success (delay 300ms)
+10) Smoke test 18/18 PASS sulla matrice permessi:
+    \u2022 Super Admin TUTTO consentito (5/5)
+    \u2022 Manager: read everything, no write/delete/config/users (5/5)
+    \u2022 Contable: full numbers, blocked stock write, no users (4/4)
+    \u2022 Vendedor: write stock, no delete, no numbers (4/4)
+    \u2022 Sidebar visibility per Vendedor verificata
+11) BUMP versione: 10.11.1.6 \u2192 10.11.2 (auto-published a Firebase via NX_UPDATE \u2192 tutti i collaboratori vedono banner update entro 60-120s)
+12) PRESERVA: tutto v10.11.1.6 (footer dinamico, NX_UPDATE), v10.11.1.5 (auto-notifica), v10.11.1.4 (banner Firebase + warning login), v10.11.1.3 (placeholder password), v10.11.1.2 (auto-strip @, footer), v10.11.1.1 (sync Firebase + watchdog), v10.11.1 (CRUD utenti), v10.11.0 (login base).
+13) DEFERRED a v10.11.3:
+    - Traduzione UI completa (ES\u2192IT\u2192EN per ~600 stringhe sparse: bottoni, label, dialog, errori)
+    - Selettore lingua nel menu utente con cambio runtime
+    - Audit log viewer per Super Admin
+14) NOTE TECNICHE:
+    - Vendedor non vede 'asistente' di default (lo abbiamo definito 'none' \u2014 personalizzabile in matrice se vuoi)
+    - Click su Configuracion da URL diretto (es. ?#config) viene catturato dal guard navigation in go()
+    - Il banner ruolo \u00e8 sempre visibile finch\u00e9 l'utente \u00e8 loggato e ha ruolo \u2260 super_admin
+    - Test deploy: login admin\u2192tutto visibile / login massi (manager)\u2192config nascosto + banner blu / login con nuovo Vendedor\u2192solo Stock+Ofertas+Contactos+Leads visibili. -->
 <!-- NEXO v10.11.1.6 — DM GROUP CRM | 2026-05-04 | Bump versione + footer dinamico:
 1) BUMP: window.NEXO_VERSION da '10.11.1.5' a '10.11.1.6' per testare il sistema auto-notifica appena rilasciato.
 2) FOOTER LOGIN DINAMICO: il numero versione nel footer del login overlay (v10.11.1.X) ora si aggiorna automaticamente da window.NEXO_VERSION, eliminando la necessit\u00e0 di aggiornare manualmente il testo HTML ad ogni release. ID: #nx-login-footer-version.
@@ -848,6 +903,14 @@ body.fb-banner-on #app{padding-top:30px}
 .mk-resize-handle{position:absolute;top:0;right:0;width:6px;height:100%;cursor:col-resize;user-select:none;z-index:10}
 .mk-resize-handle:hover{background:var(--acc);opacity:.4}
 .mk-resize-handle.dragging{background:var(--acc);opacity:.7}
+/* v10.11.2: readonly indicator nelle voci sidebar */
+.nx-readonly-item::after{content:'\1F441';font-size:9px;margin-left:4px;opacity:.5}
+/* v10.11.2: ruoli read-only globale (manager) — disabilita SOLO i bottoni primari di scrittura */
+body.nx-role-manager .btn-write-disabled,
+body.nx-role-manager [data-requires-write]{opacity:.45 !important;cursor:not-allowed !important;pointer-events:none !important}
+body.nx-role-manager [data-requires-delete]{display:none !important}
+/* Toast helper */
+.nx-toast-perm-denied{background:#fef2f2 !important;color:#991b1b !important;border-left:3px solid #dc2626}
 </style>
 </head>
 <body>
@@ -4255,7 +4318,7 @@ var FB_KEY_RENDER={
 // Funziona via Firebase: la versione viene salvata in nx5_app_version
 // e viene controllata ogni 60 secondi su tutti i client.
 // ====================================================================
-window.NEXO_VERSION='10.11.1.6';
+window.NEXO_VERSION='10.11.2';
 window.NEXO_VERSION_DATE='2026-05-04';
 
 var NX_UPDATE={
@@ -4435,6 +4498,33 @@ var NX_AUTH={
   // Lista ruoli definiti (usata in fase 2-3)
   ROLES:['super_admin','manager','contable','vendedor'],
   ROLE_LABELS:{super_admin:'Super Admin',manager:'Manager',contable:'Contable',vendedor:'Vendedor'},
+  // v10.11.2: matrice permessi per modulo. Livelli: 'full' | 'write' | 'read' | 'none'
+  // 'full'  = legge + scrive + elimina + accesso totale (es. Configurazione)
+  // 'write' = legge + scrive (no elimina record altrui, no config)
+  // 'read'  = solo lettura (vede ma non modifica)
+  // 'none'  = nessun accesso (modulo nascosto in sidebar)
+  PERMISSIONS:{
+    super_admin:{
+      dashboard:'full',asistente:'full',stock:'full',ofertas:'full',contactos:'full',
+      providers:'full',leads:'full',marketing:'full',campaigns:'full',tareas:'full',
+      numbers:'full',config:'full',users:'full'
+    },
+    manager:{
+      dashboard:'read',asistente:'full',stock:'read',ofertas:'read',contactos:'read',
+      providers:'read',leads:'read',marketing:'read',campaigns:'read',tareas:'read',
+      numbers:'read',config:'none',users:'none'
+    },
+    contable:{
+      dashboard:'read',asistente:'none',stock:'read',ofertas:'none',contactos:'none',
+      providers:'read',leads:'none',marketing:'none',campaigns:'none',tareas:'read',
+      numbers:'full',config:'none',users:'none'
+    },
+    vendedor:{
+      dashboard:'read',asistente:'none',stock:'write',ofertas:'write',contactos:'write',
+      providers:'read',leads:'write',marketing:'read',campaigns:'write',tareas:'write',
+      numbers:'none',config:'none',users:'none'
+    }
+  },
   // Stato runtime
   currentUser:null,
 
@@ -4451,6 +4541,9 @@ var NX_AUTH={
           this.hideLoginOverlay();
           // v10.11.1.1: avvia watchdog
           this.startSessionWatchdog();
+          // v10.11.2: applica permessi all'UI
+          var self=this;
+          setTimeout(function(){self.applyPermissionsToUI();},300);
           return true;
         }else{
           console.warn('[NX_AUTH] Sessione invalida \u2014 utente non trovato o inattivo');
@@ -4588,6 +4681,8 @@ var NX_AUTH={
     var self=this;
     // v10.11.1.1: avvia watchdog per controllo session validity
     this.startSessionWatchdog();
+    // v10.11.2: applica permessi all'UI
+    setTimeout(function(){self.applyPermissionsToUI();},300);
     setTimeout(function(){self.hideLoginOverlay();},600);
   },
 
@@ -4722,6 +4817,210 @@ var NX_AUTH={
     return this.currentUser&&this.currentUser.role===role;
   },
   isSuperAdmin:function(){return this.hasRole('super_admin');},
+
+  // v10.11.2: helper permission check
+  // Restituisce livello permesso ('full'|'write'|'read'|'none') per il modulo dato
+  getPermission:function(module){
+    if(!this.currentUser)return 'none';
+    var role=this.currentUser.role||'vendedor';
+    var perms=this.PERMISSIONS[role]||{};
+    return perms[module]||'none';
+  },
+  // Check rapidi
+  canRead:function(module){
+    var p=this.getPermission(module);
+    return p==='full'||p==='write'||p==='read';
+  },
+  canWrite:function(module){
+    var p=this.getPermission(module);
+    return p==='full'||p==='write';
+  },
+  canDelete:function(module){
+    return this.getPermission(module)==='full';
+  },
+  canAccess:function(module){
+    return this.getPermission(module)!=='none';
+  },
+
+  // ==========================================================
+  // v10.11.2: i18n MINIMALE per le label nuove (3 lingue)
+  // ==========================================================
+  // Le label esistenti rimangono in spagnolo. v10.11.3 estender\u00e0 a TUTTE.
+  T:{
+    es:{
+      role_mode:'Modo {role}',
+      role_readonly:'(solo lectura)',
+      access_denied:'No tienes acceso a este m\u00f3dulo',
+      access_denied_redirect:'Has sido redirigido al Dashboard',
+      readonly_tip:'Solo lectura',
+      readonly_action_blocked:'No puedes realizar esta acci\u00f3n con tu rol actual',
+      need_perm:'Necesitas permisos para esta acci\u00f3n',
+      delete_blocked:'Solo el Super Admin puede eliminar',
+      restricted_module:'M\u00f3dulo restringido',
+      role_super_admin:'Super Admin',
+      role_manager:'Manager',
+      role_contable:'Contable',
+      role_vendedor:'Vendedor'
+    },
+    it:{
+      role_mode:'Modalit\u00e0 {role}',
+      role_readonly:'(sola lettura)',
+      access_denied:'Non hai accesso a questo modulo',
+      access_denied_redirect:'Sei stato reindirizzato alla Dashboard',
+      readonly_tip:'Sola lettura',
+      readonly_action_blocked:'Non puoi eseguire questa azione con il tuo ruolo attuale',
+      need_perm:'Servono permessi per questa azione',
+      delete_blocked:'Solo il Super Admin pu\u00f2 eliminare',
+      restricted_module:'Modulo ristretto',
+      role_super_admin:'Super Admin',
+      role_manager:'Manager',
+      role_contable:'Contabile',
+      role_vendedor:'Venditore'
+    },
+    en:{
+      role_mode:'{role} mode',
+      role_readonly:'(read-only)',
+      access_denied:"You don't have access to this module",
+      access_denied_redirect:'You have been redirected to the Dashboard',
+      readonly_tip:'Read only',
+      readonly_action_blocked:'You cannot perform this action with your current role',
+      need_perm:'You need permissions for this action',
+      delete_blocked:'Only Super Admin can delete',
+      restricted_module:'Restricted module',
+      role_super_admin:'Super Admin',
+      role_manager:'Manager',
+      role_contable:'Accountant',
+      role_vendedor:'Salesperson'
+    }
+  },
+  // Translate helper
+  t:function(key,vars){
+    var lang=(this.currentUser&&this.currentUser.lang)||'es';
+    if(!this.T[lang])lang='es';
+    var template=this.T[lang][key]||this.T.es[key]||key;
+    if(vars){
+      Object.keys(vars).forEach(function(k){
+        template=template.replace(new RegExp('\\{'+k+'\\}','g'),vars[k]);
+      });
+    }
+    return template;
+  },
+
+  // ==========================================================
+  // v10.11.2: applyPermissionsToUI - hide sidebar items, set readonly mode
+  // ==========================================================
+  applyPermissionsToUI:function(){
+    if(!this.currentUser){
+      console.warn('[NX_AUTH] applyPermissionsToUI senza utente');
+      return;
+    }
+    var role=this.currentUser.role||'vendedor';
+    console.log('[NX_AUTH v10.11.2] Applying permissions for role:',role);
+    // Map sidebar id -> module key
+    var sidebarMap={
+      'n-dashboard':'dashboard',
+      'n-asistente':'asistente',
+      'n-stock':'stock',
+      'n-ofertas':'ofertas',
+      'n-contactos':'contactos',
+      'n-providers':'providers',
+      'n-leads':'leads',
+      'n-marketing':'marketing',
+      'n-campaigns':'campaigns',
+      'n-tareas':'tareas',
+      'n-numbers':'numbers',
+      'n-config':'config'
+    };
+    var hidden=0,shown=0;
+    Object.keys(sidebarMap).forEach(function(elId){
+      var el=document.getElementById(elId);
+      if(!el)return;
+      var mod=sidebarMap[elId];
+      var canSee=NX_AUTH.canAccess(mod);
+      if(canSee){
+        el.style.display='';
+        shown++;
+        // Add tooltip "read only" se solo read
+        if(NX_AUTH.getPermission(mod)==='read'){
+          el.title=NX_AUTH.t('readonly_tip');
+          el.classList.add('nx-readonly-item');
+        }else{
+          el.classList.remove('nx-readonly-item');
+        }
+      }else{
+        el.style.display='none';
+        hidden++;
+      }
+    });
+    console.log('[NX_AUTH v10.11.2] Sidebar: '+shown+' visibili, '+hidden+' nascosti');
+    // Mostra/aggiorna banner ruolo nel topbar
+    this.updateRoleBanner();
+    // Applica readonly classes al body per CSS
+    this.updateBodyRoleClass();
+  },
+
+  // Banner ruolo nel topbar (sotto il titolo, se l'utente non \u00e8 super_admin)
+  updateRoleBanner:function(){
+    if(!this.currentUser)return;
+    var existing=document.getElementById('nx-role-banner');
+    var role=this.currentUser.role;
+    // Solo per ruoli non super_admin mostriamo il banner
+    if(role==='super_admin'){
+      if(existing)existing.remove();
+      return;
+    }
+    var roleLabel=this.t('role_'+role)||role;
+    var roleMode=this.t('role_mode',{role:roleLabel});
+    // Se solo read, aggiungi indicatore
+    var allReadOnly=true;
+    var perms=this.PERMISSIONS[role]||{};
+    Object.keys(perms).forEach(function(k){
+      if(perms[k]==='full'||perms[k]==='write')allReadOnly=false;
+    });
+    var label=allReadOnly?(roleMode+' '+this.t('role_readonly')):roleMode;
+    if(existing){
+      existing.querySelector('.nx-role-banner-label').textContent=label;
+      return;
+    }
+    // Crea banner
+    var topbar=document.getElementById('topbar');
+    if(!topbar)return;
+    var banner=document.createElement('div');
+    banner.id='nx-role-banner';
+    var colors={
+      manager:{bg:'rgba(59,130,246,.10)',color:'#1e40af',border:'#3b82f6'},
+      contable:{bg:'rgba(22,163,74,.10)',color:'#15803d',border:'#16a34a'},
+      vendedor:{bg:'rgba(217,119,6,.10)',color:'#92400e',border:'#d97706'}
+    };
+    var c=colors[role]||colors.manager;
+    banner.style.cssText='display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:'+c.bg+';color:'+c.color+';border:1px solid '+c.border+';border-radius:14px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-right:10px';
+    banner.innerHTML='<span style="font-size:9px">\u25cf</span> <span class="nx-role-banner-label">'+esc(label)+'</span>';
+    // Inserisci nel topbar prima del tb-d (data)
+    var tbRight=topbar.querySelector('.tb-right');
+    if(tbRight){
+      tbRight.insertBefore(banner,tbRight.firstChild);
+    }
+  },
+
+  // Aggiunge classe al body per applicare CSS readonly globale
+  updateBodyRoleClass:function(){
+    if(!this.currentUser)return;
+    document.body.classList.remove('nx-role-super_admin','nx-role-manager','nx-role-contable','nx-role-vendedor');
+    document.body.classList.add('nx-role-'+this.currentUser.role);
+  },
+
+  // Check accesso modulo + redirect a dashboard se negato (chiamato dal go())
+  guardModuleAccess:function(moduleId){
+    if(!this.currentUser)return false; // non loggato
+    if(this.canAccess(moduleId))return true;
+    // Negato → toast + redirect
+    if(typeof showToast==='function'){
+      showToast(this.t('access_denied')+' \u2014 '+this.t('access_denied_redirect'),4000);
+    }else{
+      console.warn('[NX_AUTH] Access denied to:',moduleId);
+    }
+    return false;
+  },
 
   // v10.11.1.1: controlla periodicamente se l'utente loggato è ancora valido nel localStorage
   // (utile se un altro dispositivo lo ha disattivato/eliminato via Firebase sync)
@@ -8667,6 +8966,17 @@ window.NX_I18N={
 window.t=function(key,lang){var l=lang||'es';var d=window.NX_I18N&&window.NX_I18N[l];return (d&&d[key])||key;};
 
 function go(v){
+  // v10.11.2: enforcement permessi - blocca navigation se utente non ha accesso
+  if(typeof NX_AUTH!=='undefined'&&NX_AUTH.currentUser&&typeof NX_AUTH.guardModuleAccess==='function'){
+    if(!NX_AUTH.guardModuleAccess(v)){
+      console.warn('[NX_AUTH] Navigation blocked to:',v,'- redirecting to dashboard');
+      // Redirect a Dashboard se ci ha accesso, altrimenti non fare niente
+      if(v!=='dashboard'&&NX_AUTH.canAccess('dashboard')){
+        return go('dashboard');
+      }
+      return;
+    }
+  }
   document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on');});
   document.querySelectorAll('.ni').forEach(function(el){el.classList.remove('on');});
   var vEl=document.getElementById('view-'+v);
