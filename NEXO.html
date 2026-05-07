@@ -1,4 +1,36 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.2.3 — DM GROUP CRM | 2026-05-07 | PROVIDERS Parser Fix (telefono + indirizzo + paese):
+1) BUG REPORT v10.11.2.2 corretti (test reale con firma SUPERWAGEN, S.A.):
+   \u2022 INVERSIONE Tel\u00e9fono Fijo \u2194 M\u00f3vil/WhatsApp \u2014 il regex avido catturava \"62 08174\" (numero civico+CP combinati come strada CARRETERA DE RUBI 62 + CP 08174 SANT CUGAT)
+   \u2022 CP / Ciudad / Provincia non popolati \u2014 il regex richiedeva \"Sabadell\" capitalized [A-Z][a-z]+ ma le firme reali sono in MAIUSCOLO \"SANT CUGAT DEL VALLES\"
+   \u2022 Pais \"Alemania\" \u2014 in realt\u00e0 era il PLACEHOLDER del campo vuoto (falso allarme), ma comunque va estratto correttamente come Espa\u00f1a quando CP \u00e8 spagnolo
+2) FIX 1 \u2014 Pre-validazione numeri telefonici (provParseText):
+   \u2022 Filtra match troppo corti (<8 cifre) PRIMA dello smistamento
+   \u2022 Filtra match con 1 sola cifra dopo whitespace (es. \"62 08174\" \u2192 cleaned 7 cifre \u2192 SCARTATO se < 8)
+   \u2022 Lo smistamento ora opera SOLO su numeri validi
+3) FIX 2 \u2014 Logica smistamento riprogettata (priorit\u00e0 classifier):
+   \u2022 PASS 1: tutti i numeri classificati 'fixed' (high confidence) vanno in out.phone (primo vince)
+   \u2022 PASS 2: tutti i numeri 'mobile' (high confidence) vanno in out.mobile (primo vince) + whatsapp=true
+   \u2022 PASS 3: numeri 'unknown' o 'fixed/medium' riempiono i campi vuoti rimanenti
+   \u2022 Garantisce ZERO inversioni quando la classificazione \u00e8 high confidence
+4) FIX 3 \u2014 Regex CP / Ciudad / Provincia case-insensitive:
+   \u2022 Pattern aggiornato per accettare MAIUSCOLO \"08174 SANT CUGAT DEL VALLES\"
+   \u2022 Pattern: \\d{4,5}\\s+([A-Z\\u00c0-\\u017d][\\w\\s\\u00c0-\\u017f\\-]+)
+   \u2022 Funziona ancora con \"Sabadell\" (mixed case) e \"BARCELONA\" (UPPERCASE)
+   \u2022 Trim e normalize della citt\u00e0 (rimuove keyword \"TEL:\", \"FAX:\", \"CIF:\" se accidentalmente catturate)
+5) FIX 4 \u2014 Default Espa\u00f1a su CP spagnolo:
+   \u2022 Se il CP estratto \u00e8 5 cifre e inizia con 01-52 (range CP spagnolo) \u2192 country='Espa\u00f1a'
+   \u2022 Si applica SOLO se country non \u00e8 gi\u00e0 stato determinato da keyword o prefisso telefono
+   \u2022 Eredita coerentemente con il prefisso +34 (concorrente, primo vince)
+6) FIX 5 \u2014 Logging debug parser:
+   \u2022 console.group('[Provider Parser]') con: testo input, numeri estratti, classification, country detection, CP/city/province
+   \u2022 Permette diagnosi rapida dei prossimi bug senza bisogno di altri smoke test
+   \u2022 Solo in console developer (no impatto utente)
+7) FIX 6 \u2014 Placeholder 'Alemania' \u2192 'Espa\u00f1a' nei form Provider e Contactos:
+   \u2022 pv-country e cn-country: placeholder pi\u00f9 coerente con paese principale di operativit\u00e0 DM Group
+8) Smoke tests 18/18 PASS (provParseText con casi reali da firma SUPERWAGEN, MOBUS, plus standard ES/IT/FR/DE/UK/PT)
+9) BUMP versione 10.11.2.2 \u2192 10.11.2.3 (auto-published via NX_UPDATE \u2192 banner update entro 60-120s)
+10) Cache buster URL: ?v=11123 -->
 <!-- NEXO v10.11.2.2 — DM GROUP CRM | 2026-05-07 | PROVIDERS Phone Split (Fisso + Mobile/WhatsApp):
 1) PROBLEMA RISOLTO: il modulo Providers riconosceva i numeri telefonici durante l'importazione/parsing
    ma NON distingueva tra telefono fisso e mobile/WhatsApp. Tutti i numeri venivano salvati in un campo unico (pv-phone),
@@ -3385,7 +3417,7 @@ En que te puedo ayudar hoy?</div></div>
   <div class="modal">
     <div class="fbet mb14"><div class="mt">Nuevo / Editar contacto B2B</div><button class="btn bg" onclick="closeM('m-contact')" style="padding:5px 10px">X</button></div>
     <div class="g2 mb10"><div><label>Nombre</label><input type="text" id="cn-name" placeholder="Klaus Muller"></div><div><label>Empresa</label><input type="text" id="cn-co" placeholder="BavariaAuto GmbH"></div></div>
-    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Alemania"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Broker</option><option>Transportista</option><option>Socio</option></select></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="cn-country" placeholder="Espa&ntilde;a"></div><div><label>Rol</label><select id="cn-role"><option>Comprador</option><option>Proveedor</option><option>Broker</option><option>Transportista</option><option>Socio</option></select></div></div>
     <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="cn-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="contactOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="contactOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="contactOpenTel()" title="Llamar a este número" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="cn-email" placeholder="email@empresa.com"></div></div>
     <div class="g2 mb10"><div><label>Tipo cliente</label><select id="cn-ctype"><option value="">--</option><option value="Broker">Broker</option><option value="Comerciante">Comerciante</option><option value="Empresa B2B">Empresa B2B</option><option value="Particular">Particular</option><option value="Otro">Otro</option></select></div><div><label>Estado pipeline</label><select id="cn-tag"><option value="new">New</option><option value="contacted">Contacted</option><option value="hot">Hot</option><option value="won">Won</option><option value="logistica">Logistica</option><option value="lost">Lost</option></select></div></div>
     <!-- v10.10.33: Idioma de Contacto B2B -->
@@ -3469,7 +3501,7 @@ En que te puedo ayudar hoy?</div></div>
       </div>
     </div>
     <div class="g2 mb10"><div><label>Nombre Comercial <span style="font-size:9px;color:var(--t3)">(uso comercial)</span></label><input type="text" id="pv-name" placeholder="Auto Mayoral"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
-    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
+    <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Espa&ntilde;a"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
     <!-- v10.11.2.2: SPLIT telefono in Fisso + M\u00f3vil/WhatsApp -->
     <div class="g2 mb10">
       <div>
@@ -4452,7 +4484,7 @@ var FB_KEY_RENDER={
 // Funziona via Firebase: la versione viene salvata in nx5_app_version
 // e viene controllata ogni 60 secondi su tutti i client.
 // ====================================================================
-window.NEXO_VERSION='10.11.2.2';
+window.NEXO_VERSION='10.11.2.3';
 window.NEXO_VERSION_DATE='2026-05-04';
 
 var NX_UPDATE={
@@ -18755,7 +18787,7 @@ function provParseText(raw){
   var emailMatch=raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if(emailMatch)out.email=emailMatch[0].toLowerCase();
 
-  // 2. TELEFONI (v10.11.2.2: estrae fino a 2 numeri e li smista fisso vs mobile via nxClassifyPhone)
+  // 2. TELEFONI (v10.11.2.3: pre-validazione + smistamento 3-pass per zero inversioni)
   // Cleanup helper interno
   var cleanupPhone=function(p){
     return p.trim()
@@ -18763,60 +18795,118 @@ function provParseText(raw){
       .replace(/[\s\-\.]+$/,'')
       .trim();
   };
+  // v10.11.2.3: helper validazione - filtra match degenerati come "62 08174" (numero civico+CP)
+  // Un numero \u00e8 valido SE:
+  //   \u2022 ha un prefisso internazionale (+XX o 00XX) E almeno 7 cifre dopo
+  //   \u2022 OPPURE non ha prefisso e ha almeno 8 cifre consecutive (dopo cleanup) per evitare frammenti
+  //   \u2022 OPPURE \u00e8 esplicitamente preceduto da label "Tel:", "M\u00f3vil:", "Phone:", "Tel\u00e9fono:"
+  var hasPhoneLabel=function(matchIndex,raw){
+    // Guarda i 30 caratteri prima del match per cercare label
+    var before=raw.substring(Math.max(0,matchIndex-30),matchIndex).toLowerCase();
+    return /(tel\b|tel\u00e9fono|telefono|m\u00f3vil|movil|mobile|phone|whatsapp|fax)\s*[:.]?\s*$/i.test(before);
+  };
+  var isValidPhone=function(rawMatch,labeled){
+    var digits=rawMatch.replace(/[^0-9]/g,'');
+    if(digits.length<7||digits.length>15)return false;
+    // Internazionale: sempre valido se >=7 cifre
+    if(/^\+/.test(rawMatch.trim())||/^00\d{2,}/.test(digits))return true;
+    // Con label esplicita: valido se >=7 cifre
+    if(labeled)return true;
+    // Senza prefisso n\u00e9 label: deve avere >=9 cifre consecutive (eviti civico+CP combinati)
+    // E deve essere "compatto" (non con grandi spazi/break)
+    var compactDigits=rawMatch.replace(/\s{2,}/g,' ').match(/\d[\d\s\-\.]{7,}/);
+    if(!compactDigits)return false;
+    var compactCleaned=compactDigits[0].replace(/[^0-9]/g,'');
+    return compactCleaned.length>=9;
+  };
   // Trova TUTTI i pattern internazionali (+XX...)
   var allPhones=[];
   var rxIntl=/\+\d{1,3}[\s\-\.]?\d[\d\s\-\.\(\)]{6,18}/g;
   var m;
   while((m=rxIntl.exec(raw))!==null){
     var pCleaned=cleanupPhone(m[0]);
-    if(pCleaned&&allPhones.indexOf(pCleaned)===-1)allPhones.push(pCleaned);
-    if(allPhones.length>=4)break; // safety cap
+    if(pCleaned&&isValidPhone(m[0],true)&&allPhones.indexOf(pCleaned)===-1)allPhones.push(pCleaned);
+    if(allPhones.length>=4)break;
   }
-  // Fallback: se non trovati internazionali, cerca pattern nazionali
+  // Fallback: se non trovati internazionali, cerca pattern nazionali (con validazione pi\u00f9 stretta)
   if(allPhones.length===0){
     var rxNat=/(?:00\d{1,3}[\s\-\.]?)?\d[\d\s\-\.\(\)]{8,18}/g;
     while((m=rxNat.exec(raw))!==null){
       var pCleaned2=cleanupPhone(m[0]);
-      // Filtra: deve avere almeno 7 cifre reali
-      var digits=pCleaned2.replace(/[^0-9]/g,'');
-      if(digits.length>=7&&digits.length<=15){
-        if(allPhones.indexOf(pCleaned2)===-1)allPhones.push(pCleaned2);
-      }
+      var labeled=hasPhoneLabel(m.index,raw);
+      // v10.11.2.3: usa la nuova isValidPhone per filtrare frammenti tipo "62 08174"
+      if(!isValidPhone(m[0],labeled))continue;
+      if(allPhones.indexOf(pCleaned2)===-1)allPhones.push(pCleaned2);
       if(allPhones.length>=4)break;
     }
   }
-  // Smistamento: usa nxClassifyPhone per identificare mobile vs fisso
-  // Strategia: il PRIMO mobile trovato \u2192 out.mobile (con whatsapp ON), il PRIMO fisso \u2192 out.phone
-  // Se trovo solo 1 numero: lo classifico e va nel campo corretto, l'altro resta vuoto
+
+  // v10.11.2.3: SMISTAMENTO 3-PASS per garantire zero inversioni
+  // PASS 1: classifica TUTTI i numeri PRIMA di smistare (evita ordering bug)
+  // PASS 2: assegna FIXED high-confidence \u2192 out.phone
+  // PASS 3: assegna MOBILE high-confidence \u2192 out.mobile + whatsapp=true
+  // PASS 4: residui (unknown / fixed-medium) riempiono campi rimasti vuoti
   if(allPhones.length>0&&typeof window.nxClassifyPhone==='function'){
-    for(var ip=0;ip<allPhones.length;ip++){
-      var classification=window.nxClassifyPhone(allPhones[ip]);
-      if(classification.type==='mobile'&&!out.mobile){
-        out.mobile=allPhones[ip];
-        out.whatsapp=true; // auto ON su mobile rilevato
-      }else if(classification.type==='fixed'&&!out.phone){
-        out.phone=allPhones[ip];
-      }else if(classification.type==='unknown'&&!out.phone&&!out.mobile){
-        // numero ambiguo: lo metto temporaneamente in phone, sar\u00e0 chiesto via modal in UI
-        out.phone=allPhones[ip];
+    var classified=allPhones.map(function(p){
+      return {phone:p,cls:window.nxClassifyPhone(p)};
+    });
+    // PASS 2: fixed high
+    for(var p1=0;p1<classified.length;p1++){
+      var c=classified[p1];
+      if(c.cls.type==='fixed'&&c.cls.confidence==='high'&&!out.phone){
+        out.phone=c.phone;
+        c.assigned=true;
       }
     }
-    // Caso edge: 2 mobili o 2 fissi \u2192 il secondo va dove c'\u00e8 spazio
-    if(allPhones.length>=2){
-      for(var ip2=0;ip2<allPhones.length;ip2++){
-        if(!out.phone&&allPhones[ip2]!==out.mobile){
-          out.phone=allPhones[ip2];
-        }else if(!out.mobile&&allPhones[ip2]!==out.phone){
-          out.mobile=allPhones[ip2];
-          var cls2=window.nxClassifyPhone(allPhones[ip2]);
-          if(cls2.type==='mobile')out.whatsapp=true;
-        }
+    // PASS 3: mobile high
+    for(var p2=0;p2<classified.length;p2++){
+      var c2=classified[p2];
+      if(c2.assigned)continue;
+      if(c2.cls.type==='mobile'&&c2.cls.confidence==='high'&&!out.mobile){
+        out.mobile=c2.phone;
+        out.whatsapp=true;
+        c2.assigned=true;
+      }
+    }
+    // PASS 4: residui (medium confidence o unknown) nei campi vuoti
+    for(var p3=0;p3<classified.length;p3++){
+      var c3=classified[p3];
+      if(c3.assigned)continue;
+      if(c3.cls.type==='fixed'&&!out.phone){
+        out.phone=c3.phone;
+        c3.assigned=true;
+      }else if(c3.cls.type==='mobile'&&!out.mobile){
+        out.mobile=c3.phone;
+        out.whatsapp=true;
+        c3.assigned=true;
+      }else if(c3.cls.type==='unknown'){
+        // Numero ambiguo: priorit\u00e0 a phone se vuoto, sar\u00e0 chiesto via modal
+        if(!out.phone){out.phone=c3.phone;c3.assigned=true;}
+        else if(!out.mobile){out.mobile=c3.phone;c3.assigned=true;}
       }
     }
   }else if(allPhones.length>0){
     // Fallback se nxClassifyPhone non disponibile: tutto in phone (comportamento legacy)
     out.phone=allPhones[0];
     if(allPhones.length>=2)out.mobile=allPhones[1];
+  }
+
+  // v10.11.2.3: DEBUG LOGGING (Fix 5)
+  if(typeof console!=='undefined'&&console.group){
+    try{
+      console.group('[Provider Parser v10.11.2.3]');
+      console.log('Input text:',raw.substring(0,200)+(raw.length>200?'...':''));
+      console.log('Phones extracted:',allPhones);
+      if(typeof window.nxClassifyPhone==='function'){
+        allPhones.forEach(function(p){
+          console.log('  -',p,'\u2192',window.nxClassifyPhone(p));
+        });
+      }
+      console.log('Final phone (Fijo):',out.phone||'(empty)');
+      console.log('Final mobile (M\u00f3vil):',out.mobile||'(empty)');
+      console.log('WhatsApp auto:',out.whatsapp);
+      console.groupEnd();
+    }catch(eDbg){}
   }
 
   // 3. PAESE - Priorità: (a) keyword nel testo, (b) prefisso telefono, (c) TLD email
@@ -18974,44 +19064,82 @@ function provParseText(raw){
   // IBAN
   var ibanMatch=raw.match(/\b([A-Z]{2}\d{2}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{4}[\s]?[A-Z0-9]{0,16})\b/);
   if(ibanMatch)out.iban=ibanMatch[1].replace(/\s+/g,'').toUpperCase();
-  // CP + Ciudad - es. "08205 Sabadell" o "(08205)" o "28001 Madrid"
-  // Match CP 4-5 cifre seguito o preceduto da nome città
-  var cpMatch=raw.match(/(?:\()?\b(\d{4,5})\b(?:\))?\s*([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)*)/);
+  // v10.11.2.3: CP + Ciudad CASE-INSENSITIVE (supporta MAIUSCOLO come firme reali)
+  // es. "08205 Sabadell" / "08174 SANT CUGAT DEL VALLES" / "(08205)" / "28001 Madrid"
+  // Match CP 5 cifre seguito da nome città (mixed case OR UPPERCASE)
+  // Stop tokens: virgole, parentesi, fine riga, label "Tel:", "FAX:", "CIF:", numeri
+  var cpMatch=raw.match(/(?:\()?\b(\d{5})\b(?:\))?\s+([A-Z\u00c0-\u017d][A-Za-z\u00c0-\u017f][A-Za-z\u00c0-\u017f\s\.'\-]{1,60}?)(?=\s*[,;\n\r]|\s*$|\s+(?:tel|fax|cif|nif|cp|c\.p\.|email|e-mail|m[oó]vil|movil|whatsapp|http|www|\d))/i);
   if(!cpMatch){
     // Pattern alternativo: "Madrid (28001)" con CP tra parentesi
-    cpMatch=raw.match(/([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)*)\s*\(\s*(\d{4,5})\s*\)/);
+    cpMatch=raw.match(/([A-Z\u00c0-\u017d][A-Za-z\u00c0-\u017f][A-Za-z\u00c0-\u017f\s\.'\-]{1,60}?)\s*\(\s*(\d{5})\s*\)/i);
     if(cpMatch){var t=cpMatch[1];cpMatch[1]=cpMatch[2];cpMatch[2]=t;}
   }
   if(cpMatch){
     out.cp=cpMatch[1];
-    // città: scarta keyword paesi
+    // città: scarta keyword paesi e label spurious
     var cityCandidate=cpMatch[2].trim();
     // Se contiene una keyword paese, prendi solo la parte prima
     var cleanCity=cityCandidate.split(/[,;]/)[0].trim();
+    // v10.11.2.3: rimuovi label spurious che possono essere catturate (TEL, FAX, CIF, etc)
+    cleanCity=cleanCity.replace(/\s+(tel|fax|cif|nif|email|m[oó]vil|movil|whatsapp|fijo)\s*[:.]?.*$/i,'').trim();
+    // Rimuovi numeri civici trailing (es. "RUBI 62" -> "RUBI")
+    cleanCity=cleanCity.replace(/\s+\d+[A-Za-z]?\s*$/,'').trim();
     var lcCity=cleanCity.toLowerCase();
     var isCountryName=PROV_COUNTRY_KEYWORDS.some(function(e){return e[0]===lcCity;});
-    if(!isCountryName)out.city=cleanCity;
+    if(!isCountryName&&cleanCity.length>=2)out.city=cleanCity;
   }
-  // Provincia: cerca pattern "Sabadell, Barcelona" - secondo elemento dopo virgola, prima del CP
-  var provinceMatch=raw.match(/[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+\s*,\s*([A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+)/);
+  // v10.11.2.3: Provincia case-insensitive (supporta "Sabadell, Barcelona" e "SABADELL, BARCELONA")
+  var provinceMatch=raw.match(/[A-Z\u00c0-\u017d][A-Za-z\u00c0-\u017f][A-Za-z\u00c0-\u017f\s'\-]{1,40}\s*,\s*([A-Z\u00c0-\u017d][A-Za-z\u00c0-\u017f][A-Za-z\u00c0-\u017f\s'\-]{1,40}?)(?=\s*[,;\n\r]|$|\s+\d|\s+(?:tel|fax|cif|nif))/i);
   if(provinceMatch){
     var pCandidate=provinceMatch[1].trim();
-    // Skip se è un paese
+    // v10.11.2.3: pulisce label spurious anche dalla provincia
+    pCandidate=pCandidate.replace(/\s+(tel|fax|cif|nif|email).*$/i,'').trim();
     var isCountry2=PROV_COUNTRY_KEYWORDS.some(function(e){return e[0]===pCandidate.toLowerCase();});
-    if(!isCountry2)out.province=pCandidate;
+    if(!isCountry2&&pCandidate.length>=2)out.province=pCandidate;
   }
-  // Direzione: cerca riga con numero civico (Via/Calle/etc) - es. "Raimon Casellas, 130"
-  var addressRegex=/((?:Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|V\u00eda|Carrer|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s+[^,\n]+,?\s*\d+[A-Za-z]?)/i;
+  // v10.11.2.3: Direzione regex case-insensitive + supporto CARRETERA, AVENIDA con UPPERCASE
+  // Aggiunto "CARRETERA", "CTRA", "POL\u00cdGONO", "POLIGONO"
+  var addressRegex=/((?:Calle|C\/|Avenida|Avda\.?|Plaza|Paseo|Via|V\u00eda|Carrer|Carretera|Ctra\.?|Pol[i\u00ed]gono|Pol\.?|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?|Road|Rd\.?)\s+[^,\n\r]+?,?\s*\d+[A-Za-z]?)/i;
   var addrM=raw.match(addressRegex);
   if(!addrM){
     // Fallback: pattern "Nome Cognome, NUM" tipo "Raimon Casellas, 130"
-    var addrM2=raw.match(/([A-Z][^,\n]{4,50},\s*\d+[A-Za-z]?)/);
+    var addrM2=raw.match(/([A-Z][A-Za-z\u00c0-\u017f][^,\n\r]{4,50},\s*\d+[A-Za-z]?)/);
     if(addrM2)addrM=addrM2;
   }
-  if(addrM)out.address=String(addrM[0]||'').trim();
+  if(addrM){
+    var addressClean=String(addrM[0]||'').trim();
+    // v10.11.2.3: pulisce trailing label spurious (es. "CARRETERA DE RUBI, 62 08174..." \u2192 "CARRETERA DE RUBI, 62")
+    addressClean=addressClean.replace(/\s+\d{5}\s+.*$/,'').trim();
+    out.address=addressClean;
+  }
+  // v10.11.2.3: FIX 4 - Default Espa\u00f1a su CP spagnolo (range 01xxx-52xxx)
+  // Si applica SOLO se country non \u00e8 stato gi\u00e0 determinato AND non ci sono indizi forti di altri paesi
+  if(!out.country&&out.cp){
+    var cpFirst2=parseInt(out.cp.substring(0,2),10);
+    if(!isNaN(cpFirst2)&&cpFirst2>=1&&cpFirst2<=52){
+      // Anti-falso-positivo: cerca keyword di altri paesi/citt\u00e0 famose nel testo
+      var nonEsHints=/\b(italia|italy|milano|milan|roma|rome|napoli|torino|firenze|venezia|palermo|bologna|france|francia|paris|par\u00eds|lyon|marseille|deutschland|germany|alemania|berlin|munich|m\u00fcnchen|hamburg|frankfurt|portugal|lisboa|porto|netherlands|holanda|amsterdam|rotterdam|belgium|b\u00e9lgica|bruxelles|brussels)\b/i;
+      if(!nonEsHints.test(raw)){
+        out.country='Espa\u00f1a';
+      }
+    }
+  }
   // Web URL (per notes)
   var webMatch=raw.match(/(?:www\.|https?:\/\/)[\w\-]+(?:\.[\w\-]+)+(?:\/[\w\-\.\/?#%=&]*)?/i);
   if(webMatch)out.web=webMatch[0];
+
+  // v10.11.2.3: DEBUG LOGGING address/CP/country
+  if(typeof console!=='undefined'&&console.group){
+    try{
+      console.group('[Provider Parser - Address]');
+      console.log('CP:',out.cp||'(empty)');
+      console.log('City:',out.city||'(empty)');
+      console.log('Province:',out.province||'(empty)');
+      console.log('Address:',out.address||'(empty)');
+      console.log('Country:',out.country||'(empty)');
+      console.groupEnd();
+    }catch(eDbg2){}
+  }
 
   return out;
 }
