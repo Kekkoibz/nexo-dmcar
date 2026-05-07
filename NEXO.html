@@ -1,4 +1,39 @@
 <!DOCTYPE html>
+<!-- NEXO v10.11.2.2 — DM GROUP CRM | 2026-05-07 | PROVIDERS Phone Split (Fisso + Mobile/WhatsApp):
+1) PROBLEMA RISOLTO: il modulo Providers riconosceva i numeri telefonici durante l'importazione/parsing
+   ma NON distingueva tra telefono fisso e mobile/WhatsApp. Tutti i numeri venivano salvati in un campo unico (pv-phone),
+   limitando l'uso del WhatsApp e perdendo la distinzione utile per la comunicazione (chiamare vs messaggiare).
+2) NUOVA STRUTTURA FORM PROVIDER:
+   \u2022 Campo "Tel\u00e9fono Fijo" (pv-phone) \u2014 esistente, ora dedicato a numeri fissi 9XX (ES) e equivalenti
+   \u2022 NUOVO Campo "M\u00f3vil / WhatsApp" (pv-mobile) \u2014 dedicato a 6XX/7XX (ES), 3XX (IT), 06/07 (FR), 015-017 (DE) etc.
+   \u2022 NUOVO Checkbox "WhatsApp activo" (pv-whatsapp) \u2014 default ON quando viene rilevato un mobile, deselezionabile manualmente
+   \u2022 I bottoni B/P/Llamar restano sul fisso, NUOVI bottoni WA/Tel sul mobile
+3) AUTO-CLASSIFICATION via nxClassifyPhone (esistente da v10.10.14):
+   \u2022 Riusa NX_MOBILE_PREFIXES esteso (ES/IT/FR/DE/PT/NL/BE/UK)
+   \u2022 Quando l'utente incolla testo con multipli numeri, provParseText() ora estrae fino a 2 numeri distinti
+     e li smista automaticamente: il primo classificato 'mobile' va in pv-mobile, il primo 'fixed' va in pv-phone
+4) PROMPT INTERATTIVO PER NUMERI AMBIGUI:
+   \u2022 Nuova funzione provAskPhoneType(number, callback) \u2014 modal con 3 opzioni: Fijo / M\u00f3vil-WhatsApp / Ignorar
+   \u2022 Triggherato quando nxClassifyPhone restituisce confidence='low' o type='unknown'
+5) PERSISTENZA RECORD PROVIDER (backward compatible):
+   \u2022 Nuovi campi: provider.mobile (string) e provider.whatsapp (boolean)
+   \u2022 Provider esistenti senza questi campi: continuano a funzionare, mobile=''/whatsapp=false default
+   \u2022 Se un vecchio provider ha solo phone con un mobile, al prossimo edit l'utente pu\u00f2 spostarlo manualmente
+6) FILE FUNZIONI MODIFICATE:
+   \u2022 HTML form pv-phone block (riga ~3438) \u2014 split in 2 righe con label distinti e flag WA
+   \u2022 nxResetProviderForm/openProviderForm reset (riga ~17271) \u2014 reset anche pv-mobile e pv-whatsapp
+   \u2022 nxLoadProviderForm load (riga ~17321) \u2014 carica p.mobile e p.whatsapp
+   \u2022 nxSaveProviderForm save (riga ~17402) \u2014 salva mobile e whatsapp nel record
+   \u2022 provParseText (riga ~18529) \u2014 estrae array di telefoni e li smista
+   \u2022 provExtractFromPasteInline (riga ~18428) \u2014 popola entrambi i campi UI dopo parsing
+   \u2022 nuova provAskPhoneType (modal) \u2014 helper per disambiguazione
+   \u2022 nuovi handler provOpenWhatsAppMobile / provOpenTelMobile per i bottoni del campo mobile
+7) BACKWARD COMPATIBILITY:
+   \u2022 nessun dato esistente viene perso o modificato senza azione utente
+   \u2022 nx5_providers schema esteso con campi opzionali (no breaking change)
+   \u2022 sync Firebase eredita lo schema automaticamente (write-through)
+8) BUMP versione 10.11.2.1 \u2192 10.11.2.2 (auto-published via NX_UPDATE \u2192 banner update entro 60-120s)
+9) Cache buster URL: ?v=11122 -->
 <!-- NEXO v10.11.2.1 — DM GROUP CRM | 2026-05-05 | Email + Telefono OBBLIGATORI per ogni utente:
 1) NUOVO REQUISITO BUSINESS: ogni utente NEXO deve configurare obbligatoriamente:
    • EMAIL personale (es. admin@dmcargroup.com, grazia@dmcargroup.com) \u2014 usata come MITTENTE delle comunicazioni email da NEXO (mailto:)
@@ -87,50 +122,6 @@
     - Click su Configuracion da URL diretto (es. ?#config) viene catturato dal guard navigation in go()
     - Il banner ruolo \u00e8 sempre visibile finch\u00e9 l'utente \u00e8 loggato e ha ruolo \u2260 super_admin
     - Test deploy: login admin\u2192tutto visibile / login massi (manager)\u2192config nascosto + banner blu / login con nuovo Vendedor\u2192solo Stock+Ofertas+Contactos+Leads visibili. -->
-<!-- NEXO v10.11.2.2 — DM GROUP CRM | 2026-05-07 | PROVIDERS: parser intelligente nome fiscal + multi-select brands + prompt VAT mancante:
-1) BUG FIX (parser nome fiscale): prima del fix, incollare un blocco tipo "Superwagen / Domènech i Montaner, 90 / 08205 Sabadell, Barcelona" inseriva l'INDIRIZZO ("Domènech i Montaner, 90") nel campo NOMBRE FISCAL invece del nome aziendale ("SUPERWAGEN"). ROOT CAUSE: provParseText() usava heuristic naïve (riga dopo nome persona → company), e provSyncFiscalFromAnagrafica() copiava pari pari pv-co → pv-legal-name. FIX: nuova funzione provExtractCompanyName(lines) che (a) cerca pattern aziendali con marker legali (S.L., S.R.L., GmbH, Ltd, S.A., S.p.A., B.V., OÜ, s.r.o., AG, Inc., LLC, Sarl, SL, SRL, SRO, KG, OHG, AB, OY, AS) → estrae quella riga; (b) se nessun marker trovato, fallback intelligente: prima riga "azienda-like" che NON è indirizzo (no numero civico finale, no CP+città, no email, no telefono, no URL, no pattern "Nome Cognome" → quello è una persona). Output sempre in MAIUSCOLO per uniformità con razón social ufficiali.
-2) NUOVO: dropdown multi-select per Marcas principales con lista compatta:
-   • 15 marche pre-caricate: Audi, BMW, Citroën, Cupra, Dacia, Fiat, Ford, Mercedes, Mini, Opel, Peugeot, Renault, Seat, Skoda, Tesla, Toyota, Volkswagen, Volvo
-   • 3 categorie aggiuntive: 🚗 Flotas, 🆕 Nuevo, 📅 Usado
-   • Bottone "+ Otra marca" per aggiungere brand custom (es. Mahindra, Lamborghini)
-   • Brand custom si salvano in localStorage.nx5_customBrands → appaiono automaticamente la volta dopo
-   • Backward compatibility: brands continua a salvarsi come stringa CSV (es. "Audi, BMW, Flotas") per non rompere filtri esistenti (riga 17139, 17182, 17210, 17240) e provider già salvati con stringa libera
-   • Caricamento: legge p.brands esistente, splitta su virgola, marca i checkbox corrispondenti (case-insensitive matching)
-3) NUOVO: banner "Dato fiscal incompleto" non bloccante:
-   • Dopo paste con provExtractFromPasteInline, se nessun VAT/CIF/NIF trovato → mostra banner giallo in cima al form
-   • Messaggio: "⚠️ Falta dato fiscal (CIF/NIF/VAT). El proveedor se guardará como Incompleto."
-   • NON blocca il salvataggio (workflow Massi/Grazia: velocità prima)
-   • Badge arancione "⚠ Incompleto" appare nella lista providers (riga 17182, 17240) accanto al nome se !p.vat
-   • Auto-dismiss del banner quando l'utente digita il VAT manualmente
-4) HELPERS aggiunti:
-   • window.PROV_BRANDS_DEFAULT — array brand pre-caricati
-   • window.PROV_CATEGORIES — array categorie speciali
-   • window.provLoadCustomBrands() — read da localStorage.nx5_customBrands
-   • window.provSaveCustomBrand(name) — append + dedup
-   • window.provBuildBrandsDropdown(currentValue) — render UI multi-select
-   • window.provToggleBrand(brand) — handler checkbox
-   • window.provAddCustomBrand() — prompt + add nuova marca
-   • window.provRefreshBrandsValue() — sincronizza UI → input hidden (CSV)
-   • window.provExtractCompanyName(lines) — nuovo parser intelligente
-   • window.provShowFiscalIncompleteWarning() / hideFiscalIncompleteWarning()
-5) PRESERVA: tutto v10.11.2.1 (email/phone obbligatori), v10.11.2 (matrice permessi 4 ruoli), v10.11.1.6 (sistema NX_UPDATE), v10.11.1.5+ (auto-notifica versioni), v10.11.1.4 (banner Firebase z-index 100000), v10.11.1.1 (sync utenti + watchdog), v10.11.0 (login multi-utente).
-6) Cache buster: ?v=11122
-7) Test plan v10.11.2.2:
-   T1) Apri Provider → "Pegar texto" → incolla "Superwagen\nDomènech i Montaner, 90\n08205 Sabadell, Barcelona" → verifica:
-       (a) NOMBRE FISCAL = "SUPERWAGEN" ✓ (non più indirizzo)
-       (b) Direccion = "Domènech i Montaner, 90" ✓
-       (c) CP = "08205", Ciudad = "Sabadell", Provincia = "Barcelona" ✓
-       (d) Banner giallo "Falta dato fiscal" appare ✓
-   T2) Stesso test con "Superwagen S.L.\nCalle Mayor 5\n28001 Madrid" → NOMBRE FISCAL = "SUPERWAGEN S.L." (riconosce marker S.L.) ✓
-   T3) Stesso test con "Massimiliano Michelis\nSuperwagen GmbH\nCalle Mayor 5" → name = "Massimiliano Michelis", legalName = "SUPERWAGEN GMBH" (riconosce GmbH) ✓
-   T4) Apri Provider → click campo Marcas → vedi dropdown con 18 brand + 3 categorie + "+ Otra marca" ✓
-   T5) Seleziona Audi + BMW + Flotas → chiudi dropdown → input mostra "Audi, BMW, Flotas" ✓
-   T6) Click "+ Otra marca" → digita "Mahindra" → appare nella lista già selezionata ✓
-   T7) Reload pagina → riapri form → "Mahindra" è disponibile nel dropdown ✓
-   T8) Edit provider esistente con brands="BMW, Audi" (stringa libera v10) → checkbox BMW e Audi spuntati automaticamente ✓
-   T9) Compila VAT → banner giallo scompare ✓
-   T10) Salva provider senza VAT → lista mostra badge "⚠ Incompleto" ✓
--->
 <!-- NEXO v10.11.1.6 — DM GROUP CRM | 2026-05-04 | Bump versione + footer dinamico:
 1) BUMP: window.NEXO_VERSION da '10.11.1.5' a '10.11.1.6' per testare il sistema auto-notifica appena rilasciato.
 2) FOOTER LOGIN DINAMICO: il numero versione nel footer del login overlay (v10.11.1.X) ora si aggiorna automaticamente da window.NEXO_VERSION, eliminando la necessit\u00e0 di aggiornare manualmente il testo HTML ad ogni release. ID: #nx-login-footer-version.
@@ -3477,21 +3468,44 @@ En que te puedo ayudar hoy?</div></div>
         <button type="button" class="btn bp" onclick="provExtractFromPasteInline()" style="width:100%;font-size:12px">&#9889; Procesar y rellenar campos</button>
       </div>
     </div>
-    <!-- v10.11.2.2: Banner warning dato fiscal incompleto (non bloccante) -->
-    <div id="pv-fiscal-warning-banner" style="display:none;background:#fef3c7;border:1px solid #f59e0b;border-left:4px solid #f59e0b;border-radius:6px;padding:9px 12px;margin-bottom:12px;font-size:11px;color:#92400e;line-height:1.4">
-      <div style="display:flex;align-items:flex-start;gap:8px">
-        <span style="font-size:14px;flex-shrink:0">&#9888;&#65039;</span>
-        <div style="flex:1">
-          <strong>Falta dato fiscal (CIF / NIF / VAT).</strong> El proveedor se guardar&aacute; como <strong>Incompleto</strong> hasta que rellenes el campo VAT en la secci&oacute;n <em>Datos fiscales</em>.
-        </div>
-        <span onclick="provHideFiscalIncompleteWarning()" style="cursor:pointer;font-size:14px;color:#92400e;flex-shrink:0;padding:0 4px" title="Cerrar aviso">&times;</span>
-      </div>
-    </div>
     <div class="g2 mb10"><div><label>Nombre Comercial <span style="font-size:9px;color:var(--t3)">(uso comercial)</span></label><input type="text" id="pv-name" placeholder="Auto Mayoral"></div><div><label>Empresa / Concesionario</label><input type="text" id="pv-co" placeholder="BMW Müller GmbH"></div></div>
     <div class="g2 mb10"><div><label>Pais</label><input type="text" id="pv-country" placeholder="Alemania"></div><div><label>Rol</label><select id="pv-role"><option value="Comercial">Comercial</option><option value="Contabilidad">Contabilidad</option><option value="Logistica">Log&iacute;stica</option><option value="Director">Director</option><option value="Stock manager">Stock manager</option><option value="Otro">Otro</option></select></div></div>
-    <div class="g2 mb10"><div><label>Telefono</label><div class="fc g4" style="align-items:stretch"><input type="text" id="pv-phone" placeholder="+49 89..." style="flex:1"><button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button><button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button><button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button></div></div><div><label>Email</label><input type="email" id="pv-email" placeholder="email@empresa.com"></div></div>
+    <!-- v10.11.2.2: SPLIT telefono in Fisso + M\u00f3vil/WhatsApp -->
+    <div class="g2 mb10">
+      <div>
+        <label>Tel&eacute;fono Fijo</label>
+        <div class="fc g4" style="align-items:stretch">
+          <input type="text" id="pv-phone" placeholder="+34 93..." style="flex:1">
+          <button type="button" class="btn bs" onclick="providerOpenTel()" title="Llamar al fijo" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button>
+        </div>
+      </div>
+      <div>
+        <label>Email</label>
+        <input type="email" id="pv-email" placeholder="email@empresa.com">
+      </div>
+    </div>
+    <div class="g2 mb10">
+      <div>
+        <label>M&oacute;vil / WhatsApp</label>
+        <div class="fc g4" style="align-items:stretch">
+          <input type="text" id="pv-mobile" placeholder="+34 6XX..." onblur="provValidateMobileMain(this)" style="flex:1">
+          <button type="button" class="btn bs" onclick="providerOpenWhatsAppBusiness()" title="WhatsApp Business (web)" style="padding:0 10px;background:#075e54;color:#fff;border-color:#075e54;font-size:13px;flex-shrink:0;font-weight:700">B</button>
+          <button type="button" class="btn bs" onclick="providerOpenWhatsAppPersonal()" title="WhatsApp Personal (app)" style="padding:0 10px;background:#25d366;color:#fff;border-color:#25d366;font-size:13px;flex-shrink:0;font-weight:700">P</button>
+          <button type="button" class="btn bs" onclick="providerOpenTelMobile()" title="Llamar al m&oacute;vil" style="padding:0 12px;background:#3b82f6;color:#fff;border-color:#3b82f6;font-size:14px;flex-shrink:0">&#128222;</button>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:var(--t2)">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="pv-whatsapp" style="margin:0">
+            <span>&#128241; WhatsApp activo (auto)</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <!-- spacer per mantenere grid layout 2 colonne -->
+      </div>
+    </div>
     <div class="g2 mb10"><div><label>Tipo</label><select id="pv-ptype"><option value="">--</option><option value="Concesionario">Concesionario</option><option value="Broker">Broker</option><option value="Privado">Privado</option><option value="Subasta">Subasta</option><option value="Importador">Importador</option><option value="Rent a car">Rent a car</option><option value="Otro">Otro</option></select></div><div><label>Estado</label><select id="pv-tag"><option value="activo">Activo</option><option value="esporadico">Espor&aacute;dico</option><option value="inactivo">Inactivo</option><option value="bloqueado">Bloqueado</option></select></div></div>
-    <div class="g3 mb10"><div><label>Marcas principales <span style="font-size:9px;color:var(--t3)">(multi-selecci&oacute;n)</span></label><div id="pv-brands-wrap" style="position:relative"><div id="pv-brands-display" onclick="provToggleBrandsDropdown()" style="border:1px solid var(--border);background:var(--bg2);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;min-height:32px;display:flex;align-items:center;justify-content:space-between;gap:6px;line-height:1.3"><span id="pv-brands-display-text" style="color:var(--t3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Click para seleccionar...</span><span style="font-size:9px;color:var(--t3);flex-shrink:0">&#9660;</span></div><input type="hidden" id="pv-brands" value=""><div id="pv-brands-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:10;background:var(--bg);border:1px solid var(--border);border-radius:6px;margin-top:4px;max-height:280px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,.15);padding:6px"></div></div></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div><div><label>Idioma de Contacto <span style="font-size:9px;color:var(--t3)">(comunicaci&oacute;n)</span></label><select id="pv-language"><option value="ES">&#127466;&#127480; Espa&ntilde;ol</option><option value="IT">&#127470;&#127481; Italiano</option><option value="EN">&#127468;&#127463; English</option><option value="FR">&#127467;&#127479; Fran&ccedil;ais</option><option value="DE">&#127465;&#127466; Deutsch</option><option value="PT">&#127477;&#127481; Portugu&ecirc;s</option><option value="RO">&#127479;&#127476; Rom&acirc;n&#259;</option></select></div></div>
+    <div class="g3 mb10"><div><label>Marcas principales</label><input type="text" id="pv-brands" placeholder="BMW, Audi, Mercedes..."></div><div><label>Condiciones de pago</label><input type="text" id="pv-payment" placeholder="30gg, Anticipo 50%..."></div><div><label>Idioma de Contacto <span style="font-size:9px;color:var(--t3)">(comunicaci&oacute;n)</span></label><select id="pv-language"><option value="ES">&#127466;&#127480; Espa&ntilde;ol</option><option value="IT">&#127470;&#127481; Italiano</option><option value="EN">&#127468;&#127463; English</option><option value="FR">&#127467;&#127479; Fran&ccedil;ais</option><option value="DE">&#127465;&#127466; Deutsch</option><option value="PT">&#127477;&#127481; Portugu&ecirc;s</option><option value="RO">&#127479;&#127476; Rom&acirc;n&#259;</option></select></div></div>
     <!-- v10.03: STAFF MULTI-CONTATTO (Comercial / Contabilidad / Log\u00edstica) -->
     <div style="border:1px solid var(--border);border-radius:8px;background:var(--bg2);margin-bottom:12px">
       <div onclick="provToggleStaff()" style="padding:8px 12px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between" title="Click para abrir / cerrar">
@@ -17229,10 +17243,7 @@ function renderProv(){
           return '<span style="background:'+col.bg+';color:'+col.fg+';padding:1px 7px;border-radius:5px;font-size:9px;font-weight:600">'+esc(t)+'</span>';
         }).join('')+'</div>';
       }
-      // v10.11.2.2: badge "Incompleto" se manca dato fiscal
-      var incompleteBadge=(!p.vat||!String(p.vat).trim())?
-        '<span title="Falta dato fiscal (CIF/NIF/VAT)" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;margin-left:6px;display:inline-block;vertical-align:middle">&#9888; INCOMPLETO</span>':'';
-      return '<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((p.name||p.company||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(p.name||'')+provInboxBadgeHtml(p.email)+incompleteBadge+'</div><div style="font-size:11px;color:var(--t3)">'+esc(p.company||'')+'</div></div></div><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></div>'+
+      return '<div class="cc"><div class="fbet mb10"><div class="fc g10"><div class="cav">'+esc((p.name||p.company||'?')[0])+'</div><div><div style="font-size:13px;font-weight:600">'+esc(p.name||'')+provInboxBadgeHtml(p.email)+'</div><div style="font-size:11px;color:var(--t3)">'+esc(p.company||'')+'</div></div></div><span class="tag '+provTagClass(p.tag||'activo')+'">'+esc(PROV_TAG_LABEL[p.tag]||p.tag||'Activo')+'</span></div>'+
       '<div class="fc g6 mb10" style="flex-wrap:wrap">'+
         (p.country?'<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:2px 7px;border-radius:8px">&#127759; '+esc(p.country)+'</span>':'')+
         (p.providerType?ptBadge(p.providerType):'')+
@@ -17259,11 +17270,8 @@ function renderProv(){
         }).join(' ');
         if(p.labels.length>3)lblsh+=' <span style="font-size:9px;color:var(--t4)">+'+(p.labels.length-3)+'</span>';
       }
-      // v10.11.2.2: badge Incompleto in list view
-      var incompleteBadgeList=(!p.vat||!String(p.vat).trim())?
-        ' <span title="Falta dato fiscal" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700">&#9888;</span>':'';
       return '<tr>'+
-        '<td><strong>'+esc(p.name||'')+'</strong>'+provInboxBadgeHtml(p.email)+incompleteBadgeList+'</td>'+
+        '<td><strong>'+esc(p.name||'')+'</strong>'+provInboxBadgeHtml(p.email)+'</td>'+
         '<td>'+esc(p.company||'')+'</td>'+
         '<td>'+esc(p.country||'')+'</td>'+
         '<td>'+(p.providerType?ptBadge(p.providerType):'--')+'</td>'+
@@ -17329,14 +17337,14 @@ function openNewProvider(){
   n('pv-country').value='';
   n('pv-role').value='Comercial';
   n('pv-phone').value='';
+  // v10.11.2.2: reset campi mobile/whatsapp
+  if(n('pv-mobile'))n('pv-mobile').value='';
+  if(n('pv-mobile'))n('pv-mobile').style.borderColor='';
+  if(n('pv-whatsapp'))n('pv-whatsapp').checked=false;
   n('pv-email').value='';
   n('pv-ptype').value='';
   n('pv-tag').value='activo';
   n('pv-brands').value='';
-  // v10.11.2.2: init multi-select brands display
-  if(typeof window.provInitBrandsField==='function')window.provInitBrandsField('');
-  // v10.11.2.2: nascondi banner warning fiscal su form vuoto
-  if(typeof window.provHideFiscalIncompleteWarning==='function')window.provHideFiscalIncompleteWarning();
   n('pv-payment').value='';
   // v10.10.33: Idioma de Contacto default ES (comunicación)
   if(n('pv-language'))n('pv-language').value='ES';
@@ -17383,20 +17391,14 @@ function editProvider(id){
   n('pv-country').value=p.country||'';
   n('pv-role').value=p.role||'Comercial';
   n('pv-phone').value=p.phone||'';
+  // v10.11.2.2: load campi mobile/whatsapp (backward compat: undefined su record vecchi)
+  if(n('pv-mobile'))n('pv-mobile').value=p.mobile||'';
+  if(n('pv-mobile'))n('pv-mobile').style.borderColor='';
+  if(n('pv-whatsapp'))n('pv-whatsapp').checked=!!p.whatsapp;
   n('pv-email').value=p.email||'';
   n('pv-ptype').value=p.providerType||'';
   n('pv-tag').value=p.tag||'activo';
   n('pv-brands').value=p.brands||'';
-  // v10.11.2.2: init multi-select brands display con valore esistente
-  if(typeof window.provInitBrandsField==='function')window.provInitBrandsField(p.brands||'');
-  // v10.11.2.2: mostra banner warning fiscal se VAT mancante anche in edit
-  if(typeof window.provShowFiscalIncompleteWarning==='function'){
-    if(!(p.vat&&String(p.vat).trim())){
-      window.provShowFiscalIncompleteWarning();
-    }else{
-      window.provHideFiscalIncompleteWarning();
-    }
-  }
   n('pv-payment').value=p.payment||'';
   // v10.10.33: Idioma de Contacto (backward compat: default ES per record vecchi)
   if(n('pv-language'))n('pv-language').value=p.language||'ES';
@@ -17474,6 +17476,9 @@ function saveProv(){
     country:n('pv-country').value.trim(),
     role:n('pv-role').value.trim(),
     phone:n('pv-phone').value.trim(),
+    // v10.11.2.2: nuovi campi mobile/whatsapp
+    mobile:(n('pv-mobile')&&n('pv-mobile').value.trim())||'',
+    whatsapp:(n('pv-whatsapp')&&n('pv-whatsapp').checked)||false,
     email:n('pv-email').value.trim().toLowerCase(),
     providerType:n('pv-ptype').value.trim(),
     tag:n('pv-tag').value.trim()||'activo',
@@ -17713,19 +17718,9 @@ window.provSyncFiscalFromAnagrafica=function(){
   var coEl=document.getElementById('pv-co');
   var countryEl=document.getElementById('pv-country');
   if(legalNameEl&&!legalNameEl.value.trim()&&coEl&&coEl.value.trim()){
-    // v10.11.2.2: NON copiare se il valore di pv-co sembra un indirizzo
-    // (numero civico finale, CP+città, virgole multiple tipo "Calle X, 90")
-    var coVal=coEl.value.trim();
-    var looksLikeAddress=(
-      /,\s*\d+[A-Za-z]?\s*$/.test(coVal) ||  // "Calle X, 90" o "Calle X, 90B"
-      /^\d{4,5}\s+[A-Z]/i.test(coVal) ||      // "08205 Sabadell"
-      /^(Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|Vía|Carrer|Straße|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s/i.test(coVal)
-    );
-    if(!looksLikeAddress){
-      legalNameEl.value=coVal.toUpperCase();
-      legalNameEl.style.background='rgba(34,197,94,.06)';
-      legalNameEl.title='Auto-rellenado desde Empresa';
-    }
+    legalNameEl.value=coEl.value.trim();
+    legalNameEl.style.background='rgba(34,197,94,.06)';
+    legalNameEl.title='Auto-rellenado desde Empresa';
   }
   if(fiscalCountryEl&&!fiscalCountryEl.value.trim()&&countryEl&&countryEl.value.trim()){
     fiscalCountryEl.value=countryEl.value.trim();
@@ -17740,277 +17735,7 @@ window.provBindAutofillListeners=function(){
   var countryEl=document.getElementById('pv-country');
   if(coEl&&!coEl._fillBound){coEl.addEventListener('blur',provSyncFiscalFromAnagrafica);coEl._fillBound=true;}
   if(countryEl&&!countryEl._fillBound){countryEl.addEventListener('blur',provSyncFiscalFromAnagrafica);countryEl._fillBound=true;}
-  // v10.11.2.2: bind input listener su pv-vat per auto-dismiss banner warning fiscal
-  var vatEl=document.getElementById('pv-vat');
-  if(vatEl&&!vatEl._vatBound){
-    vatEl.addEventListener('input',function(){
-      if(this.value.trim()&&typeof window.provHideFiscalIncompleteWarning==='function'){
-        window.provHideFiscalIncompleteWarning();
-      }
-    });
-    vatEl._vatBound=true;
-  }
 };
-
-// ============================================================================
-// v10.11.2.2: PARSER NOME FISCALE INTELLIGENTE
-// Estrae il vero nome aziendale da un blocco di testo, distinguendolo dall'indirizzo
-// Strategia: (1) cerca marker legali (S.L., S.R.L., GmbH, Ltd, etc.) → estrae quella riga
-//            (2) fallback: prima riga "azienda-like" (no indirizzo, no email, no tel, no persona)
-// ============================================================================
-window.PROV_LEGAL_MARKERS=/\b(S\.?\s?L\.?(?:\s*U\.?)?|S\.?\s?R\.?\s?L\.?|S\.?\s?A\.?(?:\s*S\.?)?|S\.?\s?p\.?\s?A\.?|GmbH|G\.m\.b\.H\.?|AG|KG|OHG|UG|Ltd\.?|LLC|L\.L\.C\.|Inc\.?|Corp\.?|Co\.?|B\.?V\.?|N\.?V\.?|O\u00dc|s\.?r\.?o\.?|S\.?R\.?O\.?|a\.?s\.?|A\.?S\.?|AB|OY|AS|Sarl|S\.?A\.?R\.?L\.?|EURL|SAS|SCI|SCP|GbR|e\.?V\.?|e\.?K\.?|d\.?o\.?o\.?|Sp\.?\s?z\s?o\.?o\.?|sp\.k\.|Kft|Zrt|Nyrt|Ltda|EIRL|S\.de\.R\.L|S\.C\.|S\.S\.|S\.N\.C|GP|LP|LLP|PLLC|PC|PA|Trust)\b/i;
-
-window.provExtractCompanyName=function(lines){
-  // lines: array di righe già pulite
-  if(!Array.isArray(lines)||!lines.length)return '';
-
-  // Filtri: skip righe che non possono essere ragione sociale
-  var skipPatterns=[
-    /[@]/,                                           // email
-    /^\+\d|^00\d/,                                  // telefono internazionale
-    /https?:\/\/|^www\./i,                          // URL
-    /^\d{4,5}\s+[A-Z]/,                             // "08205 Sabadell" (CP+città)
-    /\d{4,5}\s+\w+\s*,/,                            // "08205 Sabadell, Barcelona"
-    /,\s*\d+[A-Za-z]?\s*$/,                         // "Calle X, 90" (numero civico finale)
-    /^(Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|V\u00eda|Carrer|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s/i, // inizio indirizzo
-    /^(tel|tel\.|telefono|tlf|m\u00f3vil|mobile|fax|email|e-mail)\b/i,
-    /^(cif|nif|vat|p\.?\s?iva|tva|uid)\s*[:\-]/i,   // riga dati fiscali
-    /^iban\s*[:\-]/i
-  ];
-
-  var validLines=lines.filter(function(l){
-    if(!l||l.length<2||l.length>100)return false;
-    for(var i=0;i<skipPatterns.length;i++){
-      if(skipPatterns[i].test(l))return false;
-    }
-    return true;
-  });
-
-  if(!validLines.length)return '';
-
-  // STRATEGIA 1: cerca riga con marker legale aziendale (S.L., GmbH, etc.)
-  for(var i=0;i<validLines.length;i++){
-    if(window.PROV_LEGAL_MARKERS.test(validLines[i])){
-      return validLines[i].toUpperCase().replace(/\s+/g,' ').trim();
-    }
-  }
-
-  // STRATEGIA 2: fallback su prima riga "azienda-like"
-  // Skippiamo righe che sembrano nomi di persona (2-4 parole capitalizzate semplici)
-  var personPattern=/^[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+(?:\s+[A-Z\u00c0-\u017d][a-z\u00e0-\u017f]+){1,3}$/;
-  // Se ci sono più righe valide, la prima è probabile nome persona, la seconda è azienda
-  // Se c'è una sola riga valida, è la candidata azienda
-  if(validLines.length===1){
-    return validLines[0].toUpperCase().replace(/\s+/g,' ').trim();
-  }
-  // Cerca prima riga NON-persona
-  for(var j=0;j<validLines.length;j++){
-    if(!personPattern.test(validLines[j])){
-      return validLines[j].toUpperCase().replace(/\s+/g,' ').trim();
-    }
-  }
-  // Se tutte sembrano persone, prendi la seconda (la prima è il commerciale, la seconda l'azienda)
-  if(validLines.length>=2){
-    return validLines[1].toUpperCase().replace(/\s+/g,' ').trim();
-  }
-  return validLines[0].toUpperCase().replace(/\s+/g,' ').trim();
-};
-
-// ============================================================================
-// v10.11.2.2: BANNER WARNING FISCAL INCOMPLETO
-// ============================================================================
-window.provShowFiscalIncompleteWarning=function(){
-  var b=document.getElementById('pv-fiscal-warning-banner');
-  if(b)b.style.display='block';
-};
-window.provHideFiscalIncompleteWarning=function(){
-  var b=document.getElementById('pv-fiscal-warning-banner');
-  if(b)b.style.display='none';
-};
-
-// ============================================================================
-// v10.11.2.2: MULTI-SELECT BRANDS DROPDOWN
-// Brand di default + categorie speciali (Flotas/Nuevo/Usado) + custom brands persistiti
-// Output: stringa CSV salvata in p.brands per backward compatibility
-// ============================================================================
-window.PROV_BRANDS_DEFAULT=['Audi','BMW','Citro\u00ebn','Cupra','Dacia','Fiat','Ford','Mercedes','Mini','Opel','Peugeot','Renault','Seat','Skoda','Tesla','Toyota','Volkswagen','Volvo'];
-window.PROV_CATEGORIES=[
-  {value:'Flotas',label:'\ud83d\ude97 Flotas',color:'#7c3aed'},
-  {value:'Nuevo',label:'\ud83c\udd95 Nuevo',color:'#16a34a'},
-  {value:'Usado',label:'\ud83d\udcc5 Usado',color:'#f59e0b'}
-];
-
-window.provLoadCustomBrands=function(){
-  try{
-    var raw=localStorage.getItem('nx5_customBrands');
-    if(!raw)return [];
-    var arr=JSON.parse(raw);
-    return Array.isArray(arr)?arr.filter(function(x){return x&&typeof x==='string';}):[];
-  }catch(e){return [];}
-};
-
-window.provSaveCustomBrand=function(name){
-  if(!name||typeof name!=='string')return false;
-  var clean=name.trim();
-  if(!clean)return false;
-  var current=window.provLoadCustomBrands();
-  // Dedup case-insensitive vs default + custom esistenti
-  var allKnown=window.PROV_BRANDS_DEFAULT.concat(window.PROV_CATEGORIES.map(function(c){return c.value;})).concat(current);
-  var lower=clean.toLowerCase();
-  for(var i=0;i<allKnown.length;i++){
-    if(String(allKnown[i]).toLowerCase()===lower)return false; // già esiste
-  }
-  current.push(clean);
-  try{localStorage.setItem('nx5_customBrands',JSON.stringify(current));return true;}catch(e){return false;}
-};
-
-window.provBuildBrandsDropdown=function(currentValue){
-  var dd=document.getElementById('pv-brands-dropdown');
-  if(!dd)return;
-  var selected=String(currentValue||'').split(',').map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
-  var customs=window.provLoadCustomBrands();
-
-  function isSelected(name){return selected.indexOf(String(name).toLowerCase())>=0;}
-  function rowHtml(value,label,extra){
-    var checked=isSelected(value)?'checked':'';
-    var lbl=label||value;
-    return '<label style="display:flex;align-items:center;gap:8px;padding:5px 7px;cursor:pointer;border-radius:4px;font-size:12px;line-height:1.3" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">'+
-      '<input type="checkbox" value="'+esc(value)+'" '+checked+' onchange="provRefreshBrandsValue()" style="margin:0;cursor:pointer">'+
-      '<span style="flex:1">'+lbl+'</span>'+(extra||'')+'</label>';
-  }
-
-  var html='';
-  // Categorie (priorità in cima)
-  html+='<div style="font-size:9px;text-transform:uppercase;color:var(--t3);padding:4px 7px;font-weight:600;letter-spacing:.5px">Categor\u00edas</div>';
-  for(var c=0;c<window.PROV_CATEGORIES.length;c++){
-    var cat=window.PROV_CATEGORIES[c];
-    html+=rowHtml(cat.value,cat.label,'');
-  }
-  html+='<div style="border-top:1px solid var(--border);margin:6px 0"></div>';
-  // Marche default
-  html+='<div style="font-size:9px;text-transform:uppercase;color:var(--t3);padding:4px 7px;font-weight:600;letter-spacing:.5px">Marcas</div>';
-  for(var b=0;b<window.PROV_BRANDS_DEFAULT.length;b++){
-    html+=rowHtml(window.PROV_BRANDS_DEFAULT[b]);
-  }
-  // Brands custom (se ce ne sono)
-  if(customs.length){
-    html+='<div style="border-top:1px solid var(--border);margin:6px 0"></div>';
-    html+='<div style="font-size:9px;text-transform:uppercase;color:var(--t3);padding:4px 7px;font-weight:600;letter-spacing:.5px">Personalizadas</div>';
-    for(var cu=0;cu<customs.length;cu++){
-      html+=rowHtml(customs[cu],null,'<span onclick="event.preventDefault();event.stopPropagation();provRemoveCustomBrand(\''+esc(customs[cu]).replace(/'/g,"\\'")+'\')" title="Eliminar" style="color:var(--t3);font-size:11px;padding:0 4px;cursor:pointer">&times;</span>');
-    }
-  }
-  // Bottone aggiunta custom
-  html+='<div style="border-top:1px solid var(--border);margin:6px 0"></div>';
-  html+='<button type="button" onclick="provAddCustomBrand()" style="width:100%;padding:6px;background:transparent;border:1px dashed var(--border);border-radius:4px;color:var(--acc);font-size:11px;cursor:pointer;font-weight:600">+ Otra marca</button>';
-
-  // Brand legacy: se l'utente aveva valori non in nessuna lista, includili come "Personalizzati legacy"
-  var allKnown=window.PROV_BRANDS_DEFAULT.concat(window.PROV_CATEGORIES.map(function(c){return c.value;})).concat(customs);
-  var allKnownLower=allKnown.map(function(x){return String(x).toLowerCase();});
-  var legacyValues=String(currentValue||'').split(',').map(function(s){return s.trim();}).filter(function(s){return s&&allKnownLower.indexOf(s.toLowerCase())<0;});
-  if(legacyValues.length){
-    var legacyHtml='<div style="border-top:1px solid var(--border);margin:6px 0"></div>'+
-      '<div style="font-size:9px;text-transform:uppercase;color:var(--t3);padding:4px 7px;font-weight:600;letter-spacing:.5px">Legacy <span style="color:var(--t3);text-transform:none;font-weight:400">(no en lista \u2014 click para conservar)</span></div>';
-    for(var lg=0;lg<legacyValues.length;lg++){
-      legacyHtml+=rowHtml(legacyValues[lg]);
-    }
-    html=legacyHtml+html;
-  }
-
-  dd.innerHTML=html;
-};
-
-window.provToggleBrandsDropdown=function(){
-  var dd=document.getElementById('pv-brands-dropdown');
-  if(!dd)return;
-  var hidden=dd.style.display==='none';
-  if(hidden){
-    var hidden2=document.getElementById('pv-brands');
-    window.provBuildBrandsDropdown(hidden2?hidden2.value:'');
-    dd.style.display='block';
-    // Click fuori → chiudi
-    setTimeout(function(){
-      function outsideClick(e){
-        var wrap=document.getElementById('pv-brands-wrap');
-        if(wrap&&!wrap.contains(e.target)){
-          dd.style.display='none';
-          document.removeEventListener('click',outsideClick);
-        }
-      }
-      document.addEventListener('click',outsideClick);
-    },0);
-  }else{
-    dd.style.display='none';
-  }
-};
-
-window.provRefreshBrandsValue=function(){
-  var dd=document.getElementById('pv-brands-dropdown');
-  var hidden=document.getElementById('pv-brands');
-  var displayText=document.getElementById('pv-brands-display-text');
-  if(!dd||!hidden)return;
-  var checkboxes=dd.querySelectorAll('input[type="checkbox"]:checked');
-  var values=[];
-  for(var i=0;i<checkboxes.length;i++)values.push(checkboxes[i].value);
-  hidden.value=values.join(', ');
-  if(displayText){
-    if(values.length===0){
-      displayText.textContent='Click para seleccionar...';
-      displayText.style.color='var(--t3)';
-    }else{
-      displayText.textContent=values.join(', ');
-      displayText.style.color='var(--t1)';
-    }
-  }
-};
-
-window.provAddCustomBrand=function(){
-  var name=prompt('Nombre de la nueva marca / categor\u00eda:');
-  if(!name||!name.trim())return;
-  var clean=name.trim();
-  var ok=window.provSaveCustomBrand(clean);
-  if(!ok){
-    alert('Esta marca ya existe en la lista.');
-    return;
-  }
-  // Riapri dropdown con nuovo brand già selezionato
-  var hidden=document.getElementById('pv-brands');
-  var current=hidden?hidden.value:'';
-  var newVal=current?current+', '+clean:clean;
-  if(hidden)hidden.value=newVal;
-  window.provBuildBrandsDropdown(newVal);
-  window.provRefreshBrandsValue();
-};
-
-window.provRemoveCustomBrand=function(name){
-  if(!confirm('\u00bfEliminar "'+name+'" de la lista de marcas personalizadas?'))return;
-  var current=window.provLoadCustomBrands();
-  var filtered=current.filter(function(x){return x!==name;});
-  try{localStorage.setItem('nx5_customBrands',JSON.stringify(filtered));}catch(e){}
-  // Rebuild dropdown
-  var hidden=document.getElementById('pv-brands');
-  window.provBuildBrandsDropdown(hidden?hidden.value:'');
-};
-
-window.provInitBrandsField=function(currentValue){
-  // Chiamato all'apertura del form (nuovo o edit)
-  var hidden=document.getElementById('pv-brands');
-  var displayText=document.getElementById('pv-brands-display-text');
-  if(hidden)hidden.value=currentValue||'';
-  if(displayText){
-    if(currentValue){
-      displayText.textContent=currentValue;
-      displayText.style.color='var(--t1)';
-    }else{
-      displayText.textContent='Click para seleccionar...';
-      displayText.style.color='var(--t3)';
-    }
-  }
-  // Chiudi dropdown se aperto
-  var dd=document.getElementById('pv-brands-dropdown');
-  if(dd)dd.style.display='none';
-};
-
 
 // ===========================================================================
 // v10.05: DATOS BANCARIOS - toggle, parser, validazione IBAN, upload certificato
@@ -18151,10 +17876,22 @@ window.NX_MOBILE_PREFIXES={
   'IT':[/^\+?39\s?3/,/^3\d{9}$/],                // Italia: 3xx
   'FR':[/^\+?33\s?[67]/,/^0?[67]\d{8}$/],        // Francia: 06, 07
   'DE':[/^\+?49\s?1[567]/,/^01[567]\d{7,8}$/],   // Germania: 015x, 016x, 017x
-  'PT':[/^\+?351\s?9/,/^9\d{8}$/],               // Portogallo: 9xx
+  'PT':[/^\+?351\s?9/],                          // Portogallo: 9xx (SOLO con prefisso intl per evitare conflitto con ES fisso)
   'NL':[/^\+?31\s?6/,/^06\d{8}$/],               // Paesi Bassi: 06
   'BE':[/^\+?32\s?4[5-9]/,/^04[5-9]\d{7}$/],     // Belgio: 04x
   'UK':[/^\+?44\s?7/,/^07\d{9}$/]                // UK: 07
+};
+
+// v10.11.2.2: prefissi FISSI nazionali per migliorare classificazione anche senza prefisso internazionale
+// IMPORTANTE: il pattern nazionale ES /^9\d{8}$/ \u00e8 SOLO qui (non in mobile PT) per evitare conflitti.
+// Per provider PT, usare sempre prefisso internazionale +351.
+window.NX_FIXED_PREFIXES={
+  'ES':[/^\+?34\s?[89]/,/^[89]\d{8}$/],          // Spagna: 8xx, 9xx (es. 91 Madrid, 93 Barcelona, 96 Valencia, 8XX servizi)
+  'IT':[/^\+?39\s?0/,/^0\d{8,10}$/],             // Italia: 0xx (es. 02 Milano, 06 Roma)
+  'FR':[/^\+?33\s?[1-5]/,/^0?[1-5]\d{8}$/],      // Francia: 01-05 (fisso)
+  'DE':[/^\+?49\s?[2-9]/],                       // Germania: 2xx-9xx (escluso 1XX mobile)
+  'PT':[/^\+?351\s?2/],                          // Portogallo: 2xx (solo con prefisso intl per coerenza)
+  'UK':[/^\+?44\s?[12]/,/^0[12]\d{8,9}$/]        // UK: 01, 02
 };
 
 window.nxClassifyPhone=function(phone){
@@ -18169,11 +17906,102 @@ window.nxClassifyPhone=function(phone){
       }
     }
   }
+  // v10.11.2.2: Test contro prefissi FISSI nazionali (per riconoscere 9XX ES, 0XX IT etc.)
+  if(window.NX_FIXED_PREFIXES){
+    for(var fcountry in window.NX_FIXED_PREFIXES){
+      var fpatterns=window.NX_FIXED_PREFIXES[fcountry];
+      for(var fi=0;fi<fpatterns.length;fi++){
+        if(fpatterns[fi].test(clean)||fpatterns[fi].test(phone)){
+          return {type:'fixed',confidence:'high',country:fcountry,cleaned:clean};
+        }
+      }
+    }
+  }
   // Fallback: se inizia con +XX e non matcha mobile, probabilmente fisso
   if(/^\+?\d{10,}$/.test(clean)){
     return {type:'fixed',confidence:'medium',cleaned:clean};
   }
   return {type:'unknown',confidence:'low',cleaned:clean};
+};
+
+// =============================================================================
+// v10.11.2.2 — PROVIDERS Phone Split (Fisso + Mobile/WhatsApp)
+// =============================================================================
+
+// Validazione live al blur del campo M\u00f3vil (form Provider principale)
+// Feedback visivo: verde se mobile riconosciuto, arancio se sembra fisso, default altrimenti
+window.provValidateMobileMain=function(input){
+  if(!input)return;
+  var val=(input.value||'').trim();
+  if(!val){input.style.borderColor='';return;}
+  if(typeof window.nxClassifyPhone!=='function')return;
+  var cls=window.nxClassifyPhone(val);
+  if(cls.type==='mobile'&&cls.confidence==='high'){
+    input.style.borderColor='#16a34a';
+    // Auto-attiva WhatsApp se non gi\u00e0 attivo
+    var wa=document.getElementById('pv-whatsapp');
+    if(wa&&!wa.checked)wa.checked=true;
+  }else if(cls.type==='fixed'){
+    input.style.borderColor='#f59e0b';
+    if(typeof toast==='function')toast('\u26a0\ufe0f Este n\u00famero parece un fijo. Mu\u00e9velo a "Tel\u00e9fono Fijo" si lo prefieres.','warn');
+  }else{
+    input.style.borderColor='';
+  }
+};
+
+// Apri llamada al numero mobile (analog a providerOpenTel ma legge pv-mobile)
+window.providerOpenTelMobile=function(){
+  var inp=document.getElementById('pv-mobile');
+  if(!inp){alert('Campo m\u00f3vil no encontrado.');return;}
+  var num=(inp.value||'').replace(/[\s\-().]/g,'');
+  if(!num){alert('Introduce primero un n\u00famero m\u00f3vil.');return;}
+  window.location.href='tel:'+num;
+};
+
+// Modal interattivo per disambiguazione tipo numero
+// Callback riceve 'fixed' | 'mobile' | 'ignore'
+window.provAskPhoneType=function(number,callback){
+  if(!number||typeof callback!=='function')return;
+  // Crea overlay modal dinamico
+  var overlay=document.createElement('div');
+  overlay.id='nx-phone-type-modal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--bg1,#1a1f2e);border:1px solid var(--border,#2a3142);border-radius:12px;padding:24px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.5)';
+  box.innerHTML=
+    '<div style="font-size:14px;font-weight:600;color:var(--t1,#fff);margin-bottom:6px">'+
+      '\u26a0\ufe0f N\u00famero detectado'+
+    '</div>'+
+    '<div style="font-family:monospace;font-size:18px;color:var(--acc,#3b82f6);margin:10px 0;padding:8px;background:var(--bg2,#0f1420);border-radius:6px;text-align:center">'+
+      String(number).replace(/[<>&"']/g,'')+
+    '</div>'+
+    '<div style="font-size:13px;color:var(--t2,#aaa);margin-bottom:16px;line-height:1.5">'+
+      '\u00bfEs un tel\u00e9fono <strong>fijo</strong> o un <strong>m\u00f3vil/WhatsApp</strong>?'+
+    '</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+      '<button type="button" id="nx-ptype-fixed" class="btn" style="padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">'+
+        '\u260e\ufe0f Fijo'+
+      '</button>'+
+      '<button type="button" id="nx-ptype-mobile" class="btn" style="padding:10px;background:#25d366;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer">'+
+        '\ud83d\udcf1 M\u00f3vil / WhatsApp'+
+      '</button>'+
+      '<button type="button" id="nx-ptype-ignore" class="btn" style="padding:10px;background:transparent;color:var(--t2,#aaa);border:1px solid var(--border,#2a3142);border-radius:6px;font-weight:500;cursor:pointer">'+
+        'Ignorar'+
+      '</button>'+
+    '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  var done=function(choice){
+    if(overlay.parentNode)overlay.parentNode.removeChild(overlay);
+    try{callback(choice);}catch(e){console.error('provAskPhoneType callback error',e);}
+  };
+  document.getElementById('nx-ptype-fixed').addEventListener('click',function(){done('fixed');});
+  document.getElementById('nx-ptype-mobile').addEventListener('click',function(){done('mobile');});
+  document.getElementById('nx-ptype-ignore').addEventListener('click',function(){done('ignore');});
+  // Chiudi cliccando fuori = ignore
+  overlay.addEventListener('click',function(ev){
+    if(ev.target===overlay)done('ignore');
+  });
 };
 
 // Validazione IBAN con checksum mod 97 (algoritmo standard ISO 13616)
@@ -18801,6 +18629,43 @@ function provExtractFromPasteInline(){
     }
     n('pv-phone').value=finalPhone;
   }
+  // v10.11.2.2: popola anche campo mobile + flag whatsapp
+  if(parsed.mobile&&n('pv-mobile')){
+    var finalMobile=parsed.mobile;
+    if(parsed.country&&!/^\+/.test(finalMobile)&&!/^00/.test(finalMobile)){
+      finalMobile=nxAddPhonePrefix(finalMobile,parsed.country);
+    }
+    n('pv-mobile').value=finalMobile;
+    if(n('pv-whatsapp'))n('pv-whatsapp').checked=!!parsed.whatsapp;
+    // feedback visivo border verde se classificato come mobile
+    if(typeof window.nxClassifyPhone==='function'){
+      var clsMob=window.nxClassifyPhone(finalMobile);
+      n('pv-mobile').style.borderColor=clsMob.type==='mobile'?'#16a34a':(clsMob.type==='fixed'?'#f59e0b':'');
+    }
+  }
+  // v10.11.2.2: se ho phone ma classifier dice "unknown" (ambiguo), apri prompt modal
+  if(parsed.phone&&!parsed.mobile&&typeof window.nxClassifyPhone==='function'){
+    var clsPhone=window.nxClassifyPhone(parsed.phone);
+    if(clsPhone.type==='unknown'&&clsPhone.confidence==='low'){
+      // Differito per non bloccare il fill degli altri campi
+      setTimeout(function(){
+        if(typeof window.provAskPhoneType==='function'){
+          window.provAskPhoneType(parsed.phone,function(choice){
+            if(choice==='mobile'){
+              if(n('pv-mobile')){
+                n('pv-mobile').value=parsed.phone;
+                if(n('pv-whatsapp'))n('pv-whatsapp').checked=true;
+              }
+              n('pv-phone').value='';
+            }else if(choice==='ignore'){
+              n('pv-phone').value='';
+            }
+            // 'fixed' \u2192 nessuna azione (gi\u00e0 in pv-phone)
+          });
+        }
+      },300);
+    }
+  }
   if(parsed.email)n('pv-email').value=parsed.email;
   if(parsed.providerType)n('pv-ptype').value=parsed.providerType;
   // v10.04: auto-fill datos fiscales dai dati estratti dal testo
@@ -18810,19 +18675,8 @@ function provExtractFromPasteInline(){
   if(parsed.cp&&n('pv-cp'))n('pv-cp').value=parsed.cp;
   if(parsed.city&&n('pv-city'))n('pv-city').value=parsed.city;
   if(parsed.province&&n('pv-province'))n('pv-province').value=parsed.province;
-  // v10.11.2.2: auto-fill razón social usando parser intelligente (NON pv-co diretto, che potrebbe essere indirizzo)
-  if(n('pv-legal-name')&&!n('pv-legal-name').value){
-    var lines=raw.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
-    var smartFiscalName=(typeof window.provExtractCompanyName==='function')?window.provExtractCompanyName(lines):'';
-    if(smartFiscalName){
-      n('pv-legal-name').value=smartFiscalName;
-    }else if(parsed.company){
-      // Fallback: usa parsed.company solo se non sembra un indirizzo
-      var co=parsed.company;
-      var looksLikeAddress=(/,\s*\d+[A-Za-z]?\s*$/.test(co)||/^\d{4,5}\s+[A-Z]/i.test(co)||/^(Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|V\u00eda|Carrer|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s/i.test(co));
-      if(!looksLikeAddress)n('pv-legal-name').value=co.toUpperCase();
-    }
-  }
+  // Auto-fill razón social + país fiscal se vuoti
+  if(parsed.company&&n('pv-legal-name')&&!n('pv-legal-name').value)n('pv-legal-name').value=parsed.company;
   if(parsed.country&&n('pv-fiscal-country')&&!n('pv-fiscal-country').value)n('pv-fiscal-country').value=parsed.country;
   // Trigger anche autofill (per dedurre persona jurídica)
   if(typeof provSyncFiscalFromAnagrafica==='function')provSyncFiscalFromAnagrafica();
@@ -18831,14 +18685,6 @@ function provExtractFromPasteInline(){
   if(hasFiscalParsed&&n('pv-fiscal-collapse')&&n('pv-fiscal-collapse').style.display==='none'){
     n('pv-fiscal-collapse').style.display='block';
     if(n('pv-fiscal-toggle-icon'))n('pv-fiscal-toggle-icon').innerHTML='\u25B2';
-  }
-  // v10.11.2.2: warning banner se manca dato fiscal (CIF/NIF/VAT)
-  var vatField=n('pv-vat');
-  var hasVat=vatField&&vatField.value&&vatField.value.trim();
-  if(!hasVat&&typeof window.provShowFiscalIncompleteWarning==='function'){
-    window.provShowFiscalIncompleteWarning();
-  }else if(hasVat&&typeof window.provHideFiscalIncompleteWarning==='function'){
-    window.provHideFiscalIncompleteWarning();
   }
   // Notas: append se gi\u00e0 presente, altrimenti scrivi
   var notesExtras=[];
@@ -18850,7 +18696,7 @@ function provExtractFromPasteInline(){
     n('pv-notes').value=current?current+'\n'+addNotes:addNotes;
   }
   // Conta quanti campi sono stati riempiti per feedback
-  var filled=['name','company','country','phone','email','providerType','vat','iban','address','cp','city','province'].filter(function(k){return parsed[k];}).length;
+  var filled=['name','company','country','phone','mobile','email','providerType','vat','iban','address','cp','city','province'].filter(function(k){return parsed[k];}).length;
   n('pp-status-msg').textContent='\u2713 '+filled+' campos rellenados (incluyendo datos fiscales). Verifica y guarda.';
   n('pp-status-msg').style.color='var(--green)';
   // Pulisci textarea per il prossimo uso
@@ -18900,7 +18746,8 @@ function provToggleFiscal(){
 
 // Estrae i campi dal testo libero
 function provParseText(raw){
-  var out={name:'',company:'',country:'',role:'',phone:'',email:'',providerType:'',notes:''};
+  // v10.11.2.2: out esteso con mobile e whatsapp (backward compat: phone resta principale)
+  var out={name:'',company:'',country:'',role:'',phone:'',mobile:'',whatsapp:false,email:'',providerType:'',notes:''};
   // Normalizza linee
   var lines=raw.split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
 
@@ -18908,17 +18755,68 @@ function provParseText(raw){
   var emailMatch=raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if(emailMatch)out.email=emailMatch[0].toLowerCase();
 
-  // 2. TELEFONO
-  // Cerca pattern internazionale: +XX seguito da almeno 7 cifre (con spazi/dash/punti opzionali)
-  var phoneIntl=raw.match(/\+\d{1,3}[\s\-\.]?\d[\d\s\-\.\(\)]{6,18}/);
-  if(phoneIntl){
-    out.phone=phoneIntl[0].trim().replace(/\s+(ext\.?|extensi[\u00f3o]n).*$/i,'').replace(/[\s\-\.]+$/,'').trim();
-  }else{
-    // Fallback: pattern 00XX o solo cifre
-    var phoneNat=raw.match(/(?:00\d{1,3}[\s\-\.]?)?\d[\d\s\-\.\(\)]{8,18}/);
-    if(phoneNat){
-      out.phone=phoneNat[0].trim().replace(/\s+(ext\.?|extensi[\u00f3o]n).*$/i,'').replace(/[\s\-\.]+$/,'').trim();
+  // 2. TELEFONI (v10.11.2.2: estrae fino a 2 numeri e li smista fisso vs mobile via nxClassifyPhone)
+  // Cleanup helper interno
+  var cleanupPhone=function(p){
+    return p.trim()
+      .replace(/\s+(ext\.?|extensi[\u00f3o]n).*$/i,'')
+      .replace(/[\s\-\.]+$/,'')
+      .trim();
+  };
+  // Trova TUTTI i pattern internazionali (+XX...)
+  var allPhones=[];
+  var rxIntl=/\+\d{1,3}[\s\-\.]?\d[\d\s\-\.\(\)]{6,18}/g;
+  var m;
+  while((m=rxIntl.exec(raw))!==null){
+    var pCleaned=cleanupPhone(m[0]);
+    if(pCleaned&&allPhones.indexOf(pCleaned)===-1)allPhones.push(pCleaned);
+    if(allPhones.length>=4)break; // safety cap
+  }
+  // Fallback: se non trovati internazionali, cerca pattern nazionali
+  if(allPhones.length===0){
+    var rxNat=/(?:00\d{1,3}[\s\-\.]?)?\d[\d\s\-\.\(\)]{8,18}/g;
+    while((m=rxNat.exec(raw))!==null){
+      var pCleaned2=cleanupPhone(m[0]);
+      // Filtra: deve avere almeno 7 cifre reali
+      var digits=pCleaned2.replace(/[^0-9]/g,'');
+      if(digits.length>=7&&digits.length<=15){
+        if(allPhones.indexOf(pCleaned2)===-1)allPhones.push(pCleaned2);
+      }
+      if(allPhones.length>=4)break;
     }
+  }
+  // Smistamento: usa nxClassifyPhone per identificare mobile vs fisso
+  // Strategia: il PRIMO mobile trovato \u2192 out.mobile (con whatsapp ON), il PRIMO fisso \u2192 out.phone
+  // Se trovo solo 1 numero: lo classifico e va nel campo corretto, l'altro resta vuoto
+  if(allPhones.length>0&&typeof window.nxClassifyPhone==='function'){
+    for(var ip=0;ip<allPhones.length;ip++){
+      var classification=window.nxClassifyPhone(allPhones[ip]);
+      if(classification.type==='mobile'&&!out.mobile){
+        out.mobile=allPhones[ip];
+        out.whatsapp=true; // auto ON su mobile rilevato
+      }else if(classification.type==='fixed'&&!out.phone){
+        out.phone=allPhones[ip];
+      }else if(classification.type==='unknown'&&!out.phone&&!out.mobile){
+        // numero ambiguo: lo metto temporaneamente in phone, sar\u00e0 chiesto via modal in UI
+        out.phone=allPhones[ip];
+      }
+    }
+    // Caso edge: 2 mobili o 2 fissi \u2192 il secondo va dove c'\u00e8 spazio
+    if(allPhones.length>=2){
+      for(var ip2=0;ip2<allPhones.length;ip2++){
+        if(!out.phone&&allPhones[ip2]!==out.mobile){
+          out.phone=allPhones[ip2];
+        }else if(!out.mobile&&allPhones[ip2]!==out.phone){
+          out.mobile=allPhones[ip2];
+          var cls2=window.nxClassifyPhone(allPhones[ip2]);
+          if(cls2.type==='mobile')out.whatsapp=true;
+        }
+      }
+    }
+  }else if(allPhones.length>0){
+    // Fallback se nxClassifyPhone non disponibile: tutto in phone (comportamento legacy)
+    out.phone=allPhones[0];
+    if(allPhones.length>=2)out.mobile=allPhones[1];
   }
 
   // 3. PAESE - Priorità: (a) keyword nel testo, (b) prefisso telefono, (c) TLD email
@@ -19011,10 +18909,8 @@ function provParseText(raw){
     }
   }
 
-  // EMPRESA: scorri dopo il nome cercando una riga non-ruolo, non-indirizzo
-  // v10.11.2.2: skip righe che sembrano indirizzo (numero civico finale, CP+città, "Calle X")
+  // EMPRESA: scorri dopo il nome cercando una riga non-ruolo
   if(nameIdx>=0){
-    var addressLikeRx=/(?:,\s*\d+[A-Za-z]?\s*$|^\d{4,5}\s+[A-Z]|^(Calle|C\/|Avenida|Avda|Plaza|Paseo|Via|V\u00eda|Carrer|Stra\u00dfe|Strasse|Rue|Boulevard|Bd\.?|Av\.?|Avenue|Street|St\.?)\s)/i;
     for(var i4=nameIdx+1;i4<candidates.length;i4++){
       var ln=candidates[i4];
       if(roleKeywords.test(ln)){
@@ -19022,7 +18918,6 @@ function provParseText(raw){
         if(!out.role)out.role=mapRole(ln);
         continue;
       }
-      if(addressLikeRx.test(ln))continue; // v10.11.2.2: skip indirizzo
       out.company=ln;
       break;
     }
